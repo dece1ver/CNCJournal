@@ -1103,6 +1103,7 @@ namespace remeLog.Infrastructure
             if (maxPartsCount < minPartsCount) throw new ArgumentException("Максимальное количество не может быть меньше минимального");
 
             var operators = Database.GetOperators();
+            
             var workDays = Util.GetWorkDaysBeetween(fromDate, toDate);
 
             // Предварительная фильтрация данных
@@ -1170,7 +1171,7 @@ namespace remeLog.Infrastructure
                   .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
 
                 var productionRatio = groupParts
-                    .Where(p => p.FinishedCountFact > minPartsCount && p.FinishedCountFact <= maxPartsCount)
+                    .Where(p => p.FinishedCountFact >= minPartsCount && p.FinishedCountFact < maxPartsCount)
                     .ProductionRatio();
                 ws.Cell(row, ci[CM.ProductionRatio])
                   .SetValue(productionRatio)
