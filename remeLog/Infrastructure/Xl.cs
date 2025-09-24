@@ -1170,7 +1170,7 @@ namespace remeLog.Infrastructure
                   .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
 
                 var productionRatio = groupParts
-                    .Where(p => p.FinishedCountFact >= minPartsCount && p.FinishedCountFact < maxPartsCount)
+                    .Where(p => p.FinishedCountFact > minPartsCount && p.FinishedCountFact <= maxPartsCount)
                     .ProductionRatio();
                 ws.Cell(row, ci[CM.ProductionRatio])
                   .SetValue(productionRatio)
