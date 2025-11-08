@@ -560,6 +560,16 @@ namespace remeLog.Infrastructure
         public const string Coefficient = "coefficient";
 
         /// <summary>
+        /// Коэффициент эффективности
+        /// </summary>
+        public const string EfficiencyCoefficient = "efficiencyCoefficient";
+
+        /// <summary>
+        /// Коэффициент простоев
+        /// </summary>
+        public const string DowntimesCoefficient = "downtimesCoefficient";
+
+        /// <summary>
         /// Тип
         /// </summary>
         public const string Type = "type";
@@ -751,6 +761,8 @@ namespace remeLog.Infrastructure
             { TotalTime, $"Отмеченное общее время" },
             { IsEqual, $"Совпадает" },
             { Coefficient, $"Коэффициент" },
+            { EfficiencyCoefficient, $"Коэффициент эффективности" },
+            { DowntimesCoefficient, $"Коэффициент простоев" },
             { Type, $"Тип" },
             { Description, $"Описание" },
             { YearCount, $"Годовая потребность" },

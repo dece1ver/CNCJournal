@@ -24,9 +24,6 @@ namespace remeLog.Infrastructure
         private static readonly XLColor _lightRed = XLColor.FromHtml("#DA9694");
         private static readonly XLColor _lightGreen = XLColor.FromHtml("#96DA94");
 
-        const double Coefficient1 = 1.2;
-        const double Coefficient2 = 1.4;
-
         /// <summary>
         /// Типы экспорта отчетов операторов.
         /// </summary>
@@ -1081,7 +1078,7 @@ namespace remeLog.Infrastructure
 
         //}
 
-        /// <summary>
+
         /// Экспорт отчета по операторам
         /// </summary>
         /// <param name="parts">Отметки по которым будут производиться расчеты</param>
@@ -1092,21 +1089,32 @@ namespace remeLog.Infrastructure
         /// <param name="maxPartsCount">Максимальное количество деталей</param>
         /// <param name="serialParts">Серийные детали (опционально)</param>
         /// <returns>При удачном выполнении возвращает путь к записанному файлу</returns>
-        public static string ExportOperatorReport(IEnumerable<Part> parts, DateTime fromDate, DateTime toDate,
-            string path, int minPartsCount, int maxPartsCount, HashSet<string>? serialParts = null)
+        public static async Task<string> ExportOperatorReportAsync(IEnumerable<Part> parts, DateTime fromDate, DateTime toDate,
+            string path, int minPartsCount, int maxPartsCount, HashSet<string>? serialParts = null, IProgress<string>? progress = null)
         {
-            // Валидация входных параметров
+            // ============================================================================
+            // ВАЛИДАЦИЯ ВХОДНЫХ ПАРАМЕТРОВ
+            // ============================================================================
             if (parts == null) throw new ArgumentNullException(nameof(parts));
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Путь не может быть пустым", nameof(path));
             if (fromDate > toDate) throw new ArgumentException("Начальная дата не может быть позже конечной");
             if (minPartsCount < 0) throw new ArgumentException("Минимальное количество деталей не может быть отрицательным");
             if (maxPartsCount < minPartsCount) throw new ArgumentException("Максимальное количество не может быть меньше минимального");
 
-            var operators = Database.GetOperators();
+            // ============================================================================
+            // ЗАГРУЗКА СПРАВОЧНЫХ ДАННЫХ
+            // ============================================================================
+            var operatorsTask = Database.GetOperatorsAsync();
+            var qualificationsTask = Database.GetQualificationsAsync();
+            await Task.WhenAll(operatorsTask, qualificationsTask);
+            var operators = await operatorsTask;
+            var qualifications = await qualificationsTask;
             
             var workDays = Util.GetWorkDaysBeetween(fromDate, toDate);
 
-            // Предварительная фильтрация данных
+            // ============================================================================
+            // ФИЛЬТРАЦИЯ ДАННЫХ
+            // ============================================================================
             var filteredParts = parts.Where(p => !p.ExcludeFromReports).ToList();
             var onlySerial = serialParts?.Any() == true;
 
@@ -1117,6 +1125,9 @@ namespace remeLog.Infrastructure
                     .ToList();
             }
 
+            // ============================================================================
+            // СОЗДАНИЕ И НАСТРОЙКА КНИГИ
+            // ============================================================================
             using var wb = new XLWorkbook();
             var ws = wb.AddWorksheet("Отчет по операторам");
 
@@ -1141,12 +1152,17 @@ namespace remeLog.Infrastructure
                 .Add(CM.SetupsCount)
                 .Add(CM.ProductionsCount)
                 .Add(CM.WorkedShifts)
+                .Add(CM.EfficiencyCoefficient)
+                .Add(CM.DowntimesCoefficient)
                 .Add(CM.Coefficient)
                 .Build();
 
             var ci = cm.GetIndexes();
-
             ConfigureWorksheetHeader(ws, cm);
+
+            // ============================================================================
+            // ЗАПОЛНЕНИЕ ДАННЫХ ПО ОПЕРАТОРАМ
+            // ============================================================================
             var row = 3;
 
             foreach (var partGroup in filteredParts
@@ -1156,52 +1172,80 @@ namespace remeLog.Infrastructure
             {
                 if (partGroup.Key.Operator.ToLower() == "ученик") continue;
 
+                var isSerialMachine = await Database.GetMachineSerialStatus(partGroup.Key.Machine);
                 var groupParts = partGroup.ToList();
+                
 
+                // ------------------------------------------------------------------------
+                // Основные данные оператора
+                // ------------------------------------------------------------------------
                 ws.Cell(row, ci[CM.Operator]).SetValue(partGroup.Key.Operator);
 
                 var qualification = partGroup.Key.Operator.GetOperatorQualification(operators);
                 var validQualification = int.TryParse(qualification, out int qualificationNumber);
+                var qual = qualifications.First(q => q.Value == qualificationNumber);
                 ws.Cell(row, ci[CM.Qualification]).SetValue(validQualification ? qualificationNumber : qualification);
                 ws.Cell(row, ci[CM.Machine]).SetValue(groupParts.First().Machine);
 
+                // ------------------------------------------------------------------------
+                // Коэффициенты наладки и изготовления
+                // ------------------------------------------------------------------------
                 var averageSetupRatio = groupParts.AverageSetupRatio();
                 ws.Cell(row, ci[CM.SetupRatio])
-                  .SetValue(averageSetupRatio)
-                  .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
+                    .SetValue(averageSetupRatio)
+                    .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
 
                 var productionRatio = groupParts
                     .Where(p => p.FinishedCountFact >= minPartsCount && p.FinishedCountFact < maxPartsCount)
                     .ProductionRatio();
                 ws.Cell(row, ci[CM.ProductionRatio])
-                  .SetValue(productionRatio)
-                  .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
+                    .SetValue(productionRatio)
+                    .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
 
+                // ------------------------------------------------------------------------
+                // Счетчики наладок и изготовлений
+                // ------------------------------------------------------------------------
                 var setupsCount = groupParts.Count(p =>
                     p.SetupRatio is not (0 or double.NaN or double.NegativeInfinity or double.PositiveInfinity));
-                var productionsCount = groupParts.Count(p => p.ProductionRatio != 0);
+                var productionsCount = groupParts.Count(p =>
+                    p.ProductionRatio != 0 && p.FinishedCountFact >= minPartsCount && p.FinishedCountFact < maxPartsCount);
 
                 ws.Cell(row, ci[CM.SetupsCount]).SetValue(setupsCount);
                 ws.Cell(row, ci[CM.ProductionsCount]).SetValue(productionsCount);
 
-                // Адреса ячеек для формул
+                // ------------------------------------------------------------------------
+                // Общий коэффициент (формула в зависимости от типа станка)
+                // ------------------------------------------------------------------------
                 string setupRatioAddr = ws.Cell(row, ci[CM.SetupRatio]).Address.ToStringRelative();
                 string productionRatioAddr = ws.Cell(row, ci[CM.ProductionRatio]).Address.ToStringRelative();
                 string setupsCountAddr = ws.Cell(row, ci[CM.SetupsCount]).Address.ToStringRelative();
                 string productionsCountAddr = ws.Cell(row, ci[CM.ProductionsCount]).Address.ToStringRelative();
-
-                // Формула общего коэффициента с учетом разряда
                 string qualificationAddr = ws.Cell(row, ci[CM.Qualification]).Address.ToStringRelative();
-                string generalRatioFormula = $"=IF({qualificationAddr}=1,{productionRatioAddr},({setupsCountAddr}*{setupRatioAddr}+{productionsCountAddr}*{productionRatioAddr})/({setupsCountAddr}+{productionsCountAddr}))";
+                string efficiencyCoeffAddr = ws.Cell(row, ci[CM.EfficiencyCoefficient]).Address.ToStringRelative();
+                string downtimeCoeffAddr = ws.Cell(row, ci[CM.DowntimesCoefficient]).Address.ToStringRelative();
 
-                ws.Cell(row, ci[CM.GeneralRatio])
-                  .FormulaA1 = generalRatioFormula;
-                ws.Cell(row, ci[CM.GeneralRatio])
-                  .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
+                if (isSerialMachine)
+                {
+                    // Для серийных станков: взвешенное среднее или только изготовление для 1 разряда
+                    string generalRatioFormula =
+                        $"=IF({qualificationAddr}=1,{productionRatioAddr}," +
+                        $"IFERROR(({setupsCountAddr}*{setupRatioAddr}+{productionsCountAddr}*{productionRatioAddr})/({setupsCountAddr}+{productionsCountAddr}),0))";
 
+                    ws.Cell(row, ci[CM.GeneralRatio]).FormulaA1 = generalRatioFormula;
+                }
+                else
+                {
+                    // Для несерийных станков: только наладка
+                    ws.Cell(row, ci[CM.GeneralRatio]).FormulaA1 = $"={setupRatioAddr}";
+                }
+                ws.Cell(row, ci[CM.GeneralRatio]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
+
+                // ------------------------------------------------------------------------
+                // Время замены и простои
+                // ------------------------------------------------------------------------
                 ws.Cell(row, ci[CM.AverageReplacementTime])
-                  .SetValue(groupParts.AverageReplacementTimeRatio())
-                  .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.Precision2;
+                    .SetValue(groupParts.AverageReplacementTimeRatio())
+                    .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.Precision2;
 
                 ws.Cell(row, ci[CM.CreateNcProgramTime]).SetValue(groupParts.Sum(p => p.CreateNcProgramTime));
                 ws.Cell(row, ci[CM.MaintenanceTime]).SetValue(groupParts.Sum(p => p.MaintenanceTime));
@@ -1213,36 +1257,65 @@ namespace remeLog.Infrastructure
                 ws.Cell(row, ci[CM.HardwareFailureTime]).SetValue(groupParts.Sum(p => p.HardwareFailureTime));
 
                 ws.Cell(row, ci[CM.SpecifiedDowntimes])
-                  .SetValue(groupParts.SpecifiedDowntimesRatio(ShiftType.All))
-                  .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
+                    .SetValue(groupParts.SpecifiedDowntimesRatio(ShiftType.All))
+                    .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
 
                 var specDowntimesEx = groupParts.SpecifiedDowntimesRatioExcluding(new[] { Downtime.HardwareFailure, Downtime.Mentoring });
                 ws.Cell(row, ci[CM.SpecifiedDowntimesEx])
-                  .SetValue(specDowntimesEx)
-                  .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
+                    .SetValue(specDowntimesEx)
+                    .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
 
-                var workedShifts = parts.Where(p => p.Operator == partGroup.Key.Operator && p.Machine == partGroup.Key.Machine)
-                                 .Select(p => p.ShiftDate)
-                                 .Distinct()
-                                 .Count();
+                // ------------------------------------------------------------------------
+                // Отработанные смены
+                // ------------------------------------------------------------------------
+                var workedShifts = parts
+                    .Where(p => p.Operator == partGroup.Key.Operator && p.Machine == partGroup.Key.Machine)
+                    .Select(p => p.ShiftDate)
+                    .Distinct()
+                    .Count();
                 ws.Cell(row, ci[CM.WorkedShifts]).SetValue(workedShifts);
 
-                // Excel-формула для коэффициента с учетом всех условий
+                // ------------------------------------------------------------------------
+                // Формула итогового коэффициента (универсальная, реагирует на изменения)
+                // ------------------------------------------------------------------------
                 if (validQualification)
                 {
-                    string specDowntimesExAddr = ws.Cell(row, ci[CM.SpecifiedDowntimesEx]).Address.ToStringRelative();
                     string generalRatioAddr = ws.Cell(row, ci[CM.GeneralRatio]).Address.ToStringRelative();
+                    string specDowntimesExAddr = ws.Cell(row, ci[CM.SpecifiedDowntimesEx]).Address.ToStringRelative();
                     string workedShiftsAddr = ws.Cell(row, ci[CM.WorkedShifts]).Address.ToStringRelative();
 
-                    // Единая формула коэффициента с учетом разряда внутри формулы
-                    string coefficientFormula = $@"=IF(OR((AND({setupRatioAddr}<0.5,{setupRatioAddr}>0)),{specDowntimesExAddr}>0.1,{workedShiftsAddr}<{workDays / 6}),"""",
-                IF(OR({qualificationAddr}=1,{qualificationAddr}=2),
-                    IF({generalRatioAddr}>1,{Coefficient2},IF({generalRatioAddr}>0.9,{Coefficient1},"""")),
-                    IF(OR({qualificationAddr}=3,{qualificationAddr}=4),
-                        IF({generalRatioAddr}>1.05,{Coefficient2},IF({generalRatioAddr}>0.95,{Coefficient1},"""")),
-                        IF(OR({qualificationAddr}=5,{qualificationAddr}=6),
-                            IF({generalRatioAddr}>1.1,{Coefficient2},IF({generalRatioAddr}>1,{Coefficient1},"""")),
-                            """"))))";
+                    // Коэффициент эффективности (на основе общего коэффициента)
+                    string efficiencyCoeff = $"IF({generalRatioAddr}>{qual.EfficiencyValueHH},{qual.EfficiencyCoefficientHH}," +
+                                            $"IF({generalRatioAddr}>{qual.EfficiencyValueH},{qual.EfficiencyCoefficientH}," +
+                                            $"IF({generalRatioAddr}>{qual.EfficiencyValueN},{qual.EfficiencyCoefficientN}," +
+                                            $"IF({generalRatioAddr}>{qual.EfficiencyValueL},{qual.EfficiencyCoefficientL}," +
+                                            $"IF({generalRatioAddr}>{qual.EfficiencyValueLL},{qual.EfficiencyCoefficientLL}," +
+                                            $"IF({generalRatioAddr}>{qual.EfficiencyValueLLL},{qual.EfficiencyCoefficientLLL}," +
+                                            $"{qual.EfficiencyCoefficientLLL}))))))";
+
+                    if (isSerialMachine)
+                    {
+                        ws.Cell(row, ci[CM.EfficiencyCoefficient]).FormulaA1 = efficiencyCoeff;
+                    }
+                    else
+                    {
+                        ws.Cell(row, ci[CM.EfficiencyCoefficient]).FormulaA1 = efficiencyCoeff;
+                    }
+
+                    // Коэффициент простоев
+                    string downtimeCoeff = $"IF({specDowntimesExAddr}<{qual.DownTimesValueHH},{qual.DownTimesCoefficientHH}," +
+                                            $"IF({specDowntimesExAddr}<{qual.DownTimesValueH},{qual.DownTimesCoefficientH}," +
+                                            $"IF({specDowntimesExAddr}<{qual.DownTimesValueN},{qual.DownTimesCoefficientN}," +
+                                            $"IF({specDowntimesExAddr}<{qual.DownTimesValueL},{qual.DownTimesCoefficientL}," +
+                                            $"IF({specDowntimesExAddr}<{qual.DownTimesValueLL},{qual.DownTimesCoefficientLL}," +
+                                            $"IF({specDowntimesExAddr}<{qual.DownTimesValueLLL},{qual.DownTimesCoefficientLLL}," +
+                                            $"{qual.DownTimesCoefficientLLL}))))))";
+
+                    ws.Cell(row, ci[CM.DowntimesCoefficient]).FormulaA1 = downtimeCoeff;
+
+                    // Итоговая формула: коэффициент применяется только при выполнении условий
+                    string coefficientFormula = $"=IF(AND({setupRatioAddr}>0.8,{workedShiftsAddr}>={workDays / 6})," +
+                                               $"{efficiencyCoeffAddr}*{downtimeCoeffAddr},\"\")";
 
                     ws.Cell(row, ci[CM.Coefficient]).FormulaA1 = coefficientFormula;
                 }
@@ -1250,7 +1323,9 @@ namespace remeLog.Infrastructure
                 row++;
             }
 
-            // Форматирование листа
+            // ============================================================================
+            // ФОРМАТИРОВАНИЕ ЛИСТА
+            // ============================================================================
             ws.RangeUsed().Style.Border.InsideBorder = XLBorderStyleValues.Thin;
             ws.RangeUsed().Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
             ws.RangeUsed().SetAutoFilter(true);
@@ -1259,12 +1334,18 @@ namespace remeLog.Infrastructure
             ws.Column(ci[CM.Qualification]).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             ws.Columns(ci[CM.CreateNcProgramTime], ci[CM.SpecifiedDowntimes]).Group(true);
 
+            // Заголовок отчета
             ws.Cell(1, 1).Value =
-                $"Отчёт по операторам за период с {fromDate:dd.MM.yyyy} по {toDate:dd.MM.yyyy} (изготовление от {minPartsCount}{(maxPartsCount == int.MaxValue ? "" : $" до {maxPartsCount}")} шт.{(onlySerial ? " (Только серийка)" : "")})";
+                $"Отчёт по операторам за период с {fromDate:dd.MM.yyyy} по {toDate:dd.MM.yyyy} " +
+                $"(изготовление от {minPartsCount}{(maxPartsCount == int.MaxValue ? "" : $" до {maxPartsCount}")} шт." +
+                $"{(onlySerial ? " (Только серийка)" : "")})";
             ws.Range(1, ci[CM.Operator], 1, cm.Count).Merge();
             ws.Range(1, ci[CM.Operator], 1, 1).Style.Font.FontSize = 14;
             ws.Columns(ci[CM.SetupRatio], cm.Count).Width = 7;
 
+            // ============================================================================
+            // СОХРАНЕНИЕ И ОТКРЫТИЕ ФАЙЛА
+            // ============================================================================
             wb.SaveAs(path);
 
             if (MessageBox.Show("Открыть сохраненный файл?", "Вопросик", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)

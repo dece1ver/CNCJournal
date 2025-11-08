@@ -984,12 +984,8 @@ namespace remeLog.ViewModels
                     if (dlg.DataContext is ExportOperatorDailogWindowViewModel dx)
                     {
                         var serialParts = dx.OnlySerialParts ? (await libeLog.Infrastructure.Database.GetSerialPartsAsync(AppSettings.Instance.ConnectionString!)).PartNamesHashSet(EnumerableExtensions.PartNameNormalizeOption.NormalizeAndRemoveParentheses) : null;
-                        await Task.Run(() =>
-                        {
-
-                            InProgress = true;
-                            Status = Xl.ExportOperatorReport(Parts, FromDate, ToDate, path, dx.Type.ToLowerInvariant() == "до" ? 1 : dx.Count, dx.Type.ToLowerInvariant() == "до" ? dx.Count : int.MaxValue, serialParts);
-                        });
+                        InProgress = true;
+                        Status = await Xl.ExportOperatorReportAsync(Parts, FromDate, ToDate, path, dx.Type.ToLowerInvariant() == "до" ? 1 : dx.Count, dx.Type.ToLowerInvariant() == "до" ? dx.Count : int.MaxValue, serialParts);
                     }
                 }
             }

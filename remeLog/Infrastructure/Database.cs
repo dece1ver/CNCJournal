@@ -4,6 +4,7 @@ using libeLog.Models;
 using Microsoft.Data.SqlClient;
 using remeLog.Infrastructure.Extensions;
 using remeLog.Models;
+using remeLog.Models.Reports;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -79,13 +80,13 @@ namespace remeLog.Infrastructure
             return operators;
         }
 
-        public async static Task<List<OperatorInfo>> GetOperatorsAsync(IProgress<string> progress)
+        public async static Task<List<OperatorInfo>> GetOperatorsAsync(IProgress<string>? progress = null)
         {
             List<OperatorInfo> operators = new();
 
             await Task.Run(async () =>
             {
-                progress.Report("Подключение к БД...");
+                progress?.Report("Подключение к БД...");
                 using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
                 {
                     await connection.OpenAsync();
@@ -94,7 +95,7 @@ namespace remeLog.Infrastructure
                     {
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
                         {
-                            progress.Report("Чтение данных из БД...");
+                            progress?.Report("Чтение данных из БД...");
                             while (await reader.ReadAsync())
                             {
                                 operators.Add(new OperatorInfo(
@@ -108,7 +109,7 @@ namespace remeLog.Infrastructure
                         }
                     }
                 }
-                progress.Report("Чтение завершено");
+                progress?.Report("Чтение завершено");
             });
             return operators;
         }
@@ -203,6 +204,60 @@ namespace remeLog.Infrastructure
             }
         }
 
+        public async static Task<IEnumerable<Qualification>> GetQualificationsAsync(IProgress<string>? progress = null)
+        {
+            List<Qualification> qualifications = new();
+
+            await Task.Run(async () =>
+            {
+                progress?.Report("Подключение к БД...");
+                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                {
+                    await connection.OpenAsync();
+                    string query = $"SELECT * FROM cnc_qualifications;";
+                    using (SqlCommand command = new(query, connection))
+                    {
+                        using (SqlDataReader reader = await command.ExecuteReaderAsync())
+                        {
+                            progress?.Report("Чтение данных из БД...");
+                            while (await reader.ReadAsync())
+                            {
+                                qualifications.Add(new Qualification(
+                                    reader.GetInt32(0),
+                                    reader.GetDouble(1),
+                                    reader.GetDouble(2),
+                                    reader.GetDouble(3),
+                                    reader.GetDouble(4),
+                                    reader.GetDouble(5),
+                                    reader.GetDouble(6),
+                                    reader.GetDouble(7),
+                                    reader.GetDouble(8),
+                                    reader.GetDouble(9),
+                                    reader.GetDouble(10),
+                                    reader.GetDouble(11),
+                                    reader.GetDouble(12),
+                                    reader.GetDouble(13),
+                                    reader.GetDouble(14),
+                                    reader.GetDouble(15),
+                                    reader.GetDouble(16),
+                                    reader.GetDouble(17),
+                                    reader.GetDouble(18),
+                                    reader.GetDouble(19),
+                                    reader.GetDouble(20),
+                                    reader.GetDouble(21),
+                                    reader.GetDouble(22),
+                                    reader.GetDouble(23),
+                                    reader.GetDouble(24)
+                                    ));
+                            }
+                        }
+                    }
+                }
+                progress?.Report("Чтение завершено");
+            });
+            return qualifications;
+        }
+
         public async static Task<List<Machine>> GetMachinesAsync(IProgress<string> progress)
         {
             List<Machine> machines = new();
@@ -236,7 +291,29 @@ namespace remeLog.Infrastructure
             return machines;
         }
 
-        
+        public async static Task<bool> GetMachineSerialStatus(string machine, IProgress<string>? progress = null)
+        {
+            progress?.Report("Подключение к БД...");
+            using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+            {
+                await connection.OpenAsync();
+                string query = $"SELECT IsSerial FROM cnc_machines WHERE Name = @Machine;";
+                using (SqlCommand command = new(query, connection))
+                {
+                    command.Parameters.AddWithValue("@Machine", machine);
+                    using (SqlDataReader reader = await command.ExecuteReaderAsync())
+                    {
+                        progress?.Report("Чтение данных из БД...");
+                        while (await reader.ReadAsync())
+                        {
+                            return reader.GetBoolean(0);
+                        }
+                    }
+                }
+            }
+            progress?.Report("Чтение завершено");
+            return false;
+        }
 
         /// <summary>
         /// Сохраняет информацию о серийной детали в базе данных.
