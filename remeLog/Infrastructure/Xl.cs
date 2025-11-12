@@ -1,4 +1,5 @@
 ﻿using ClosedXML.Excel;
+using DocumentFormat.OpenXml.Spreadsheet;
 using libeLog;
 using libeLog.Extensions;
 using OfficeOpenXml;
@@ -6,16 +7,16 @@ using OfficeOpenXml.Style;
 using remeLog.Infrastructure.Extensions;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
+using remeLog.Models.Reports;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
-using System.Windows;
-using Part = remeLog.Models.Part;
-using CM = remeLog.Infrastructure.ColumnManager;
 using System.Threading.Tasks;
-using remeLog.Models.Reports;
-using System.Collections.Immutable;
+using System.Windows;
+using CM = remeLog.Infrastructure.ColumnManager;
+using Part = remeLog.Models.Part;
 
 namespace remeLog.Infrastructure
 {
@@ -1135,6 +1136,7 @@ namespace remeLog.Infrastructure
                 .Add(CM.Operator)
                 .Add(CM.Qualification)
                 .Add(CM.Machine)
+                .Add(CM.SerialOrders, "Не штучный")
                 .Add(CM.SetupRatio, "Наладка средняя")
                 .Add(CM.ProductionRatio, "Изготовление общее")
                 .Add(CM.AverageReplacementTime)
@@ -1159,6 +1161,8 @@ namespace remeLog.Infrastructure
 
             var ci = cm.GetIndexes();
             ConfigureWorksheetHeader(ws, cm);
+            var coeffWs = wb.AddWorksheet("Коэффициенты");
+            CreateCoefficientsWorksheet(coeffWs, qualifications);
 
             // ============================================================================
             // ЗАПОЛНЕНИЕ ДАННЫХ ПО ОПЕРАТОРАМ
@@ -1186,6 +1190,9 @@ namespace remeLog.Infrastructure
                 var qual = qualifications.First(q => q.Value == qualificationNumber);
                 ws.Cell(row, ci[CM.Qualification]).SetValue(validQualification ? qualificationNumber : qualification);
                 ws.Cell(row, ci[CM.Machine]).SetValue(groupParts.First().Machine);
+                ws.Cell(row, ci[CM.SerialOrders]).SetValue(isSerialMachine ? 1 : 0)
+                    .Style.NumberFormat.SetFormat("\"✓\";;\"✗\"")
+                    .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
 
                 // ------------------------------------------------------------------------
                 // Коэффициенты наладки и изготовления
@@ -1284,39 +1291,64 @@ namespace remeLog.Infrastructure
                     string specDowntimesExAddr = ws.Cell(row, ci[CM.SpecifiedDowntimesEx]).Address.ToStringRelative();
                     string workedShiftsAddr = ws.Cell(row, ci[CM.WorkedShifts]).Address.ToStringRelative();
 
+                    // Находим правильную строку в листе коэффициентов для текущей квалификации
+                    var qualRow = qualifications.OrderBy(q => q.Value).ToList().IndexOf(qual) + 2; // +2 потому что первая строка - заголовки, и индексация с 1
+
+                    // Создаем ссылки на ячейки с коэффициентами для текущей квалификации
+                    string effHH = $"Коэффициенты!B{qualRow}";
+                    string effH = $"Коэффициенты!C{qualRow}";
+                    string effN = $"Коэффициенты!D{qualRow}";
+                    string effL = $"Коэффициенты!E{qualRow}";
+                    string effLL = $"Коэффициенты!F{qualRow}";
+                    string effLLL = $"Коэффициенты!G{qualRow}";
+                    string effCoeffHH = $"Коэффициенты!H{qualRow}";
+                    string effCoeffH = $"Коэффициенты!I{qualRow}";
+                    string effCoeffN = $"Коэффициенты!J{qualRow}";
+                    string effCoeffL = $"Коэффициенты!K{qualRow}";
+                    string effCoeffLL = $"Коэффициенты!L{qualRow}";
+                    string effCoeffLLL = $"Коэффициенты!M{qualRow}";
+
+                    string downHH = $"Коэффициенты!N{qualRow}";
+                    string downH = $"Коэффициенты!O{qualRow}";
+                    string downN = $"Коэффициенты!P{qualRow}";
+                    string downL = $"Коэффициенты!Q{qualRow}";
+                    string downLL = $"Коэффициенты!R{qualRow}";
+                    string downLLL = $"Коэффициенты!S{qualRow}";
+                    string downCoeffHH = $"Коэффициенты!T{qualRow}";
+                    string downCoeffH = $"Коэффициенты!U{qualRow}";
+                    string downCoeffN = $"Коэффициенты!V{qualRow}";
+                    string downCoeffL = $"Коэффициенты!W{qualRow}";
+                    string downCoeffLL = $"Коэффициенты!X{qualRow}";
+                    string downCoeffLLL = $"Коэффициенты!Y{qualRow}";
+
                     // Коэффициент эффективности (на основе общего коэффициента)
-                    string efficiencyCoeff = $"IF({generalRatioAddr}>{qual.EfficiencyValueHH},{qual.EfficiencyCoefficientHH}," +
-                                            $"IF({generalRatioAddr}>{qual.EfficiencyValueH},{qual.EfficiencyCoefficientH}," +
-                                            $"IF({generalRatioAddr}>{qual.EfficiencyValueN},{qual.EfficiencyCoefficientN}," +
-                                            $"IF({generalRatioAddr}>{qual.EfficiencyValueL},{qual.EfficiencyCoefficientL}," +
-                                            $"IF({generalRatioAddr}>{qual.EfficiencyValueLL},{qual.EfficiencyCoefficientLL}," +
-                                            $"IF({generalRatioAddr}>{qual.EfficiencyValueLLL},{qual.EfficiencyCoefficientLLL}," +
-                                            $"{qual.EfficiencyCoefficientLLL}))))))";
+                    string efficiencyCoeff =
+                        $"IF({generalRatioAddr}>{effHH},{effCoeffHH}," +
+                        $"IF({generalRatioAddr}>{effH},{effCoeffH}," +
+                        $"IF({generalRatioAddr}>{effN},{effCoeffN}," +
+                        $"IF({generalRatioAddr}>{effL},{effCoeffL}," +
+                        $"IF({generalRatioAddr}>{effLL},{effCoeffLL}," +
+                        $"IF({generalRatioAddr}>{effLLL},{effCoeffLLL}," +
+                        $"{effCoeffLLL}))))))";
 
-                    if (isSerialMachine)
-                    {
-                        ws.Cell(row, ci[CM.EfficiencyCoefficient]).FormulaA1 = efficiencyCoeff;
-                    }
-                    else
-                    {
-                        ws.Cell(row, ci[CM.EfficiencyCoefficient]).FormulaA1 = efficiencyCoeff;
-                    }
+                    ws.Cell(row, ci[CM.EfficiencyCoefficient]).FormulaA1 = efficiencyCoeff;
 
-                    // Коэффициент простоев
-                    string downtimeCoeff = $"IF({specDowntimesExAddr}<{qual.DownTimesValueHH},{qual.DownTimesCoefficientHH}," +
-                                            $"IF({specDowntimesExAddr}<{qual.DownTimesValueH},{qual.DownTimesCoefficientH}," +
-                                            $"IF({specDowntimesExAddr}<{qual.DownTimesValueN},{qual.DownTimesCoefficientN}," +
-                                            $"IF({specDowntimesExAddr}<{qual.DownTimesValueL},{qual.DownTimesCoefficientL}," +
-                                            $"IF({specDowntimesExAddr}<{qual.DownTimesValueLL},{qual.DownTimesCoefficientLL}," +
-                                            $"IF({specDowntimesExAddr}<{qual.DownTimesValueLLL},{qual.DownTimesCoefficientLLL}," +
-                                            $"{qual.DownTimesCoefficientLLL}))))))";
+                    // Коэффициент простоев - ИСПРАВЛЕННАЯ ФОРМУЛА
+                    // Для простоев условие обратное: чем МЕНЬШЕ простой, тем ВЫШЕ коэффициент
+                    string downtimeCoeff =
+                        $"IF({specDowntimesExAddr}<{downHH},{downCoeffHH}," +
+                        $"IF({specDowntimesExAddr}<{downH},{downCoeffH}," +
+                        $"IF({specDowntimesExAddr}<{downN},{downCoeffN}," +
+                        $"IF({specDowntimesExAddr}<{downL},{downCoeffL}," +
+                        $"IF({specDowntimesExAddr}<{downLL},{downCoeffLL}," +
+                        $"IF({specDowntimesExAddr}<{downLLL},{downCoeffLLL}," +
+                        $"{downCoeffLLL}))))))";
 
                     ws.Cell(row, ci[CM.DowntimesCoefficient]).FormulaA1 = downtimeCoeff;
 
                     // Итоговая формула: коэффициент применяется только при выполнении условий
                     string coefficientFormula = $"=IF(AND({setupRatioAddr}>0.8,{workedShiftsAddr}>={workDays / 6})," +
-                                               $"{efficiencyCoeffAddr}*{downtimeCoeffAddr},\"\")";
-
+                        $"{efficiencyCoeffAddr}*{downtimeCoeffAddr},\"\")";
                     ws.Cell(row, ci[CM.Coefficient]).FormulaA1 = coefficientFormula;
                 }
 
@@ -1352,6 +1384,94 @@ namespace remeLog.Infrastructure
                 Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
 
             return path;
+        }
+
+        /// <summary>
+        /// Создает лист с коэффициентами для всех квалификаций
+        /// </summary>
+        private static void CreateCoefficientsWorksheet(IXLWorksheet ws, IEnumerable<Qualification> qualifications)
+        {
+            // Заголовки столбцов
+            ws.Cell("A1").SetValue("Квалификация");
+
+            // Эффективность - пороги
+            ws.Cell("B1").SetValue("EffHH_Value");
+            ws.Cell("C1").SetValue("EffH_Value");
+            ws.Cell("D1").SetValue("EffN_Value");
+            ws.Cell("E1").SetValue("EffL_Value");
+            ws.Cell("F1").SetValue("EffLL_Value");
+            ws.Cell("G1").SetValue("EffLLL_Value");
+
+            // Эффективность - коэффициенты
+            ws.Cell("H1").SetValue("EffHH_Coeff");
+            ws.Cell("I1").SetValue("EffH_Coeff");
+            ws.Cell("J1").SetValue("EffN_Coeff");
+            ws.Cell("K1").SetValue("EffL_Coeff");
+            ws.Cell("L1").SetValue("EffLL_Coeff");
+            ws.Cell("M1").SetValue("EffLLL_Coeff");
+
+            // Простои - пороги
+            ws.Cell("N1").SetValue("DownHH_Value");
+            ws.Cell("O1").SetValue("DownH_Value");
+            ws.Cell("P1").SetValue("DownN_Value");
+            ws.Cell("Q1").SetValue("DownL_Value");
+            ws.Cell("R1").SetValue("DownLL_Value");
+            ws.Cell("S1").SetValue("DownLLL_Value");
+
+            // Простои - коэффициенты
+            ws.Cell("T1").SetValue("DownHH_Coeff");
+            ws.Cell("U1").SetValue("DownH_Coeff");
+            ws.Cell("V1").SetValue("DownN_Coeff");
+            ws.Cell("W1").SetValue("DownL_Coeff");
+            ws.Cell("X1").SetValue("DownLL_Coeff");
+            ws.Cell("Y1").SetValue("DownLLL_Coeff");
+
+            // Заполняем данные
+            int row = 2;
+            foreach (var qual in qualifications.OrderBy(q => q.Value))
+            {
+                ws.Cell(row, 1).SetValue(qual.Value); // Квалификация
+
+                // Пороги эффективности
+                ws.Cell(row, 2).SetValue(qual.EfficiencyValueHH);
+                ws.Cell(row, 3).SetValue(qual.EfficiencyValueH);
+                ws.Cell(row, 4).SetValue(qual.EfficiencyValueN);
+                ws.Cell(row, 5).SetValue(qual.EfficiencyValueL);
+                ws.Cell(row, 6).SetValue(qual.EfficiencyValueLL);
+                ws.Cell(row, 7).SetValue(qual.EfficiencyValueLLL);
+
+                // Коэффициенты эффективности
+                ws.Cell(row, 8).SetValue(qual.EfficiencyCoefficientHH);
+                ws.Cell(row, 9).SetValue(qual.EfficiencyCoefficientH);
+                ws.Cell(row, 10).SetValue(qual.EfficiencyCoefficientN);
+                ws.Cell(row, 11).SetValue(qual.EfficiencyCoefficientL);
+                ws.Cell(row, 12).SetValue(qual.EfficiencyCoefficientLL);
+                ws.Cell(row, 13).SetValue(qual.EfficiencyCoefficientLLL);
+
+                // Пороги простоев
+                ws.Cell(row, 14).SetValue(qual.DownTimesValueHH);
+                ws.Cell(row, 15).SetValue(qual.DownTimesValueH);
+                ws.Cell(row, 16).SetValue(qual.DownTimesValueN);
+                ws.Cell(row, 17).SetValue(qual.DownTimesValueL);
+                ws.Cell(row, 18).SetValue(qual.DownTimesValueLL);
+                ws.Cell(row, 19).SetValue(qual.DownTimesValueLLL);
+
+                // Коэффициенты простоев
+                ws.Cell(row, 20).SetValue(qual.DownTimesCoefficientHH);
+                ws.Cell(row, 21).SetValue(qual.DownTimesCoefficientH);
+                ws.Cell(row, 22).SetValue(qual.DownTimesCoefficientN);
+                ws.Cell(row, 23).SetValue(qual.DownTimesCoefficientL);
+                ws.Cell(row, 24).SetValue(qual.DownTimesCoefficientLL);
+                ws.Cell(row, 25).SetValue(qual.DownTimesCoefficientLLL);
+
+                row++;
+            }
+
+            // Форматируем заголовки
+            var headerRange = ws.Range("A1:Y1");
+            headerRange.Style.Font.Bold = true;
+            headerRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            headerRange.Style.Fill.BackgroundColor = XLColor.LightGray;
         }
 
         /// <summary>
