@@ -214,7 +214,42 @@ namespace remeLog.Infrastructure
                 using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
                 {
                     await connection.OpenAsync();
-                    string query = $"SELECT * FROM cnc_qualifications;";
+                    string query = $"SELECT [Qualification]," +
+                    $"[EfficiencyValueHH],[EfficiencyCoefficientHH]," +
+                    $"[EfficiencyValueH]," +
+                    $"[EfficiencyCoefficientH]," +
+                    $"[EfficiencyValueN]," +
+                    $"[EfficiencyCoefficientN]," +
+                    $"[EfficiencyValueL]," +
+                    $"[EfficiencyCoefficientL]," +
+                    $"[EfficiencyValueLL]," +
+                    $"[EfficiencyCoefficientLL]," +
+                    $"[EfficiencyValueLLL]," +
+                    $"[EfficiencyCoefficientLLL]," +
+                    $"[DownTimesValueHH]," +
+                    $"[DownTimesCoefficientHH]," +
+                    $"[DownTimesValueH]," +
+                    $"[DownTimesCoefficientH]," +
+                    $"[DownTimesValueN]," +
+                    $"[DownTimesCoefficientN]," +
+                    $"[DownTimesValueL]," +
+                    $"[DownTimesCoefficientL]," +
+                    $"[DownTimesValueLL]," +
+                    $"[DownTimesCoefficientLL]," +
+                    $"[DownTimesValueLLL]," +
+                    $"[DownTimesCoefficientLLL]," +
+                    $"[NonSerialEfficiencyValueHH]," +
+                    $"[NonSerialEfficiencyCoefficientHH]," +
+                    $"[NonSerialEfficiencyValueH]," +
+                    $"[NonSerialEfficiencyCoefficientH]," +
+                    $"[NonSerialEfficiencyValueN]," +
+                    $"[NonSerialEfficiencyCoefficientN]," +
+                    $"[NonSerialEfficiencyValueL] ," +
+                    $"[NonSerialEfficiencyCoefficientL]," +
+                    $"[NonSerialEfficiencyValueLL]," +
+                    $"[NonSerialEfficiencyCoefficientLL]," +
+                    $"[NonSerialEfficiencyValueLLL]," +
+                    $"[NonSerialEfficiencyCoefficientLLL] FROM cnc_qualifications;";
                     using (SqlCommand command = new(query, connection))
                     {
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
@@ -247,8 +282,19 @@ namespace remeLog.Infrastructure
                                     reader.GetDouble(21),
                                     reader.GetDouble(22),
                                     reader.GetDouble(23),
-                                    reader.GetDouble(24)
-                                    ));
+                                    reader.GetDouble(24),
+                                    reader.GetDouble(25),
+                                    reader.GetDouble(26),
+                                    reader.GetDouble(27),
+                                    reader.GetDouble(28),
+                                    reader.GetDouble(29),
+                                    reader.GetDouble(30),
+                                    reader.GetDouble(31),
+                                    reader.GetDouble(32),
+                                    reader.GetDouble(33),
+                                    reader.GetDouble(34),
+                                    reader.GetDouble(35),
+                                    reader.GetDouble(36)));
                             }
                         }
                     }

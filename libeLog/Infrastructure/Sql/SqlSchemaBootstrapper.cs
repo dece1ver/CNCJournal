@@ -152,6 +152,18 @@ namespace libeLog.Infrastructure.Sql
                 .AddDoubleColumn("DownTimesCoefficientLL", false, 0.8)
                 .AddDoubleColumn("DownTimesValueLLL", false, 1)
                 .AddDoubleColumn("DownTimesCoefficientLLL", false, .5)
+                .AddDoubleColumn("NonSerialEfficiencyValueHH", false, 1)
+                .AddDoubleColumn("NonSerialEfficiencyCoefficientHH", false, 1.4)
+                .AddDoubleColumn("NonSerialEfficiencyValueH", false, 0.9)
+                .AddDoubleColumn("NonSerialEfficiencyCoefficientH", false, 1.2)
+                .AddDoubleColumn("NonSerialEfficiencyValueN", false, 0.8)
+                .AddDoubleColumn("NonSerialEfficiencyCoefficientN", false, 1.0)
+                .AddDoubleColumn("NonSerialEfficiencyValueL", false, 0.7)
+                .AddDoubleColumn("NonSerialEfficiencyCoefficientL", false, 0.8)
+                .AddDoubleColumn("NonSerialEfficiencyValueLL", false, 0.6)
+                .AddDoubleColumn("NonSerialEfficiencyCoefficientLL", false, 0.6)
+                .AddDoubleColumn("NonSerialEfficiencyValueLLL", false, 0)
+                .AddDoubleColumn("NonSerialEfficiencyCoefficientLLL", false, 0.5)
                 .Build(),
 
             new TableBuilder("cnc_remelog_config")

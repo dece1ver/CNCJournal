@@ -225,7 +225,6 @@ namespace remeLog.Models
             }
         }
 
-
         private string _PartName;
         /// <summary> Название детали </summary>
         public string PartName
@@ -241,7 +240,6 @@ namespace remeLog.Models
             }
         }
 
-
         private string _Order;
         /// <summary> Номер маршрутного листа </summary>
         public string Order
@@ -255,7 +253,6 @@ namespace remeLog.Models
                 }
             }
         }
-
 
         private int _Setup;
         /// <summary> Номер установки </summary>
@@ -313,6 +310,7 @@ namespace remeLog.Models
         {
             get
             {
+                // делать ли вхождение имен вместо полного совпадения?
                 return AppSettings.SerialParts.Contains(PartName.NormalizedPartNameWithoutComments());
             }
         }
@@ -335,10 +333,6 @@ namespace remeLog.Models
                 }
             }
         }
-
-
-        public string Problems => "Тут будут проблемы из списка.\n• Проблема №1\n• Проблема №2\n...";
-
 
         private DateTime _StartSetupTime;
         /// <summary> Начало наладки </summary>
@@ -513,7 +507,6 @@ namespace remeLog.Models
             }
         }
 
-
         private double _SetupDowntimes;
         /// <summary> Время простоев в наладке </summary>
         public double SetupDowntimes
@@ -538,6 +531,19 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
+            }
+        }
+
+        /// <summary>
+        /// Простои в наладке с добавленным превышением норматива частичной наладкой
+        /// </summary>
+        public double SetupDowntimesWithPartialExcess
+        {
+            get
+            {
+                double partialExcess = 0;
+                if (PartialSetupTime > SetupTimePlanForReport) partialExcess = PartialSetupTime - SetupTimePlanForReport;
+                return SetupDowntimes + partialExcess;
             }
         }
 
@@ -1152,9 +1158,21 @@ namespace remeLog.Models
                 var partsCount = StartSetupTime != StartMachiningTime && FinishedCount > 1 ? FinishedCount - 1 : FinishedCount;
                 return ProductionTimeFact / partsCount;
             } }
+
+        //public double SetupRatio => PartialSetupTime == 0 
+        //    ? SetupTimePlanForCalc / SetupTimeFact 
+        //    : SetupTimePlanForCalc * AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue) < PartialSetupTime
+        //        ? SetupTimePlanForCalc / PartialSetupTime 
+        //        : 0;
+
         public double SetupRatio => SetupTimePlanForCalc / SetupTimeFact;
+
         public double SetupRatioIncludeDowntimes => SetupTimeFact > 0 ? SetupTimePlanForCalc / (SetupTimeFact + SetupDowntimes) : 0;
-        public string SetupRatioTitle => SetupRatio is double.NaN or double.PositiveInfinity ? "б/н" : SetupRatio > AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue) ? $"{SetupRatio:0%}\n({AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue):0%})" : $"{SetupRatio:0%}";
+        public string SetupRatioTitle => SetupRatio is double.NaN or double.PositiveInfinity 
+            ? "б/н" 
+            : SetupRatio > AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue) 
+                ? $"{SetupRatio:0%}\n({AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue):0%})" 
+                : $"{SetupRatio:0%}";
         public double ProductionRatio => FinishedCountFact * ProductionTimePlanForCalc / ProductionTimeFact;
         public string ProductionRatioTitle => ProductionRatio is double.NaN or double.PositiveInfinity or double.NegativeInfinity ? "б/и" : $"{ProductionRatio:0%}";
         public double SpecifiedDowntimesRatio => (SetupDowntimes + MachiningDowntimes) / (EndMachiningTime - StartSetupTime).TotalMinutes;

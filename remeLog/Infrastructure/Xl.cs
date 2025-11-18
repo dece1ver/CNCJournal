@@ -1295,18 +1295,18 @@ namespace remeLog.Infrastructure
                     var qualRow = qualifications.OrderBy(q => q.Value).ToList().IndexOf(qual) + 2; // +2 потому что первая строка - заголовки, и индексация с 1
 
                     // Создаем ссылки на ячейки с коэффициентами для текущей квалификации
-                    string effHH = $"Коэффициенты!B{qualRow}";
-                    string effH = $"Коэффициенты!C{qualRow}";
-                    string effN = $"Коэффициенты!D{qualRow}";
-                    string effL = $"Коэффициенты!E{qualRow}";
-                    string effLL = $"Коэффициенты!F{qualRow}";
-                    string effLLL = $"Коэффициенты!G{qualRow}";
-                    string effCoeffHH = $"Коэффициенты!H{qualRow}";
-                    string effCoeffH = $"Коэффициенты!I{qualRow}";
-                    string effCoeffN = $"Коэффициенты!J{qualRow}";
-                    string effCoeffL = $"Коэффициенты!K{qualRow}";
-                    string effCoeffLL = $"Коэффициенты!L{qualRow}";
-                    string effCoeffLLL = $"Коэффициенты!M{qualRow}";
+                    string effHH = isSerialMachine ? $"Коэффициенты!B{qualRow}" : $"Коэффициенты!Z{qualRow}";
+                    string effH = isSerialMachine ? $"Коэффициенты!C{qualRow}" : $"Коэффициенты!AA{qualRow}";
+                    string effN = isSerialMachine ? $"Коэффициенты!D{qualRow}" : $"Коэффициенты!AB{qualRow}";
+                    string effL = isSerialMachine ? $"Коэффициенты!E{qualRow}" : $"Коэффициенты!AC{qualRow}";
+                    string effLL = isSerialMachine ? $"Коэффициенты!F{qualRow}" : $"Коэффициенты!AD{qualRow}";
+                    string effLLL = isSerialMachine ? $"Коэффициенты!G{qualRow}" : $"Коэффициенты!AE{qualRow}";
+                    string effCoeffHH = isSerialMachine ? $"Коэффициенты!H{qualRow}" : $"Коэффициенты!AF{qualRow}";
+                    string effCoeffH = isSerialMachine ? $"Коэффициенты!I{qualRow}" : $"Коэффициенты!AG{qualRow}";
+                    string effCoeffN = isSerialMachine ? $"Коэффициенты!J{qualRow}" : $"Коэффициенты!AH{qualRow}";
+                    string effCoeffL = isSerialMachine ? $"Коэффициенты!K{qualRow}" : $"Коэффициенты!AI{qualRow}";
+                    string effCoeffLL = isSerialMachine ? $"Коэффициенты!L{qualRow}" : $"Коэффициенты!AJ{qualRow}";
+                    string effCoeffLLL = isSerialMachine ? $"Коэффициенты!M{qualRow}" : $"Коэффициенты!AK{qualRow}";
 
                     string downHH = $"Коэффициенты!N{qualRow}";
                     string downH = $"Коэффициенты!O{qualRow}";
@@ -1330,10 +1330,11 @@ namespace remeLog.Infrastructure
                         $"IF({generalRatioAddr}>{effLL},{effCoeffLL}," +
                         $"IF({generalRatioAddr}>{effLLL},{effCoeffLLL}," +
                         $"{effCoeffLLL}))))))";
+                    efficiencyCoeff = $"=IF(AND({setupRatioAddr}>0.8,{workedShiftsAddr}>={workDays / 6}),{efficiencyCoeff},\"\")";
 
                     ws.Cell(row, ci[CM.EfficiencyCoefficient]).FormulaA1 = efficiencyCoeff;
 
-                    // Коэффициент простоев - ИСПРАВЛЕННАЯ ФОРМУЛА
+                    // Коэффициент простоев
                     // Для простоев условие обратное: чем МЕНЬШЕ простой, тем ВЫШЕ коэффициент
                     string downtimeCoeff =
                         $"IF({specDowntimesExAddr}<{downHH},{downCoeffHH}," +
@@ -1344,11 +1345,12 @@ namespace remeLog.Infrastructure
                         $"IF({specDowntimesExAddr}<{downLLL},{downCoeffLLL}," +
                         $"{downCoeffLLL}))))))";
 
+                    downtimeCoeff = $"=IF(AND({setupRatioAddr}>0.8,{workedShiftsAddr}>={workDays / 6}),{downtimeCoeff},\"\")";
+
                     ws.Cell(row, ci[CM.DowntimesCoefficient]).FormulaA1 = downtimeCoeff;
 
                     // Итоговая формула: коэффициент применяется только при выполнении условий
-                    string coefficientFormula = $"=IF(AND({setupRatioAddr}>0.8,{workedShiftsAddr}>={workDays / 6})," +
-                        $"{efficiencyCoeffAddr}*{downtimeCoeffAddr},\"\")";
+                    string coefficientFormula = $"=IFERROR({efficiencyCoeffAddr}*{downtimeCoeffAddr},\"\")";
                     ws.Cell(row, ci[CM.Coefficient]).FormulaA1 = coefficientFormula;
                 }
 
@@ -1426,6 +1428,22 @@ namespace remeLog.Infrastructure
             ws.Cell("X1").SetValue("DownLL_Coeff");
             ws.Cell("Y1").SetValue("DownLLL_Coeff");
 
+            // Эффективность - пороги (не серийные)
+            ws.Cell("Z1").SetValue("NEffHH_Value");
+            ws.Cell("AA1").SetValue("NEffH_Value");
+            ws.Cell("AB1").SetValue("NEffN_Value");
+            ws.Cell("AC1").SetValue("NEffL_Value");
+            ws.Cell("AD1").SetValue("NEffLL_Value");
+            ws.Cell("AE1").SetValue("NEffLLL_Value");
+
+            // Эффективность - коэффициенты (не серийные)
+            ws.Cell("AF1").SetValue("NEffHH_Coeff");
+            ws.Cell("AG1").SetValue("NEffH_Coeff");
+            ws.Cell("AH1").SetValue("NEffN_Coeff");
+            ws.Cell("AI1").SetValue("NEffL_Coeff");
+            ws.Cell("AJ1").SetValue("NEffLL_Coeff");
+            ws.Cell("AK1").SetValue("NEffLLL_Coeff");
+
             // Заполняем данные
             int row = 2;
             foreach (var qual in qualifications.OrderBy(q => q.Value))
@@ -1464,6 +1482,21 @@ namespace remeLog.Infrastructure
                 ws.Cell(row, 24).SetValue(qual.DownTimesCoefficientLL);
                 ws.Cell(row, 25).SetValue(qual.DownTimesCoefficientLLL);
 
+                // Пороги эффективности (не серийные)
+                ws.Cell(row, 26).SetValue(qual.NonSerialEfficiencyValueHH);
+                ws.Cell(row, 27).SetValue(qual.NonSerialEfficiencyValueH);
+                ws.Cell(row, 28).SetValue(qual.NonSerialEfficiencyValueN);
+                ws.Cell(row, 29).SetValue(qual.NonSerialEfficiencyValueL);
+                ws.Cell(row, 30).SetValue(qual.NonSerialEfficiencyValueLL);
+                ws.Cell(row, 31).SetValue(qual.NonSerialEfficiencyValueLLL);
+
+                // Коэффициенты эффективности (не серийные)
+                ws.Cell(row, 32).SetValue(qual.NonSerialEfficiencyCoefficientHH);
+                ws.Cell(row, 33).SetValue(qual.NonSerialEfficiencyCoefficientH);
+                ws.Cell(row, 34).SetValue(qual.NonSerialEfficiencyCoefficientN);
+                ws.Cell(row, 35).SetValue(qual.NonSerialEfficiencyCoefficientL);
+                ws.Cell(row, 36).SetValue(qual.NonSerialEfficiencyCoefficientLL);
+                ws.Cell(row, 37).SetValue(qual.NonSerialEfficiencyCoefficientLLL);
                 row++;
             }
 

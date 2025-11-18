@@ -8,7 +8,43 @@ namespace remeLog.Models.Reports
 {
     public readonly struct Qualification
     {
-        public Qualification(int value, double efficiencyValueHH, double efficiencyCoefficientHH, double efficiencyValueH, double efficiencyCoefficientH, double efficiencyValueN, double efficiencyCoefficientN, double efficiencyValueL, double efficiencyCoefficientL, double efficiencyValueLL, double efficiencyCoefficientLL, double efficiencyValueLLL, double efficiencyCoefficientLLL, double downTimesValueHH, double downTimesCoefficientHH, double downTimesValueH, double downTimesCoefficientH, double downTimesValueN, double downTimesCoefficientN, double downTimesValueL, double downTimesCoefficientL, double downTimesValueLL, double downTimesCoefficientLL, double downTimesValueLLL, double downTimesCoefficientLLL)
+        public Qualification(int value,
+                             double efficiencyValueHH,
+                             double efficiencyCoefficientHH,
+                             double efficiencyValueH,
+                             double efficiencyCoefficientH,
+                             double efficiencyValueN,
+                             double efficiencyCoefficientN,
+                             double efficiencyValueL,
+                             double efficiencyCoefficientL,
+                             double efficiencyValueLL,
+                             double efficiencyCoefficientLL,
+                             double efficiencyValueLLL,
+                             double efficiencyCoefficientLLL,
+                             double downTimesValueHH,
+                             double downTimesCoefficientHH,
+                             double downTimesValueH,
+                             double downTimesCoefficientH,
+                             double downTimesValueN,
+                             double downTimesCoefficientN,
+                             double downTimesValueL,
+                             double downTimesCoefficientL,
+                             double downTimesValueLL,
+                             double downTimesCoefficientLL,
+                             double downTimesValueLLL,
+                             double downTimesCoefficientLLL,
+                             double nonSerialEfficiencyValueHH,
+                             double nonSerialEfficiencyCoefficientHH,
+                             double nonSerialEfficiencyValueH,
+                             double nonSerialEfficiencyCoefficientH,
+                             double nonSerialEfficiencyValueN,
+                             double nonSerialEfficiencyCoefficientN,
+                             double nonSerialEfficiencyValueL,
+                             double nonSerialEfficiencyCoefficientL,
+                             double nonSerialEfficiencyValueLL,
+                             double nonSerialEfficiencyCoefficientLL,
+                             double nonSerialEfficiencyValueLLL,
+                             double nonSerialEfficiencyCoefficientLLL)
         {
             Value = value;
             EfficiencyValueHH = efficiencyValueHH;
@@ -35,6 +71,18 @@ namespace remeLog.Models.Reports
             DownTimesCoefficientLL = downTimesCoefficientLL;
             DownTimesValueLLL = downTimesValueLLL;
             DownTimesCoefficientLLL = downTimesCoefficientLLL;
+            NonSerialEfficiencyValueHH = nonSerialEfficiencyValueHH;
+            NonSerialEfficiencyCoefficientHH = nonSerialEfficiencyCoefficientHH;
+            NonSerialEfficiencyValueH = nonSerialEfficiencyValueH;
+            NonSerialEfficiencyCoefficientH = nonSerialEfficiencyCoefficientH;
+            NonSerialEfficiencyValueN = nonSerialEfficiencyValueN;
+            NonSerialEfficiencyCoefficientN = nonSerialEfficiencyCoefficientN;
+            NonSerialEfficiencyValueL = nonSerialEfficiencyValueL;
+            NonSerialEfficiencyCoefficientL = nonSerialEfficiencyCoefficientL;
+            NonSerialEfficiencyValueLL = nonSerialEfficiencyValueLL;
+            NonSerialEfficiencyCoefficientLL = nonSerialEfficiencyCoefficientLL;
+            NonSerialEfficiencyValueLLL = nonSerialEfficiencyValueLLL;
+            NonSerialEfficiencyCoefficientLLL = nonSerialEfficiencyCoefficientLLL;
         }
 
         public int Value { get;}
@@ -56,7 +104,6 @@ namespace remeLog.Models.Reports
 
         public double EfficiencyValueLLL { get;}
         public double EfficiencyCoefficientLLL { get;}
-
         public double DownTimesValueHH { get;}
         public double DownTimesCoefficientHH { get;}
 
@@ -74,5 +121,22 @@ namespace remeLog.Models.Reports
 
         public double DownTimesValueLLL { get;}
         public double DownTimesCoefficientLLL { get;}
+        public double NonSerialEfficiencyValueHH { get; }
+        public double NonSerialEfficiencyCoefficientHH { get; }
+
+        public double NonSerialEfficiencyValueH { get; }
+        public double NonSerialEfficiencyCoefficientH { get; }
+
+        public double NonSerialEfficiencyValueN { get; }
+        public double NonSerialEfficiencyCoefficientN { get; }
+
+        public double NonSerialEfficiencyValueL { get; }
+        public double NonSerialEfficiencyCoefficientL { get; }
+
+        public double NonSerialEfficiencyValueLL { get; }
+        public double NonSerialEfficiencyCoefficientLL { get; }
+
+        public double NonSerialEfficiencyValueLLL { get; }
+        public double NonSerialEfficiencyCoefficientLLL { get; }
     }
 }
