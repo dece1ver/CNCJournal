@@ -420,6 +420,11 @@ namespace remeLog.Infrastructure
         public const string SetupRatio = "setupRatio";
 
         /// <summary>
+        /// Коэффициент наладки включая время частичных наладок
+        /// </summary>
+        public const string SetupRatioIncludePartialSetups = "setupRatioIncludePartialSetups";
+
+        /// <summary>
         /// Коэффициент наладки не исключая простоев
         /// </summary>
         public const string SetupRatioIncludeDowntimes = "setupRatioIncludeDowntimes";
@@ -734,6 +739,7 @@ namespace remeLog.Infrastructure
             { UnspecifiedOtherShifts, $"Смены без работы{Environment.NewLine}по другим причинам" },
             { GeneralRatio, $"Эффективность" },
             { SetupRatio, $"Выполнение норматива{Environment.NewLine}наладки" },
+            { SetupRatioIncludePartialSetups, $"Эффективность наладки{Environment.NewLine}без вычета частичных" },
             { SetupRatioIncludeDowntimes, $"Выполнение норматива{Environment.NewLine}наладки{Environment.NewLine}(с простоями)" },
             { ProductionRatio, $"Выполнение норматива{Environment.NewLine}изготовления" },
             { ProductionRatioIncludeDowntimes, $"Выполнение норматива{Environment.NewLine}изготовления{Environment.NewLine}(с простоями)" },

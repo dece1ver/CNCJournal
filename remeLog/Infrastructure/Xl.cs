@@ -494,6 +494,7 @@ namespace remeLog.Infrastructure
                 .Add(CM.ProcessRelatedLossShifts)
                 .Add(CM.UnspecifiedOtherShifts)
                 .Add(CM.SetupRatio)
+                .Add(CM.SetupRatioIncludePartialSetups)
                 .Add(CM.SetupRatioIncludeDowntimes)
                 .Add(CM.ProductionRatio)
                 .Add(CM.ProductionRatioIncludeDowntimes)
@@ -585,6 +586,7 @@ namespace remeLog.Infrastructure
 
                 // ---------- КОЭФФИЦИЕНТЫ ЭФФЕКТИВНОСТИ ----------
                 ws.Cell(row, ci[CM.SetupRatio]).Value = parts.AverageSetupRatio();
+                ws.Cell(row, ci[CM.SetupRatioIncludePartialSetups]).Value = parts.AverageSetupRatioInclurePartialSetups();
                 ws.Cell(row, ci[CM.SetupRatioIncludeDowntimes]).Value = parts.AverageSetupRatioIncludeDowntimes();
                 ws.Cell(row, ci[CM.ProductionRatio]).Value = parts.ProductionRatio();
                 ws.Cell(row, ci[CM.ProductionRatioIncludeDowntimes]).Value = parts.ProductionRatioIncludeDowntimes();
@@ -619,8 +621,15 @@ namespace remeLog.Infrastructure
                 var prodTimeFactSum = parts.Sum(p => p.ProductionTimeFact);
                 var prodTimePlanSum = parts.Sum(p => p.PlanForBatch);
 
+                List<double> ratios = new();
+                foreach (var part in parts.Where(p => p.SetupTimePlanForReport > 0 && p.PartialSetupTime > 0))
+                {
+                    ratios.Add(part.PartialSetupTime / part.SetupTimePlanForReport);
+                }
+
                 ws.Cell(row, ci[CM.SetupToTotalRatio]).Value = 1 - prodTimeFactSum / totalWorkedMinutes - parts.SpecifiedDowntimesRatio(ShiftType.All);
                 ws.Cell(row, ci[CM.ProductionToTotalRatio]).Value = prodTimeFactSum / totalWorkedMinutes;
+                //ws.Cell(row, ci[CM.PartialSetupTime]).SetValue(ratios.Any() ? ratios.Average() : 0); // для тестов
                 ws.Cell(row, ci[CM.ProductionEfficiencyToTotalRatio]).Value = prodTimePlanSum / totalWorkedMinutes;
 
                 ws.Cell(row, ci[CM.AverageSetupTime]).SetValue(parts.AverageSetupTime().TotalHours);
