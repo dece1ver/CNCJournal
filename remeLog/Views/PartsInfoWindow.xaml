@@ -164,6 +164,18 @@
             </DataGridTextColumn.EditingElementStyle>
         </DataGridTextColumn>
 
+        <DataGridTextColumn x:Key="DefectiveCountColumn" Header="Брак" Binding="{Binding DefectiveCount, Converter={StaticResource ExpressionToIntConverter}}" Width="30"
+                            Visibility="{Binding DataContext.ViewMode, 
+                                        Source={x:Reference partsInfoWindow}, 
+                                        Converter={StaticResource UserRoleVisibilityConverter}, ConverterParameter='Viewer, Master, Developer'}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
         <DataGridTextColumn x:Key="SetupColumn" Header="Установка" Binding="{Binding Setup}" Width="20">
             <DataGridTextColumn.ElementStyle>
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
@@ -435,6 +447,19 @@
                     Source={x:Reference partsInfoWindow}, 
                     Converter={StaticResource UserRoleVisibilityConverter}, 
                     ConverterParameter='Viewer, Developer'}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="SpecialDowntimeTimeColumn" Header="Специальный" Binding="{Binding SpecialDowntimeTime, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+            Visibility="{Binding DataContext.ViewMode, 
+            Source={x:Reference partsInfoWindow}, 
+            Converter={StaticResource UserRoleVisibilityConverter}, 
+            ConverterParameter='Viewer, Developer'}">
             <DataGridTextColumn.ElementStyle>
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
             </DataGridTextColumn.ElementStyle>
@@ -1322,6 +1347,7 @@
                         <StaticResource ResourceKey="OrderColumn"/>
                         <StaticResource ResourceKey="TotalCountColumn"/>
                         <StaticResource ResourceKey="FinishedCountColumn"/>
+                        <StaticResource ResourceKey="DefectiveCountColumn"/>
                         <StaticResource ResourceKey="SetupColumn"/>
                         <StaticResource ResourceKey="StartSetupTimeColumn"/>
                         <StaticResource ResourceKey="StartMachiningTimeColumn"/>
@@ -1347,6 +1373,7 @@
                         <StaticResource ResourceKey="ContactingDepartmentsTimeColumn"/>
                         <StaticResource ResourceKey="FixtureMakingTimeColumn"/>
                         <StaticResource ResourceKey="HardwareFailureTimeColumn"/>
+                        <StaticResource ResourceKey="SpecialDowntimeTimeColumn"/>
                         <StaticResource ResourceKey="SpecifiedDowntimesRatioColumn"/>
                         <StaticResource ResourceKey="SpecifiedDowntimesCommentColumn"/>
                         <StaticResource ResourceKey="SetupRatioTitleColumn"/>

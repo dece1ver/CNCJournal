@@ -780,7 +780,25 @@ namespace eLog.Infrastructure.Extensions
             });
         }
 
+        /// <summary>
+        /// Пытается распарсить строку в int. 
+        /// Пустая или содержащая только пробелы строка интерпретируется как 0.
+        /// </summary>
+        /// <param name="s">Строка для парсинга</param>
+        /// <param name="value">Результат парсинга</param>
+        /// <returns>true, если строка пустая или корректное число; false при некорректном формате</returns>
+        public static bool TryParseEmptyAsZero(this string? s, out int value)
+        {
+            s ??= string.Empty;
+            s = s.Replace("0", "").Replace(" ", "");
+            if (string.IsNullOrWhiteSpace(s))
+            {
+                value = 0;
+                return true;
+            }
 
+            return int.TryParse(s, out value);
+        }
 
 
         public static DateTime GetStartShiftTime()

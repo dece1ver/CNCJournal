@@ -673,6 +673,7 @@ namespace remeLog.Infrastructure
                         "ContactingDepartmentsTime = @ContactingDepartmentsTime, " +
                         "FixtureMakingTime = @FixtureMakingTime, " +
                         "HardwareFailureTime = @HardwareFailureTime, " +
+                        "SpecialDowntimeTime = @SpecialDowntimeTime, " +
                         "OperatorComment = @OperatorComment, " +
                         "MasterSetupComment = @MasterSetupComment, " +
                         "MasterMachiningComment = @MasterMachiningComment, " +
@@ -687,7 +688,8 @@ namespace remeLog.Infrastructure
                         "LongSetupFixComment = @LongSetupFixComment, " +
                         "LongSetupEngeneerComment = @LongSetupEngeneerComment, " +
                         "ExcludedOperationsTime = @ExcludedOperationsTime, " +
-                        "IncreaseReason = @IncreaseReason " +
+                        "IncreaseReason = @IncreaseReason, " +
+                        "DefectiveCount = @DefectiveCount " +
                         "WHERE Guid = @Guid";
                     using (SqlCommand cmd = new(updateQuery, connection))
                     {
@@ -721,6 +723,7 @@ namespace remeLog.Infrastructure
                         cmd.Parameters.AddWithValue("@ContactingDepartmentsTime", part.ContactingDepartmentsTime);
                         cmd.Parameters.AddWithValue("@FixtureMakingTime", part.FixtureMakingTime);
                         cmd.Parameters.AddWithValue("@HardwareFailureTime", part.HardwareFailureTime);
+                        cmd.Parameters.AddWithValue("@SpecialDowntimeTime", part.SpecialDowntimeTime);
                         cmd.Parameters.AddWithValue("@OperatorComment", part.OperatorComment);
                         cmd.Parameters.AddWithValue("@MasterSetupComment", part.MasterSetupComment);
                         cmd.Parameters.AddWithValue("@MasterMachiningComment", part.MasterMachiningComment);
@@ -736,6 +739,7 @@ namespace remeLog.Infrastructure
                         cmd.Parameters.AddWithValue("@LongSetupEngeneerComment", part.LongSetupEngeneerComment);
                         cmd.Parameters.AddWithValue("@ExcludedOperationsTime", part.ExcludedOperationsTime);
                         cmd.Parameters.AddWithValue("@IncreaseReason", part.IncreaseReason);
+                        cmd.Parameters.AddWithValue("@DefectiveCount", part.DefectiveCount);
 
                         var execureResult = await cmd.ExecuteNonQueryAsync();
                     }
@@ -817,6 +821,9 @@ namespace remeLog.Infrastructure
                     var excludedOperationsTime = await reader.GetValueOrDefaultAsync(43, 0.0, cancellationToken);
                     var increaseReason = await reader.GetValueOrDefaultAsync(44, "", cancellationToken);
 
+                    var defectiveCount = await reader.GetValueOrDefaultAsync(46, 0, cancellationToken);
+                    var specialDowntime = await reader.GetValueOrDefaultAsync(47, 0.0, cancellationToken);
+
                     Part part = new(
                         guid,
                         machine,
@@ -827,6 +834,7 @@ namespace remeLog.Infrastructure
                         order,
                         setup,
                         finishedCount,
+                        defectiveCount,
                         totalCount,
                         startSetupTime,
                         startMachiningTime,
@@ -848,6 +856,7 @@ namespace remeLog.Infrastructure
                         contactiongDepartmentsTime,
                         fixtureMakingTime,
                         hardwareFailureTime,
+                        specialDowntime,
                         operatorComment,
                         masterSetupComment,
                         masterMachiningComment,

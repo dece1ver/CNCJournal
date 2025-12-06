@@ -61,6 +61,8 @@ namespace eLog.Views.Windows.Dialogs
             PartName = Part.FullName;
 
             _FinishedCount = Part.FinishedCount > 0 || Part.StartMachiningTime == Part.EndMachiningTime && Part.EndMachiningTime != DateTime.MinValue ? Part.FinishedCount.ToString(CultureInfo.InvariantCulture) : string.Empty;
+            _DefectiveCount = Part.DefectiveCount == 0 ? "" : Part.DefectiveCount.ToString();
+
             _TotalCount = Part.TotalCount > 0 ? Part.TotalCount.ToString(CultureInfo.InvariantCulture) : string.Empty;
 
             _StartSetupTime = Part.StartSetupTime.ToString(Constants.DateTimeFormat);
@@ -303,8 +305,11 @@ namespace eLog.Views.Windows.Dialogs
                     return false;
                 }
 
+                if (!string.IsNullOrEmpty(Error)) return false;
+
                 var validPlanTimes = (Part.SetupTimePlan > 0 || Part.SetupTimePlan == 0 && PartSetupTimePlan == "-") &&
                                      (Part.SingleProductionTimePlan > 0 || Part.SingleProductionTimePlan == 0 && SingleProductionTimePlan == "-");
+                
                 //if (Part is { IsFinished: Part.State.Finished, DownTimesIsClosed: true, FinishedCount: > 1 } && validPlanTimes) return true;
                 switch (validPlanTimes)
                 {
@@ -396,7 +401,7 @@ namespace eLog.Views.Windows.Dialogs
             get => _StartSetupTime;
             set
             {
-                _StartSetupTime = value;
+                Set(ref _StartSetupTime, value);
                 if (!WithSetup)
                 {
                     StartMachiningTime = _StartSetupTime;
@@ -415,7 +420,7 @@ namespace eLog.Views.Windows.Dialogs
             get => _StartMachiningTime;
             set
             {
-                _StartMachiningTime = value;
+                Set(ref _StartMachiningTime, value);
                 Part.StartMachiningTime = DateTime.TryParseExact(_StartMachiningTime, Constants.DateTimeFormat, null, DateTimeStyles.None, out var startMachiningTime)
                     ? startMachiningTime
                     : DateTime.MinValue;
@@ -430,7 +435,7 @@ namespace eLog.Views.Windows.Dialogs
             get => _EndMachiningTime;
             set
             {
-                _EndMachiningTime = value;
+                Set(ref _EndMachiningTime, value);
                 Part.EndMachiningTime = DateTime.TryParseExact(_EndMachiningTime, Constants.DateTimeFormat, null, DateTimeStyles.None, out var endMachiningTime)
                     ? endMachiningTime
                     : DateTime.MinValue;
@@ -447,7 +452,7 @@ namespace eLog.Views.Windows.Dialogs
             get => _MachineTime;
             set
             {
-                _MachineTime = value;
+                Set(ref _MachineTime, value);
                 Part.MachineTime = _MachineTime.TimeParse(out var machiningTime)
                     ? machiningTime
                     : TimeSpan.Zero;
@@ -455,6 +460,19 @@ namespace eLog.Views.Windows.Dialogs
             }
         }
 
+        private string _DefectiveCount;
+        public string DefectiveCount
+        {
+            get => _DefectiveCount;
+            set
+            {
+                Set(ref _DefectiveCount, value);
+                Part.DefectiveCount = _DefectiveCount.GetInt(numberOption: GetNumberOption.OnlyPositive);
+                OnPropertyChanged(nameof(EndMachiningTime));
+                OnPropertyChanged(nameof(MachineTime));
+                OnPropertyChanged(nameof(CanBeClosed));
+            }
+        }
 
         private string _FinishedCount;
         public string FinishedCount
@@ -462,7 +480,7 @@ namespace eLog.Views.Windows.Dialogs
             get => _FinishedCount;
             set
             {
-                _FinishedCount = value;
+                Set(ref _FinishedCount, value);
                 Part.FinishedCount = _FinishedCount.GetDouble(numberOption: GetNumberOption.OnlyPositive);
                 OnPropertyChanged(nameof(EndMachiningTime));
                 OnPropertyChanged(nameof(MachineTime));
@@ -476,7 +494,7 @@ namespace eLog.Views.Windows.Dialogs
             get => _TotalCount;
             set
             {
-                _TotalCount = value;
+                Set(ref _TotalCount, value);
                 Part.TotalCount = _TotalCount.GetInt(numberOption: GetNumberOption.OnlyPositive);
                 OnPropertyChanged(nameof(CanBeClosed));
             }
@@ -488,7 +506,7 @@ namespace eLog.Views.Windows.Dialogs
             get => _PartSetupTimePlan;
             set
             {
-                _PartSetupTimePlan = value;
+                Set(ref _PartSetupTimePlan, value);
                 Part.SetupTimePlan = _PartSetupTimePlan.GetDouble(numberOption: GetNumberOption.OnlyPositive);
                 OnPropertyChanged(nameof(CanBeClosed));
             }
@@ -513,14 +531,42 @@ namespace eLog.Views.Windows.Dialogs
             get => _SingleProductionTimePlan;
             set
             {
-                _SingleProductionTimePlan = value;
+                Set(ref _SingleProductionTimePlan, value);
                 Part.SingleProductionTimePlan = _SingleProductionTimePlan.GetDouble(numberOption: GetNumberOption.OnlyPositive); ;
                 OnPropertyChanged(nameof(CanBeClosed));
             }
         }
         #endregion
 
-        public string Error { get; } = string.Empty;
+        private static readonly string[] ValidatedProperties =
+        {
+            nameof(PartName),
+            nameof(StartSetupTime),
+            nameof(StartMachiningTime),
+            nameof(EndMachiningTime),
+            nameof(MachineTime),
+            nameof(DefectiveCount),
+            nameof(FinishedCount),
+            nameof(TotalCount),
+            nameof(PartSetupTimePlan),
+            nameof(SingleProductionTimePlan),
+            nameof(OrderText)
+        };
+
+        public string Error
+        {
+            get
+            {
+                foreach (var property in ValidatedProperties)
+                {
+                    var error = this[property];
+                    if (!string.IsNullOrWhiteSpace(error))
+                        return error;
+                }
+
+                return string.Empty;
+            }
+        }
 
         public string this[string columnName]
         {
@@ -554,6 +600,13 @@ namespace eLog.Views.Windows.Dialogs
                              (Part.FullProductionTimeFact > TimeSpan.Zero || Part.FinishedCount > 0) &&
                              string.IsNullOrWhiteSpace(MachineTime)))
                             error = Text.ValidationErrors.MachineTime;
+                        break;
+                    case nameof(DefectiveCount):
+                        error = Part.DefectiveCount switch
+                        {
+                            0 when !string.IsNullOrWhiteSpace(DefectiveCount) && DefectiveCount.Where(c => c != ' ' && c != '0').Any() => Text.ValidationErrors.DefectiveCount,
+                            _ => error
+                        };
                         break;
                     case nameof(FinishedCount):
                         error = Part.FinishedCount switch

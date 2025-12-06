@@ -278,6 +278,7 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("Order", 50, false)
                 .AddIntColumn("Setup", false)
                 .AddDoubleColumn("FinishedCount", false)
+                .AddIntColumn("DefectiveCount", false, 0)
                 .AddIntColumn("TotalCount", false)
                 .AddSmallDateTimeColumn("StartSetupTime", false)
                 .AddSmallDateTimeColumn("StartMachiningTime", false)
@@ -314,6 +315,7 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("LongSetupEngeneerComment", -1)
                 .AddDoubleColumn("ExcludedOperationsTime")
                 .AddStringColumn("IncreaseReason", -1)
+                .AddDoubleColumn("SpecialDowntimeTime", false, 0)
                 .Build()
         };
     }

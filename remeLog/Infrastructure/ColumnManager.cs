@@ -259,6 +259,11 @@ namespace remeLog.Infrastructure
         public const string HardwareFailureTime = "hardwareFailureTime";
 
         /// <summary>
+        /// Исключенные простои
+        /// </summary>
+        public const string SpecialDowntimeTime = "specialDowntimeTime";
+
+        /// <summary>
         /// Отмеченные простои
         /// </summary>
         public const string SpecifiedDowntimesRatio = "specifiedDowntimesRatio";
@@ -489,6 +494,17 @@ namespace remeLog.Infrastructure
         /// </summary>
         public const string ProductionEfficiencyToTotalRatio = "productionEfficiencyToTotalRatio";
 
+
+        /// <summary>
+        /// Доля машинного времени
+        /// </summary>
+        public const string MachineTimeToTotalRatio = "machineTimeToTotalRatio";
+
+        /// <summary>
+        /// Общее время замены
+        /// </summary>
+        public const string TotalReplacementTime = "totalReplacementTime";
+
         /// <summary>
         /// Среднее время замены детали
         /// </summary>
@@ -543,6 +559,11 @@ namespace remeLog.Infrastructure
         /// Вермя простоев
         /// </summary>
         public const string TotalDowntimesTime = "downtimesTime";
+
+        /// <summary>
+        /// Сумма машинного времени
+        /// </summary>
+        public const string TotalMachinigTime = "totalMachinigTime";
 
         /// <summary>
         /// Вермя простоев на серийке
@@ -711,6 +732,7 @@ namespace remeLog.Infrastructure
             { ContactingDepartmentsTime, "Другие службы" },
             { FixtureMakingTime, "Изготовление оснастки" },
             { HardwareFailureTime, "Отказ оборудования" },
+            { SpecialDowntimeTime, "Исключённые простои" },
             { SpecifiedDowntimesRatio, "Отмеченные простои" },
             { SpecifiedDowntimesComment, $"Комментарий{Environment.NewLine}к простоям" },
             { SetupRatioTitle, "Наладка" },
@@ -752,7 +774,9 @@ namespace remeLog.Infrastructure
             { SetupToTotalRatio, $"Доля наладок" },
             { ProductionToTotalRatio, $"Доля изготовлений" },
             { ProductionEfficiencyToTotalRatio, $"Отношение нормативов{Environment.NewLine}к общему времени" },
+            { MachineTimeToTotalRatio, $"Доля машинного времени" },
             { AverageReplacementTime, $"Среднее время{Environment.NewLine}замены детали" },
+            { TotalReplacementTime, $"Общее время{Environment.NewLine}замены детали" },
             { SpecifiedDowntimes, "Отмеченные простои" },
             { SpecifiedDowntimesEx, $"Отмеченные простои{Environment.NewLine}(для К1)" },
             { UnspecifiedDowntimes, "Неуказанные простои" },
@@ -765,6 +789,7 @@ namespace remeLog.Infrastructure
             { TotalDowntimesTime, $"Время простоев" },
             { TotalDowntimesTimeSerial, $"Время простоев на серийке" },
             { TotalTime, $"Отмеченное общее время" },
+            { TotalMachinigTime, $"Сумма машинного времени" },
             { IsEqual, $"Совпадает" },
             { Coefficient, $"Коэффициент" },
             { EfficiencyCoefficient, $"Коэффициент эффективности" },

@@ -119,7 +119,7 @@
                 </DataGridTextColumn>
 
                 <DataGridCheckBoxColumn Header="Активен" 
-                                        Binding="{Binding IsActive}" 
+                                        Binding="{Binding IsActive, UpdateSourceTrigger=PropertyChanged}" 
                                         Width="Auto" >
                     <DataGridCheckBoxColumn.ElementStyle>
                         <Style TargetType="CheckBox">

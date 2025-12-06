@@ -20,6 +20,7 @@ namespace remeLog.Infrastructure.Extensions
             var validReplacementTimesRatios = parts.Where(p => p.PartReplacementTime != 0 && !double.IsNaN(p.PartReplacementTime) && !double.IsPositiveInfinity(p.PartReplacementTime)).Select(p => p.PartReplacementTime);
             return validReplacementTimesRatios.Any() ? validReplacementTimesRatios.Average() : 0.0;
         }
+
         public static double AverageSetupRatio(this IEnumerable<Models.Part> parts)
         {
             var validSetupRatios = parts
@@ -27,7 +28,7 @@ namespace remeLog.Infrastructure.Extensions
                 .Select(p => p.SetupRatio <= AppSettings.MaxSetupLimit ? p.SetupRatio : AppSettings.MaxSetupLimit)
                 .DefaultIfEmpty(0.0);
 
-            return validSetupRatios.Average();
+            return validSetupRatios.Any() ? validSetupRatios.Average() : 0.0;
         }
 
         public static double AverageSetupRatioInclurePartialSetups(this IEnumerable<Models.Part> parts)
@@ -45,7 +46,7 @@ namespace remeLog.Infrastructure.Extensions
                     setups.Add(ratio <= AppSettings.MaxSetupLimit ? ratio : AppSettings.MaxSetupLimit);
                 }
             }
-            return setups.Average();
+            return setups.Any() ? setups.Average() : 0.0;
         }
 
         public static double AverageSetupRatioIncludeDowntimes(this IEnumerable<Models.Part> parts)
@@ -55,7 +56,7 @@ namespace remeLog.Infrastructure.Extensions
                 .Select(p => p.SetupRatioIncludeDowntimes <= AppSettings.MaxSetupLimit ? p.SetupRatioIncludeDowntimes : AppSettings.MaxSetupLimit)
                 .DefaultIfEmpty(0.0);
 
-            return validSetupRatios.Average();
+            return validSetupRatios.Any() ? validSetupRatios.Average() : 0.0;
         }
 
         public static double SetupRatio(this IEnumerable<Models.Part> parts)
@@ -205,6 +206,12 @@ namespace remeLog.Infrastructure.Extensions
                     case Downtime.HardwareFailure:
                         sum += part.HardwareFailureTime;
                         break;
+                    case Downtime.CreateNcProgram:
+                        sum += part.CreateNcProgramTime;
+                        break;
+                    case Downtime.Special:
+                        sum += part.SpecialDowntimeTime;
+                        break;
                 }
             }
             return sum;
@@ -248,6 +255,8 @@ namespace remeLog.Infrastructure.Extensions
                     sum += part.FixtureMakingTime;
                 if (!excludeDowntimeTypes.Contains(Downtime.HardwareFailure))
                     sum += part.HardwareFailureTime;
+                if (!excludeDowntimeTypes.Contains(Downtime.Special))
+                    sum += part.SpecialDowntimeTime;
             }
             return sum / parts.FullWorkedTime().TotalMinutes;
         }
@@ -444,7 +453,7 @@ namespace remeLog.Infrastructure.Extensions
         /// <returns>Среднее арифметическое время в наладке <see cref="SetupDowntimes"/> тех деталей в коллекции, где осуществлялась полноценная наладка.</returns>
         public static TimeSpan AverageSetupTime(this IEnumerable<Models.Part> parts)
         {
-            return parts.Any() ? TimeSpan.FromMinutes(parts.Where(p => p.SetupTimeFact > 0).Average(p => p.SetupTimeFact)) : TimeSpan.Zero;
+            return parts.Where(p => p.SetupTimeFact > 0).Any() ? TimeSpan.FromMinutes(parts.Where(p => p.SetupTimeFact > 0).Average(p => p.SetupTimeFact)) : TimeSpan.Zero;
         }
 
         /// <summary>

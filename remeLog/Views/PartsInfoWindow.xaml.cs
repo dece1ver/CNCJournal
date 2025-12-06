@@ -89,10 +89,10 @@ namespace remeLog.Views
                             case 5:
                                 d.OrderFilter = d.OrderFilter == p.Order ? "" : p.Order;
                                 break;
-                            case 8:
+                            case 9:
                                 d.SetupFilter = d.SetupFilter == p.Setup ? null : p.Setup;
                                 break;
-                            case 42:
+                            case 44:
                                 switch (p.EngineerComment)
                                 {
                                     case "":
@@ -153,28 +153,28 @@ namespace remeLog.Views
                     {
                         switch (column.DisplayIndex)
                         {
-                            case 9 or 10 or 11:
+                            case 10 or 11 or 12:
                                 e.Handled = true;
                                 cell.Focus();
                                 var timeContextMenu = (ContextMenu)FindResource("TimeContextMenu");
                                 timeContextMenu.PlacementTarget = cell;
                                 timeContextMenu.IsOpen = true;
                                 break;
-                            case 39:
+                            case 41:
                                 e.Handled = true;
                                 cell.Focus();
                                 var masterCommentContextMenu = (ContextMenu)FindResource("MasterCommentCellContextMenu");
                                 masterCommentContextMenu.PlacementTarget = cell;
                                 masterCommentContextMenu.IsOpen = true;
                                 break;
-                            case 40 or 41 when p.IsSerial:
+                            case 42 or 43 when p.IsSerial:
                                 e.Handled = true;
                                 cell.Focus();
                                 var serialPartFixedSetupContextMenu = (ContextMenu)FindResource("SerialPartFixedNormativesContextMenu");
                                 serialPartFixedSetupContextMenu.PlacementTarget = cell;
                                 serialPartFixedSetupContextMenu.IsOpen = true;
                                 break;
-                            case 42:
+                            case 44:
                                 e.Handled = true;
                                 cell.Focus();
                                 var engeneerCommentContextMenu = (ContextMenu)FindResource("EngeneerCommentCellContextMenu");

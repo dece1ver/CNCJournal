@@ -503,6 +503,7 @@ namespace remeLog.Infrastructure
                 .Add(CM.SetupRatioOver, $"Эффективность наладки{Environment.NewLine}на серийке")
                 .Add(CM.ProductionRatioOver, $"Эффективность изготовления{Environment.NewLine}на серийке")
                 .Add(CM.ProductionEfficiencyToTotalRatio)
+                .Add(CM.MachineTimeToTotalRatio)
                 .Add(CM.SetupToTotalRatio)
                 .Add(CM.ProductionToTotalRatio)
                 .Add(CM.SpecifiedDowntimes)
@@ -514,7 +515,9 @@ namespace remeLog.Infrastructure
                 .Add(CM.ContactingDepartmentsTime)
                 .Add(CM.FixtureMakingTime)
                 .Add(CM.HardwareFailureTime)
+                .Add(CM.SpecialDowntimeTime)
                 .Add(CM.UnspecifiedDowntimes)
+                .Add(CM.TotalMachinigTime)
                 .Add(CM.AverageReplacementTime, "Среднее время замены детали, мин")
                 .Add(CM.AverageSetupTime, "Среднее время наладки, час")
                 .Add(CM.TotalSetupTime, "Общее время наладок, час")
@@ -614,6 +617,7 @@ namespace remeLog.Infrastructure
                 ws.Cell(row, ci[CM.ContactingDepartmentsTime]).Value = parts.SpecifiedDowntimeRatio(Downtime.ContactingDepartments);
                 ws.Cell(row, ci[CM.FixtureMakingTime]).Value = parts.SpecifiedDowntimeRatio(Downtime.FixtureMaking);
                 ws.Cell(row, ci[CM.HardwareFailureTime]).Value = parts.SpecifiedDowntimeRatio(Downtime.HardwareFailure);
+                ws.Cell(row, ci[CM.SpecialDowntimeTime]).Value = parts.SpecifiedDowntimeRatio(Downtime.Special);
                 ws.Cell(row, ci[CM.UnspecifiedDowntimes]).Value = parts.UnspecifiedDowntimesRatio(fromDate, toDate, ShiftType.All);
 
                 // ---------- ВРЕМЕННЫЕ ПОКАЗАТЕЛИ ----------
@@ -631,6 +635,8 @@ namespace remeLog.Infrastructure
                 ws.Cell(row, ci[CM.ProductionToTotalRatio]).Value = prodTimeFactSum / totalWorkedMinutes;
                 //ws.Cell(row, ci[CM.PartialSetupTime]).SetValue(ratios.Any() ? ratios.Average() : 0); // для тестов
                 ws.Cell(row, ci[CM.ProductionEfficiencyToTotalRatio]).Value = prodTimePlanSum / totalWorkedMinutes;
+
+                ws.Cell(row, ci[CM.MachineTimeToTotalRatio]).SetFormulaA1($"{ws.Cell(row, ci[CM.TotalMachinigTime]).Address.ToStringRelative()}/{ws.Cell(row, ci[CM.TotalTime]).Address.ToStringRelative()}");
 
                 ws.Cell(row, ci[CM.AverageSetupTime]).SetValue(parts.AverageSetupTime().TotalHours);
                 ws.Cell(row, ci[CM.TotalSetupTime]).SetValue(parts.TotalSetupTime().TotalHours);
@@ -684,11 +690,20 @@ namespace remeLog.Infrastructure
                 ws.Cell(row, ci[CM.CountPerMachine]).Value = parts.Count;
                 ws.Cell(row, ci[CM.SerialCountRatio]).FormulaA1 = $"={ws.Cell(row, ci[CM.SerialCount]).Address.ToStringRelative()}/{ws.Cell(row, ci[CM.CountPerMachine]).Address.ToStringRelative()}";
 
-                // ---------- ФОРМАТИРОВАНИЕ ЯЧЕЕК ----------
-                ws.Range(row, ci[CM.SetupRatio], row, ci[CM.ProductionEfficiencyToTotalRatio]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
-                ws.Cell(row, ci[CM.AverageReplacementTime])
-                    .SetValue(parts.AverageReplacementTimeRatio())
+                // ---------- РАЗНОЕ ----------
+                ws.Range(row, ci[CM.SetupRatio], row, ci[CM.ProductionEfficiencyToTotalRatio])
+                    .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
+                ws.Cell(row, ci[CM.TotalMachinigTime])
+                    .SetValue(parts.Sum(p => p.MachiningTime.TotalHours * p.FinishedCount))
+                    .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.Integer;ws.Cell(row, ci[CM.AverageReplacementTime]);
+                ws.Cell(row, ci[CM.AverageReplacementTime]).SetValue(parts.AverageReplacementTimeRatio())
                     .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.Precision2;
+
+                double totalReplacementTime = parts.Aggregate(0.0, (acc, p) => double.IsFinite(p.PartReplacementTime) ? acc + p.PartReplacementTime * p.FinishedCount : acc);
+
+                //ws.Cell(row, ci[CM.TotalReplacementTime])
+                //    .SetValue(totalReplacementTime / 60)
+                //    .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.Precision2;
                 ws.Range(row, ci[CM.SpecifiedDowntimes], row, ci[CM.SpecifiedDowntimes]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
 
                 row++;
@@ -728,6 +743,7 @@ namespace remeLog.Infrastructure
             // ---------- ФОРМАТИРОВАНИЕ ЧИСЕЛ ----------
             ws.Range(headerRow, ci[CM.SetupRatio], lastDataRow, ci[CM.UnspecifiedDowntimes]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
             ws.Range(firstDataRow, ci[CM.TotalSetupTime], lastDataRow, ci[CM.TotalTime]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.IntegerWithSeparator;
+            ws.Range(firstDataRow, ci[CM.TotalMachinigTime], lastDataRow, ci[CM.TotalTime]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.IntegerWithSeparator;
             ws.Columns(ci[CM.AverageReplacementTime], ci[CM.AverageSetupTime]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.Precision2;
             ws.Column(ci[CM.SerialPartsTimeRatio]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
             ws.Column(ci[CM.SerialOrdersRatio]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
@@ -804,6 +820,7 @@ namespace remeLog.Infrastructure
             }
 
             ws.Cell(row, ci[CM.Finished]).FormulaA1 = $"SUBTOTAL(109, {ws.Range(firstDataRow, ci[CM.Finished], lastDataRow, ci[CM.Finished]).RangeAddress})";
+            ws.Cell(row, ci[CM.TotalMachinigTime]).FormulaA1 = $"SUBTOTAL(109, {ws.Range(firstDataRow, ci[CM.TotalMachinigTime], lastDataRow, ci[CM.TotalMachinigTime]).RangeAddress})";
             ws.Cell(row, ci[CM.AverageFinishedCount]).FormulaA1 = $"SUBTOTAL(101, {ws.Range(firstDataRow, ci[CM.AverageFinishedCount], lastDataRow, ci[CM.AverageFinishedCount]).RangeAddress})";
             ws.Cell(row, ci[CM.AveragePartsCount]).FormulaA1 = $"SUBTOTAL(101, {ws.Range(firstDataRow, ci[CM.AveragePartsCount], lastDataRow, ci[CM.AveragePartsCount]).RangeAddress})";
             ws.Cell(row, ci[CM.AveragePartsCountSerial]).FormulaA1 = $"SUBTOTAL(101, {ws.Range(firstDataRow, ci[CM.AveragePartsCountSerial], lastDataRow, ci[CM.AveragePartsCountSerial]).RangeAddress})";
@@ -836,6 +853,7 @@ namespace remeLog.Infrastructure
             ws.Range(row, ci[CM.AverageReplacementTime], row, ci[CM.AverageSetupTime]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.Precision2;
             ws.Range(row, ci[CM.TotalSetupTime], row, ci[CM.TotalTime]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.IntegerWithSeparator;
             ws.Range(row, ci[CM.Finished], row, ci[CM.AveragePartsCount]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.IntegerWithSeparator;
+            ws.Cell(row, ci[CM.TotalMachinigTime]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.IntegerWithSeparator;
             ws.Cell(row, ci[CM.WorkedShifts]).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             ws.Cell(row, ci[CM.WorkedShifts]).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
 
@@ -1158,6 +1176,7 @@ namespace remeLog.Infrastructure
                 .Add(CM.FixtureMakingTime)
                 .Add(CM.HardwareFailureTime)
                 .Add(CM.SpecifiedDowntimes)
+                .Add(CM.SpecialDowntimeTime)
                 .Add(CM.SpecifiedDowntimesEx, $"Простои{Environment.NewLine}(без отказа оборудования и обучения)")
                 .Add(CM.GeneralRatio)
                 .Add(CM.SetupsCount)
@@ -1271,12 +1290,13 @@ namespace remeLog.Infrastructure
                 ws.Cell(row, ci[CM.ContactingDepartmentsTime]).SetValue(groupParts.Sum(p => p.ContactingDepartmentsTime));
                 ws.Cell(row, ci[CM.FixtureMakingTime]).SetValue(groupParts.Sum(p => p.FixtureMakingTime));
                 ws.Cell(row, ci[CM.HardwareFailureTime]).SetValue(groupParts.Sum(p => p.HardwareFailureTime));
+                ws.Cell(row, ci[CM.HardwareFailureTime]).SetValue(groupParts.Sum(p => p.SpecialDowntimeTime));
 
                 ws.Cell(row, ci[CM.SpecifiedDowntimes])
                     .SetValue(groupParts.SpecifiedDowntimesRatio(ShiftType.All))
                     .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
 
-                var specDowntimesEx = groupParts.SpecifiedDowntimesRatioExcluding(new[] { Downtime.HardwareFailure, Downtime.Mentoring });
+                var specDowntimesEx = groupParts.SpecifiedDowntimesRatioExcluding(new[] { Downtime.HardwareFailure, Downtime.Mentoring, Downtime.Special });
                 ws.Cell(row, ci[CM.SpecifiedDowntimesEx])
                     .SetValue(specDowntimesEx)
                     .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
@@ -1330,7 +1350,12 @@ namespace remeLog.Infrastructure
                     string downCoeffLL = $"Коэффициенты!X{qualRow}";
                     string downCoeffLLL = $"Коэффициенты!Y{qualRow}";
 
+                    if (partGroup.Key.Machine.Contains("SKT21"))
+                    {
+                        downN = 0.15.ToString("#.##");
+                    }
                     // Коэффициент эффективности (на основе общего коэффициента)
+                    
                     string efficiencyCoeff =
                         $"IF({generalRatioAddr}>{effHH},{effCoeffHH}," +
                         $"IF({generalRatioAddr}>{effH},{effCoeffH}," +

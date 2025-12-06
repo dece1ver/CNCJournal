@@ -21,6 +21,7 @@ namespace remeLog.Models
             string order,
             int setup,
             double finishedCount,
+            int defectiveCount,
             int totalCount,
             DateTime startSetupTime,
             DateTime startMachiningTime,
@@ -29,7 +30,8 @@ namespace remeLog.Models
             double setupTimePlan,
             double setupTimePlanForReport,
             double singleProductionTimePlan,
-            double productionTimeFact, TimeSpan machiningTime,
+            double productionTimeFact, 
+            TimeSpan machiningTime,
             double setupDowntimes,
             double machiningDowntimes,
             double partialSetupTime,
@@ -41,6 +43,7 @@ namespace remeLog.Models
             double contactingDepartmentsTime,
             double fixtureMakingTime,
             double hardwareFailureTime,
+            double specialDowntimeTime,
             string operatorComment,
             string masterSetupComment = "",
             string masterMachiningComment = "",
@@ -67,6 +70,7 @@ namespace remeLog.Models
             _Order = order;
             _Setup = setup;
             _FinishedCount = finishedCount;
+            _DefectiveCount = defectiveCount;
             _TotalCount = totalCount;
             _StartSetupTime = startSetupTime;
             _StartMachiningTime = startMachiningTime;
@@ -86,6 +90,7 @@ namespace remeLog.Models
             _ContactingDepartmentsTime = contactingDepartmentsTime;
             _FixtureMakingTime = fixtureMakingTime;
             _HardwareFailureTime = hardwareFailureTime;
+            _SpecialDowntimeTime = specialDowntimeTime;
             _OperatorComment = operatorComment;
             _MasterSetupComment = masterSetupComment;
             _MasterMachiningComment = masterMachiningComment;
@@ -115,6 +120,7 @@ namespace remeLog.Models
             _Order = part.Order;
             _Setup = part.Setup;
             _FinishedCount = part.FinishedCount;
+            _DefectiveCount = part.DefectiveCount;
             _TotalCount = part.TotalCount;
             _StartSetupTime = part.StartSetupTime;
             _StartMachiningTime = part.StartMachiningTime;
@@ -134,6 +140,7 @@ namespace remeLog.Models
             _ContactingDepartmentsTime = part.ContactingDepartmentsTime;
             _FixtureMakingTime = part.FixtureMakingTime;
             _HardwareFailureTime = part.HardwareFailureTime;
+            _SpecialDowntimeTime = part.SpecialDowntimeTime;
             _OperatorComment = part.OperatorComment;
             _MasterSetupComment = part.MasterSetupComment;
             _MasterMachiningComment = part.MasterMachiningComment;
@@ -288,6 +295,21 @@ namespace remeLog.Models
             get
             {
                 return StartSetupTime != StartMachiningTime && FinishedCount != 0 ? FinishedCount - 1 : FinishedCount;
+            }
+        }
+
+        private int _DefectiveCount;
+        /// <summary> Количество брака </summary>
+        public int DefectiveCount
+        {
+            get => _DefectiveCount;
+            set
+            {
+                if (Set(ref _DefectiveCount, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
             }
         }
 
@@ -827,6 +849,34 @@ namespace remeLog.Models
             }
         }
 
+        private double _SpecialDowntimeTime;
+        /// <summary> Время простев специально исключённых из расчётов </summary>
+        public double SpecialDowntimeTime
+        {
+            get => _SpecialDowntimeTime;
+            set
+            {
+                if (Set(ref _SpecialDowntimeTime, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(SetupTimeFact));
+                    OnPropertyChanged(nameof(ProductionTimeFact));
+                    OnPropertyChanged(nameof(SetupRatio));
+                    OnPropertyChanged(nameof(SetupRatioTitle));
+                    OnPropertyChanged(nameof(ProductionRatio));
+                    OnPropertyChanged(nameof(ProductionRatioTitle));
+                    OnPropertyChanged(nameof(SingleProductionTime));
+                    OnPropertyChanged(nameof(SpecifiedDowntimesRatio));
+                    OnPropertyChanged(nameof(SpecifiedDowntimesComment));
+                    OnPropertyChanged(nameof(MasterSetupComment));
+                    OnPropertyChanged(nameof(MasterMachiningComment));
+                    OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(Error));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
 
         private string _OperatorComment;
         /// <summary> Комментарий оператора </summary>
@@ -1230,27 +1280,18 @@ namespace remeLog.Models
         {
             get
             {
-                switch (columnName)
+                return columnName switch
                 {
-                    case nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && SetupRatio == 0 && SetupTimeFact > 0:
-                        return "Необходимо указать причину отсутствия номатива наладки.";
-                    case nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0:
-                        return "Необходимо указать причину невыполнения номатива наладки.";
-
-                    case nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio == 0:
-                        return "Необходимо указать причину отсутствия номатива изготовления.";
-                    case nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2:
-                        return "Необходимо указать причину невыполнения номатива изготовления.";
-
-                    case nameof(MasterComment) when string.IsNullOrWhiteSpace(MasterComment) &&
-                    (RequiresComment(MasterSetupComment, SetupReasonsRequireComment) ||
-                     RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment)):
-                        return "Требуется указать дополнительный комментарий для выбранной причины.";
-                    case nameof(SpecifiedDowntimesComment) when string.IsNullOrWhiteSpace(SpecifiedDowntimesComment) && SpecifiedDowntimesRatio > 0.5:
-                        return "Необходимо дать комментарий т.к. простой более 50%.";
-                    default:
-                        return null!;
-                }
+                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && SetupRatio == 0 && SetupTimeFact > 0 => "Необходимо указать причину отсутствия номатива наладки.",
+                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0 => "Необходимо указать причину невыполнения номатива наладки.",
+                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio == 0 => "Необходимо указать причину отсутствия номатива изготовления.",
+                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2 => "Необходимо указать причину невыполнения номатива изготовления.",
+                    nameof(MasterComment) when string.IsNullOrWhiteSpace(MasterComment) &&
+                                        (RequiresComment(MasterSetupComment, SetupReasonsRequireComment) ||
+                                         RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment)) => "Требуется указать дополнительный комментарий для выбранной причины.",
+                    nameof(SpecifiedDowntimesComment) when string.IsNullOrWhiteSpace(SpecifiedDowntimesComment) && SpecifiedDowntimesRatio > 0.5 => "Необходимо дать комментарий т.к. простой более 50%.",
+                    _ => null!,
+                };
             }
         }
     }

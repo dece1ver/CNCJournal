@@ -1,4 +1,5 @@
 ﻿using eLog.Infrastructure;
+using eLog.Infrastructure.Extensions;
 using eLog.Models;
 using libeLog.Extensions;
 using libeLog.Models;
@@ -22,8 +23,10 @@ namespace eLog.Views.Windows.Dialogs
     {
         private TimeSpan _MachineTime = TimeSpan.Zero;
         private double _PartsFinished;
-        private string _MachineTimeText = string.Empty;
         private string _FinishedCount = string.Empty;
+        private int _DefectiveCount = 0;
+        private string _DefectiveCountText = string.Empty;
+        private string _MachineTimeText = string.Empty;
         private Visibility _KeyboardVisibility;
         public EndDetailResult EndDetailResult { get; set; }
 
@@ -82,16 +85,41 @@ namespace eLog.Views.Windows.Dialogs
             }
         }
 
+        public string DefectiveCountText
+        {
+            get => _DefectiveCountText;
+            set
+            {
+                Set(ref _DefectiveCountText, value);
+                OnPropertyChanged(nameof(Valid));
+                Part.DefectiveCount = _DefectiveCountText.GetInt();
+                Status = Part.DefectiveCount switch
+                {
+                    0 when string.IsNullOrWhiteSpace(DefectiveCountText) => string.Empty,
+                    0 when !string.IsNullOrWhiteSpace(DefectiveCountText) &&
+                           DefectiveCountText.Replace("0", "").Length == 0 => string.Empty,
+                    0 when !string.IsNullOrWhiteSpace(DefectiveCountText) =>
+                        "Неверно указано количество бракованных деталей.",
+                    _ => string.Empty,
+                };
+
+
+                OnPropertyChanged(nameof(Status));
+            }
+        }
+
         public bool Valid
         {
             get
             {
                 var result = double.TryParse(FinishedCount, out _PartsFinished) && _PartsFinished > 0 &&
-                             MachineTimeText.TimeParse(out _MachineTime) && _MachineTime.TotalSeconds > 0
+                             MachineTimeText.TimeParse(out _MachineTime) && _MachineTime.TotalSeconds > 0 &&
+                             _DefectiveCountText.TryParseEmptyAsZero(out _DefectiveCount) && _DefectiveCount >= 0
                              || _PartsFinished == 0 && !string.IsNullOrWhiteSpace(_FinishedCount) &&
-                             FinishedCount.Replace("0", "").Length == 0;
+                             FinishedCount.Replace(" ", "").Replace("0", "").Length == 0;
                 if (!result) return result;
                 Part.FinishedCount = _PartsFinished;
+                Part.DefectiveCount = _DefectiveCount;
                 Part.MachineTime = _MachineTime;
                 return result;
             }
@@ -118,6 +146,9 @@ namespace eLog.Views.Windows.Dialogs
                         break;
                     case nameof(FinishedCount):
                         if (Part.FinishedCount == 0 && FinishedCount != "0") error = Text.ValidationErrors.FinishedCount;
+                        break;
+                    case nameof(DefectiveCountText):
+                        if (Part.DefectiveCount == 0 && !DefectiveCountText.All(c => c == '0' || c == ' ')) error = Text.ValidationErrors.FinishedCount;
                         break;
                 }
                 return error;
