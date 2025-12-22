@@ -14,6 +14,9 @@
         WindowStartupLocation="CenterOwner" 
         WindowState="Maximized" 
         PreviewKeyDown="PartsInfoWindow_PreviewKeyDown">
+    <Window.InputBindings>
+        <KeyBinding Modifiers="Ctrl" Key="S" Command="{Binding UpdatePartsCommand}"/>
+    </Window.InputBindings>
     <Window.Resources>
         <Style TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -711,6 +714,7 @@
             <MenuItem Header="Исправлено ранее" Click="OnVariantClick"/>
             <MenuItem Header="Корректировка не требуется" Click="OnVariantClick"/>
             <MenuItem Header="Ожидание">
+                <MenuItem Header="Ожидание следующего изготовления" Click="OnVariantClick"/>
                 <MenuItem Header="Ожидание полного изготовления" Click="OnVariantClick"/>
                 <MenuItem Header="Ожидание решения технолога" Click="OnVariantClick"/>
                 <MenuItem Header="Ожидание решения производства" Click="OnVariantClick"/>

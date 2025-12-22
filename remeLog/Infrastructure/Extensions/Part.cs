@@ -417,6 +417,16 @@ namespace remeLog.Infrastructure.Extensions
         }
 
         /// <summary>
+        /// Сумма затраченного времени на детали от начала наладки до завершения изготовления.
+        /// </summary>
+        /// <param name="part">Деталь</param>
+        /// <returns></returns>
+        public static TimeSpan FullWorkedTime(this Models.Part part)
+        {
+            return part.EndMachiningTime - part.StartSetupTime - (TimeSpan.FromMinutes(DateTimes.GetPartialBreakBetween(part.StartSetupTime, part.EndMachiningTime)));
+        }
+
+        /// <summary>
         /// Рассчитывает суммарное фактическое время наладки для коллекции деталей (включая частичные).
         /// </summary>
         /// <param name="parts">Коллекция деталей, для которых выполняется расчет.</param>

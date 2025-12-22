@@ -666,6 +666,11 @@ namespace remeLog.Infrastructure
         public const string SerialPerList = "serialPerList";
 
         /// <summary>
+        /// Время включенных операций
+        /// </summary>
+        public const string IncludedOperationsTime = "includedOperationsTime";
+
+        /// <summary>
         /// Время исключенных операций
         /// </summary>
         public const string ExcludedOperationsTime = "excludedOperationsTime";
@@ -808,6 +813,7 @@ namespace remeLog.Infrastructure
             { YearChangeRatio, "Изменение % годовое" },
             { SerialPerRuns, $"Серийная{Environment.NewLine}по запускам" },
             { SerialPerList, $"Серийная{Environment.NewLine}по списку" },
+            { IncludedOperationsTime, $"Время включённых{Environment.NewLine}операций" },
             { ExcludedOperationsTime, $"Время исключённых{Environment.NewLine}операций" },
             { IncreaseReason, $"Причина увеличения{Environment.NewLine}норматива" },
             { SerialPartsTime, $"Время затраченное на{Environment.NewLine}серийную продукцию, час" },

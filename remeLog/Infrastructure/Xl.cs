@@ -24,6 +24,7 @@ namespace remeLog.Infrastructure
     {
         private static readonly XLColor _lightRed = XLColor.FromHtml("#DA9694");
         private static readonly XLColor _lightGreen = XLColor.FromHtml("#96DA94");
+        const double SetupLimit = 0.8;
 
         /// <summary>
         /// Типы экспорта отчетов операторов.
@@ -1182,6 +1183,8 @@ namespace remeLog.Infrastructure
                 .Add(CM.SetupsCount)
                 .Add(CM.ProductionsCount)
                 .Add(CM.WorkedShifts)
+                .Add(CM.IncludedOperationsTime)
+                .Add(CM.TotalTime)
                 .Add(CM.EfficiencyCoefficient)
                 .Add(CM.DowntimesCoefficient)
                 .Add(CM.Coefficient)
@@ -1290,7 +1293,7 @@ namespace remeLog.Infrastructure
                 ws.Cell(row, ci[CM.ContactingDepartmentsTime]).SetValue(groupParts.Sum(p => p.ContactingDepartmentsTime));
                 ws.Cell(row, ci[CM.FixtureMakingTime]).SetValue(groupParts.Sum(p => p.FixtureMakingTime));
                 ws.Cell(row, ci[CM.HardwareFailureTime]).SetValue(groupParts.Sum(p => p.HardwareFailureTime));
-                ws.Cell(row, ci[CM.HardwareFailureTime]).SetValue(groupParts.Sum(p => p.SpecialDowntimeTime));
+                ws.Cell(row, ci[CM.SpecialDowntimeTime]).SetValue(groupParts.Sum(p => p.SpecialDowntimeTime));
 
                 ws.Cell(row, ci[CM.SpecifiedDowntimes])
                     .SetValue(groupParts.SpecifiedDowntimesRatio(ShiftType.All))
@@ -1311,14 +1314,31 @@ namespace remeLog.Infrastructure
                     .Count();
                 ws.Cell(row, ci[CM.WorkedShifts]).SetValue(workedShifts);
 
+                (TimeSpan totalTime, TimeSpan includedOperationsTime) = parts
+                .Where(p => p.Operator == partGroup.Key.Operator && p.Machine == partGroup.Key.Machine)
+                .Aggregate(
+                    (Total: TimeSpan.Zero, Excluded: TimeSpan.Zero),
+                    (acc, p) => (
+                        Total: acc.Total + p.FullWorkedTime(),
+                        Excluded: acc.Excluded + NotExcludedTime(p, minPartsCount, maxPartsCount)
+                    )
+                );
+
+                ws.Cell(row, ci[CM.IncludedOperationsTime]).SetValue(includedOperationsTime.TotalHours)
+                    .Style.NumberFormat.SetNumberFormatId((int)XLPredefinedFormat.Number.Integer);
+                ws.Cell(row, ci[CM.TotalTime]).SetValue(totalTime.TotalHours)
+                    .Style.NumberFormat.SetNumberFormatId((int)XLPredefinedFormat.Number.Integer);
+
                 // ------------------------------------------------------------------------
-                // Формула итогового коэффициента (универсальная, реагирует на изменения)
+                // Формула итогового коэффициента
                 // ------------------------------------------------------------------------
                 if (validQualification)
                 {
                     string generalRatioAddr = ws.Cell(row, ci[CM.GeneralRatio]).Address.ToStringRelative();
                     string specDowntimesExAddr = ws.Cell(row, ci[CM.SpecifiedDowntimesEx]).Address.ToStringRelative();
                     string workedShiftsAddr = ws.Cell(row, ci[CM.WorkedShifts]).Address.ToStringRelative();
+                    string includedOperationsTimeAddr = ws.Cell(row, ci[CM.IncludedOperationsTime]).Address.ToStringRelative();
+                    string totalTimeAddr = ws.Cell(row, ci[CM.TotalTime]).Address.ToStringRelative();
 
                     // Находим правильную строку в листе коэффициентов для текущей квалификации
                     var qualRow = qualifications.OrderBy(q => q.Value).ToList().IndexOf(qual) + 2; // +2 потому что первая строка - заголовки, и индексация с 1
@@ -1354,8 +1374,8 @@ namespace remeLog.Infrastructure
                     {
                         downN = 0.15.ToString("#.##");
                     }
+
                     // Коэффициент эффективности (на основе общего коэффициента)
-                    
                     string efficiencyCoeff =
                         $"IF({generalRatioAddr}>{effHH},{effCoeffHH}," +
                         $"IF({generalRatioAddr}>{effH},{effCoeffH}," +
@@ -1364,7 +1384,7 @@ namespace remeLog.Infrastructure
                         $"IF({generalRatioAddr}>{effLL},{effCoeffLL}," +
                         $"IF({generalRatioAddr}>{effLLL},{effCoeffLLL}," +
                         $"{effCoeffLLL}))))))";
-                    efficiencyCoeff = $"=IF(AND({setupRatioAddr}>0.8,{workedShiftsAddr}>={workDays / 6}),{efficiencyCoeff},\"\")";
+                    efficiencyCoeff = $"=IF(AND({setupRatioAddr}>=0.8,{workedShiftsAddr}>={workDays / 6},{includedOperationsTimeAddr}>={totalTimeAddr}*0.5),{efficiencyCoeff},\"\")";
 
                     ws.Cell(row, ci[CM.EfficiencyCoefficient]).FormulaA1 = efficiencyCoeff;
 
@@ -1379,13 +1399,20 @@ namespace remeLog.Infrastructure
                         $"IF({specDowntimesExAddr}<{downLLL},{downCoeffLLL}," +
                         $"{downCoeffLLL}))))))";
 
-                    downtimeCoeff = $"=IF(AND({setupRatioAddr}>0.8,{workedShiftsAddr}>={workDays / 6}),{downtimeCoeff},\"\")";
+                    downtimeCoeff = $"=IF(AND({setupRatioAddr}>=0.8,{workedShiftsAddr}>={workDays / 6},{includedOperationsTimeAddr}>={totalTimeAddr}*0.5),{downtimeCoeff},\"\")";
+
 
                     ws.Cell(row, ci[CM.DowntimesCoefficient]).FormulaA1 = downtimeCoeff;
+
+                    var reasons = new List<string>();
+                    if (averageSetupRatio < 0.8) reasons.Add("Наладка менее 80%");
+                    if (workedShifts < workDays / 6) reasons.Add($"Недостаточно смен (минимум {workDays / 6});");
+                    if (includedOperationsTime * 2 < totalTime) reasons.Add($"Больше половины отработанного времени не учитывается.");
 
                     // Итоговая формула: коэффициент применяется только при выполнении условий
                     string coefficientFormula = $"=IFERROR({efficiencyCoeffAddr}*{downtimeCoeffAddr},\"\")";
                     ws.Cell(row, ci[CM.Coefficient]).FormulaA1 = coefficientFormula;
+                    if (reasons.Count > 0) ws.Cell(row, ci[CM.Coefficient]).CreateComment().AddText($"Причины:\n{string.Join('\n', reasons)}");
                 }
 
                 row++;
@@ -3199,6 +3226,26 @@ namespace remeLog.Infrastructure
                 $"деталей: {wsParts.Where(p => p.Setup == 1).Sum(p => p.FinishedCount)})";
             ws.Range(1, columns["part"].index, 1, columns["factSum"].index).Merge();
             ws.SheetView.FreezeRows(2);
+        }
+
+        static bool IsInvalidRatio(double ratio) =>
+            ratio == 0 || double.IsInfinity(ratio) || double.IsNaN(ratio);
+
+        static TimeSpan NotExcludedTime(Part part, double minPartsCount, double maxPartsCount)
+        {
+            var span = TimeSpan.Zero;
+            if (!part.ExcludeFromReports)
+            {
+                if (part.SetupRatio is not (0 or double.NaN or double.NegativeInfinity or double.PositiveInfinity))
+                {
+                    span = span.Add(TimeSpan.FromMinutes(part.SetupTimeFact)).Add(TimeSpan.FromMinutes(part.SetupDowntimes));
+                }
+                if (part.ProductionRatio != 0 && part.FinishedCountFact >= minPartsCount && part.FinishedCountFact < maxPartsCount)
+                {
+                    span = span.Add(TimeSpan.FromMinutes(part.ProductionTimeFact)).Add(TimeSpan.FromMinutes(part.MachiningDowntimes));
+                }
+            }
+            return span;
         }
     }
 }
