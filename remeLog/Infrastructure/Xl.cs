@@ -24,7 +24,7 @@ namespace remeLog.Infrastructure
     {
         private static readonly XLColor _lightRed = XLColor.FromHtml("#DA9694");
         private static readonly XLColor _lightGreen = XLColor.FromHtml("#96DA94");
-        const double SetupLimit = 0.8;
+        const double MinimumIncludedTimeRatio = 0.3;
 
         /// <summary>
         /// Типы экспорта отчетов операторов.
@@ -1124,6 +1124,7 @@ namespace remeLog.Infrastructure
             // ============================================================================
             // ВАЛИДАЦИЯ ВХОДНЫХ ПАРАМЕТРОВ
             // ============================================================================
+            progress?.Report("Проверка вводных данных");
             if (parts == null) throw new ArgumentNullException(nameof(parts));
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Путь не может быть пустым", nameof(path));
             if (fromDate > toDate) throw new ArgumentException("Начальная дата не может быть позже конечной");
@@ -1133,6 +1134,7 @@ namespace remeLog.Infrastructure
             // ============================================================================
             // ЗАГРУЗКА СПРАВОЧНЫХ ДАННЫХ
             // ============================================================================
+            progress?.Report("Получения данных об операторах");
             var operatorsTask = Database.GetOperatorsAsync();
             var qualificationsTask = Database.GetQualificationsAsync();
             await Task.WhenAll(operatorsTask, qualificationsTask);
@@ -1144,6 +1146,7 @@ namespace remeLog.Infrastructure
             // ============================================================================
             // ФИЛЬТРАЦИЯ ДАННЫХ
             // ============================================================================
+            progress?.Report("Фильтрация данных");
             var filteredParts = parts.Where(p => !p.ExcludeFromReports).ToList();
             var onlySerial = serialParts?.Any() == true;
 
@@ -1157,9 +1160,9 @@ namespace remeLog.Infrastructure
             // ============================================================================
             // СОЗДАНИЕ И НАСТРОЙКА КНИГИ
             // ============================================================================
+            progress?.Report("Создание Ecxel книги");
             using var wb = new XLWorkbook();
             var ws = wb.AddWorksheet("Отчет по операторам");
-
             var cm = new CM.Builder()
                 .Add(CM.Operator)
                 .Add(CM.Qualification)
@@ -1200,11 +1203,15 @@ namespace remeLog.Infrastructure
             // ============================================================================
             var row = 3;
 
+            var minimumIncludedTimeRatioCell = ws.Cell(row, cm.Count + 2);
+            var minimumIncludedTimeRatioAddr = minimumIncludedTimeRatioCell.Address.ToStringFixed();
+
             foreach (var partGroup in filteredParts
                 .GroupBy(p => new { p.Operator, p.Machine })
                 .OrderBy(g => g.Key.Machine)
                 .ThenBy(g => g.Key.Operator))
             {
+                progress?.Report($"Сбор данных о операторе {partGroup.Key.Operator} на станке {partGroup.Key.Machine}");
                 if (partGroup.Key.Operator.ToLower() == "ученик") continue;
 
                 var isSerialMachine = await Database.GetMachineSerialStatus(partGroup.Key.Machine);
@@ -1384,7 +1391,7 @@ namespace remeLog.Infrastructure
                         $"IF({generalRatioAddr}>{effLL},{effCoeffLL}," +
                         $"IF({generalRatioAddr}>{effLLL},{effCoeffLLL}," +
                         $"{effCoeffLLL}))))))";
-                    efficiencyCoeff = $"=IF(AND({setupRatioAddr}>=0.8,{workedShiftsAddr}>={workDays / 6},{includedOperationsTimeAddr}>={totalTimeAddr}*0.5),{efficiencyCoeff},\"\")";
+                    efficiencyCoeff = $"=IF(AND({workedShiftsAddr}>={workDays / 6},{includedOperationsTimeAddr}>={totalTimeAddr}*{minimumIncludedTimeRatioAddr}),{efficiencyCoeff},\"\")";
 
                     ws.Cell(row, ci[CM.EfficiencyCoefficient]).FormulaA1 = efficiencyCoeff;
 
@@ -1399,22 +1406,20 @@ namespace remeLog.Infrastructure
                         $"IF({specDowntimesExAddr}<{downLLL},{downCoeffLLL}," +
                         $"{downCoeffLLL}))))))";
 
-                    downtimeCoeff = $"=IF(AND({setupRatioAddr}>=0.8,{workedShiftsAddr}>={workDays / 6},{includedOperationsTimeAddr}>={totalTimeAddr}*0.5),{downtimeCoeff},\"\")";
+                    downtimeCoeff = $"=IF(AND({workedShiftsAddr}>={workDays / 6},{includedOperationsTimeAddr}>={totalTimeAddr}*{minimumIncludedTimeRatioAddr}),{downtimeCoeff},\"\")";
 
 
                     ws.Cell(row, ci[CM.DowntimesCoefficient]).FormulaA1 = downtimeCoeff;
 
                     var reasons = new List<string>();
-                    if (averageSetupRatio < 0.8) reasons.Add("Наладка менее 80%");
                     if (workedShifts < workDays / 6) reasons.Add($"Недостаточно смен (минимум {workDays / 6});");
-                    if (includedOperationsTime * 2 < totalTime) reasons.Add($"Больше половины отработанного времени не учитывается.");
+                    if (includedOperationsTime * 2 < totalTime) reasons.Add($"Больше {MinimumIncludedTimeRatio*100:N0}% отработанного времени не учитывается.");
 
                     // Итоговая формула: коэффициент применяется только при выполнении условий
                     string coefficientFormula = $"=IFERROR({efficiencyCoeffAddr}*{downtimeCoeffAddr},\"\")";
                     ws.Cell(row, ci[CM.Coefficient]).FormulaA1 = coefficientFormula;
                     if (reasons.Count > 0) ws.Cell(row, ci[CM.Coefficient]).CreateComment().AddText($"Причины:\n{string.Join('\n', reasons)}");
                 }
-
                 row++;
             }
 
@@ -1428,6 +1433,9 @@ namespace remeLog.Infrastructure
             ws.Column(ci[CM.Qualification]).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
             ws.Column(ci[CM.Qualification]).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             ws.Columns(ci[CM.CreateNcProgramTime], ci[CM.SpecifiedDowntimes]).Group(true);
+
+            // Константа для доли учтённого времени
+            minimumIncludedTimeRatioCell.SetValue(MinimumIncludedTimeRatio).Style.NumberFormat.SetNumberFormatId((int)XLPredefinedFormat.Number.PercentInteger);
 
             // Заголовок отчета
             ws.Cell(1, 1).Value =
