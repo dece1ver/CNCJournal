@@ -1203,7 +1203,7 @@ namespace remeLog.Infrastructure
             // ============================================================================
             var row = 3;
 
-            var minimumIncludedTimeRatioCell = ws.Cell(row, cm.Count + 2);
+            var minimumIncludedTimeRatioCell = ws.Cell(2, cm.Count + 2);
             var minimumIncludedTimeRatioAddr = minimumIncludedTimeRatioCell.Address.ToStringFixed();
 
             foreach (var partGroup in filteredParts
