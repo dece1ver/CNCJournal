@@ -38,7 +38,7 @@ namespace remeLog.Views
         private void OK_Click(object sender, RoutedEventArgs e)
         {
             ResultString = string.Join("; ",
-                Values.Where(v => !string.IsNullOrWhiteSpace(v.Value))
+                Values.Distinct().Where(v => !string.IsNullOrWhiteSpace(v.Value))
                       .Select(v => v.Value.Trim())
             );
             Resilt = true;

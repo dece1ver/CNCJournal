@@ -1881,7 +1881,10 @@ namespace remeLog.ViewModels
             {
                 OpenMultiValueEditorCommand.Execute(type);
             }
-            _editors[type].Values.Add(new() { Value = value});
+            if (!_editors[type].Values.Any(v => string.Equals(v.Value, value, StringComparison.OrdinalIgnoreCase)))
+            {
+                _editors[type].Values.Add(new() { Value = value });
+            }
         }
 
         private async Task<bool> LoadPartsAsync(bool first = false)
