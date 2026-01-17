@@ -174,6 +174,7 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("NcIntermediatePath")
                 .AddStringColumn("CncOperations")
                 .AddStringColumn("Administrators")
+                .AddSmallDateTimeColumn("Holidays")
                 .Build(),
 
             new TableBuilder("cnc_serial_parts")

@@ -75,7 +75,8 @@
                 <AdornedElementPlaceholder/>
             </Border>
         </ControlTemplate>
-        <!--#region Columns -->
+        
+        <!--#region Столбцы -->
         <DataGridTextColumn x:Key="MachineColumn" Header="Станок" Binding="{Binding Machine}" 
                             Width="85" IsReadOnly="True" 
                             Visibility="{Binding DataContext.MachineVisibility, 
@@ -673,6 +674,7 @@
         </DataGridCheckBoxColumn>
         <!--#endregion-->
 
+        <!--#region Контекстные меню -->
         <ContextMenu x:Key="MasterCommentCellContextMenu">
             <MenuItem Header="Другая операция">
                 <MenuItem Header="Заложена универсальная операция" Click="OnVariantClick"/>
@@ -714,7 +716,7 @@
             <MenuItem Header="Исправлено ранее" Click="OnVariantClick"/>
             <MenuItem Header="Корректировка не требуется" Click="OnVariantClick"/>
             <MenuItem Header="Ожидание">
-                <MenuItem Header="Ожидание следующего изготовления" Click="OnVariantClick"/>
+                <MenuItem Header="Ожидание следующего  изготовления" Click="OnVariantClick"/>
                 <MenuItem Header="Ожидание полного изготовления" Click="OnVariantClick"/>
                 <MenuItem Header="Ожидание решения технолога" Click="OnVariantClick"/>
                 <MenuItem Header="Ожидание решения производства" Click="OnVariantClick"/>
@@ -751,6 +753,11 @@
             <MenuItem Header="19:00" Click="OnInsertValueClick"/>
             <MenuItem Header="20:00" Click="OnInsertValueClick"/>
         </ContextMenu>
+
+        <ContextMenu x:Key="MultiFilterValueContextMenu">
+            <MenuItem Header="Добавить к фильтру" Click="OnAddMultiFilterValueClick"/>
+        </ContextMenu>
+        <!--#endregion-->
 
     </Window.Resources>
     <Grid>
@@ -867,10 +874,10 @@
                     <Grid Margin="0 -2 0 0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="60"/>
-                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="120"/>
                             <ColumnDefinition Width="100"/>
                             <ColumnDefinition Width="75"/>
-                            <ColumnDefinition Width="320"/>
+                            <ColumnDefinition Width="340"/>
                             <ColumnDefinition Width="auto"/>
                             <ColumnDefinition Width="auto"/>
                             <ColumnDefinition Width="*"/>
@@ -891,9 +898,20 @@
                         <Border Grid.Row="1" Grid.Column="4" Grid.ColumnSpan="1" Margin="0 0 19 0" Background="DarkGray"/>
                         <Border Grid.Row="1" Grid.Column="9" Margin="0 0 4 0" Grid.ColumnSpan="1" Background="Gray"/>
                         <Border Grid.Row="1" Grid.Column="10" Grid.ColumnSpan="3" Background="Gray"/>
-                        <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" 
-                                 Text="{Binding OperatorFilter, UpdateSourceTrigger=PropertyChanged, Delay=500}" Style="{StaticResource ClearableTextBox}"
-                                 BorderThickness="1 1 1 0" Margin="0 0 0 0"/>
+                        <DockPanel Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2">
+                            <Button DockPanel.Dock="Right" Width="22" Margin="0 0 0 -1"
+                                    Command="{Binding OpenMultiValueEditorCommand}" 
+                                    CommandParameter="Operator"
+                                    ToolTip="Выбрать несколько операторов">
+                                <Button.Content>
+                                    <TextBlock Text="…" FontSize="14"/>
+                                </Button.Content>
+                            </Button>
+                            <TextBox Text="{Binding OperatorFilter, UpdateSourceTrigger=PropertyChanged, Delay=500}" Style="{StaticResource ClearableTextBox}"
+                                     BorderThickness="1 1 0 0" Margin="0 0 0 0"/>
+                            
+                        </DockPanel>
+                        
                         <TextBlock Grid.Row="2" Grid.Column="0" Text="Смена"/>
                         <ComboBox Grid.Row="2" Grid.Column="1" Text="Оператор" BorderThickness="1 0 1 1"
                                   ItemsSource="{Binding ShiftFilterItems}" DisplayMemberPath="Name" SelectedItem="{Binding ShiftFilter}"/>
@@ -973,8 +991,18 @@
                                 <RowDefinition/>
                                 <RowDefinition/>
                             </Grid.RowDefinitions>
-                            <TextBox Grid.Column="0" Grid.Row="0" Grid.RowSpan="2" Text="{Binding OrderFilter, UpdateSourceTrigger=PropertyChanged, Delay=500}" 
-                                     Style="{StaticResource ClearableTextBox}" BorderThickness="1 0 1 1"/>
+                            <DockPanel Grid.Column="0" Grid.Row="0" Grid.RowSpan="2">
+                                <Button DockPanel.Dock="Right" Width="22" Margin="0 -1 0 0"
+                                        Command="{Binding OpenMultiValueEditorCommand}" 
+                                        CommandParameter="Order"
+                                        ToolTip="Выбрать несколько М/Л">
+                                    <Button.Content>
+                                        <TextBlock Text="…" FontSize="14"/>
+                                    </Button.Content>
+                                </Button>
+                                <TextBox Text="{Binding OrderFilter, UpdateSourceTrigger=PropertyChanged, Delay=500}" 
+                                         Style="{StaticResource ClearableTextBox}" BorderThickness="1 0 0 1"/>
+                            </DockPanel>
                             <TextBlock Grid.Column="1" Grid.Row="0" Grid.RowSpan="2" Text="Шт." Margin="0 0 5 0" HorizontalAlignment="Right" ToolTip="Количество деталей по М/Л"/>
                             <TextBox Grid.Column="2" Grid.Row="0" Grid.RowSpan="2" Text="{Binding TotalCountFilter, UpdateSourceTrigger=PropertyChanged, Delay=500, TargetNullValue={x:Static sys:String.Empty}}"
                                      Style="{StaticResource ClearableTextBox}" ToolTip="Количество деталей по М/Л" BorderThickness="1 0 1 1"/>

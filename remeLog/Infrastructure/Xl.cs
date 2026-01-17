@@ -2,6 +2,7 @@
 using DocumentFormat.OpenXml.Spreadsheet;
 using libeLog;
 using libeLog.Extensions;
+using libeLog.Models;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
 using remeLog.Infrastructure.Extensions;
@@ -2351,7 +2352,7 @@ namespace remeLog.Infrastructure
             var wb = new XLWorkbook();
             var wsTotal = wb.AddWorksheet("Общий");
             ConfigureWorksheetStyles(wsTotal);
-
+            var serialParts = libeLog.Infrastructure.Database.GetSerialPartsAsync(AppSettings.Instance.ConnectionString!).Result;
             var machines = parts.Where(p => !p.ExcludeFromReports).Select(p => p.Machine).Distinct().ToArray();
 
             foreach (var machine in machines)
@@ -2370,7 +2371,8 @@ namespace remeLog.Infrastructure
                 {"ordersCntTotal", (7, $"Количество М/Л{Environment.NewLine}(общее)") },
                 {"partsCntTotal", (8, $"Количество деталей{Environment.NewLine}(общее)") },
                 {"planSumTotal", (9, $"Сумма нормативов{Environment.NewLine}(общее)") },
-                {"factSumTotal", (10, $"Время фактическое{Environment.NewLine}(общее)") },
+                {"factSumTotal", (10, $"Время фактическое(общее)") },
+                {"isSerial", (11, $"Серийная{Environment.NewLine}по списку") },
             };
 
             ConfigureWorksheetHeader(wsTotal, columns);
@@ -2379,7 +2381,7 @@ namespace remeLog.Infrastructure
 
             var machinesGroup = tempParts.GroupBy(p => p.Machine);
 
-            FillTotalMachinesWorksheetData(wsTotal, machinesGroup, columns, tempParts);
+            FillTotalMachinesWorksheetData(wsTotal, machinesGroup, columns, tempParts, serialParts);
 
             foreach (var ws in wb.Worksheets.Skip(1))
             {
@@ -3163,7 +3165,7 @@ namespace remeLog.Infrastructure
                 .Alignment.SetWrapText(false);
         }
 
-        private static void FillTotalMachinesWorksheetData(IXLWorksheet ws, IEnumerable<IGrouping<string, Part>> machinesGroup, Dictionary<string, (int index, string header)> columns, List<Part> tempParts)
+        private static void FillTotalMachinesWorksheetData(IXLWorksheet ws, IEnumerable<IGrouping<string, Part>> machinesGroup, Dictionary<string, (int index, string header)> columns, List<Part> tempParts, List<SerialPart> serialParts)
         {
             int row = 3;
 
@@ -3183,6 +3185,7 @@ namespace remeLog.Infrastructure
                     ws.Cell(row, columns["partsCntTotal"].index).SetValue(tp.Where(p => p.Setup == 1).Sum(p => p.FinishedCount));
                     ws.Cell(row, columns["planSumTotal"].index).SetValue(tp.Sum(p => p.PlanForBatch) + tp.SetupTimePlanForReport());
                     ws.Cell(row, columns["factSumTotal"].index).SetValue(tp.FullWorkedTime().TotalMinutes);
+                    ws.Cell(row, columns["isSerial"].index).SetValue(serialParts.Select(sp => sp.PartName.NormalizedPartNameWithoutComments()).Contains(pg.Key.NormalizedPartNameWithoutComments()));
                     row++;
                 }
             }

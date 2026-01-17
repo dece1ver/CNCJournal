@@ -153,6 +153,13 @@ namespace remeLog.Views
                     {
                         switch (column.DisplayIndex)
                         {
+                            case 3 or 5:
+                                e.Handled = true;
+                                cell.Focus();
+                                var multiFilterValueContextMenu = (ContextMenu)FindResource("MultiFilterValueContextMenu");
+                                multiFilterValueContextMenu.PlacementTarget = cell;
+                                multiFilterValueContextMenu.IsOpen = true;
+                                break;
                             case 10 or 11 or 12:
                                 e.Handled = true;
                                 cell.Focus();
@@ -443,6 +450,29 @@ namespace remeLog.Views
                 else
                 {
                     SetSingleCellValue(cell, dataGrid, value);
+                }
+            }
+        }
+
+        private void OnAddMultiFilterValueClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem) return;
+            DependencyObject depObj = (DependencyObject)e.OriginalSource;
+            if (Keyboard.FocusedElement is DataGridCell cell)
+            {
+                DataGridColumn column = cell.Column;
+                object value = cell.DataContext;
+                if (DataContext is PartsInfoWindowViewModel d && value is Part p)
+                {
+                    switch (column.DisplayIndex)
+                    {
+                        case 3:
+                            d.PushValueToEditor("Operator", p.Operator);
+                            break;
+                        case 5:
+                            d.PushValueToEditor("Order", p.Order);
+                            break;
+                    }
                 }
             }
         }

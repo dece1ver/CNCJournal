@@ -1,4 +1,5 @@
-﻿using DocumentFormat.OpenXml.Office2019.Excel.RichData2;
+﻿using DocumentFormat.OpenXml.Bibliography;
+using DocumentFormat.OpenXml.Office2019.Excel.RichData2;
 using libeLog;
 using libeLog.Base;
 using libeLog.Extensions;
@@ -37,6 +38,7 @@ namespace remeLog.ViewModels
         private static readonly SemaphoreSlim semaphoreSlim = new(1, 1);
         private CancellationTokenSource _cancellationTokenSource = new();
         private CancellationTokenSource _wncCancellationTokenSource = new();
+        private Dictionary<string, MultiValueEditorWindow> _editors = new();
         private static bool lockUpdate;
 
         public PartsInfoWindowViewModel(CombinedParts parts)
@@ -86,6 +88,7 @@ namespace remeLog.ViewModels
             ShowArchiveTableCommand = new LambdaCommand(OnShowArchiveTableCommandExecuted, CanShowArchiveTableCommandExecute);
             ShowInfoCommand = new LambdaCommand(OnShowInfoCommandExecuted, CanShowInfoCommandExecute);
             UnlockSerialPartNormativesCommand = new LambdaCommand(OnUnlockSerialPartNormativesCommandExecuted, CanUnlockSerialPartNormativesCommandExecute);
+            OpenMultiValueEditorCommand = new LambdaCommand(OnOpenMultiValueEditorCommandExecuted, CanOpenMultiValueEditorCommandExecute);
             UpdatePartsCommand = new LambdaCommand(OnUpdatePartsCommandExecutedAsync, CanUpdatePartsCommandExecute);
 
             CalcFixed = Part.CalcFixed;
@@ -1828,6 +1831,59 @@ namespace remeLog.ViewModels
         private static bool CanOpenDailyReportWindowCommandExecute(object p) => true;
         #endregion
 
+        #region OpenMultiValueEditorCommand
+        public ICommand OpenMultiValueEditorCommand { get; }
+
+        private void OnOpenMultiValueEditorCommandExecuted(object p)
+        {
+            if (p is not string fieldName) return;
+
+            string currentValue = fieldName switch
+            {
+                "Operator" => OperatorFilter,
+                "Order" => OrderFilter,
+                _ => ""
+            };
+
+            var editor = new MultiValueEditorWindow(fieldName, currentValue)
+            {
+                Owner = Application.Current.Windows.OfType<PartsInfoWindow>().FirstOrDefault(),
+                ShowInTaskbar = false,
+                Topmost = true 
+            };
+
+            editor.Closed += (s, args) =>
+            {
+                _editors.Remove(fieldName);
+                if (editor.Resilt)
+                {
+                    switch (fieldName)
+                    {
+                        case "Operator":
+                            OperatorFilter = editor.ResultString;
+                            break;
+                        case "Order":
+                            OrderFilter = editor.ResultString;
+                            break;
+                    }
+                }
+            };
+            _editors[fieldName] = editor;
+            editor.Show();
+        }
+
+        private static bool CanOpenMultiValueEditorCommandExecute(object p) => p is string;
+        #endregion
+
+        public void PushValueToEditor(string type, string value)
+        {
+            if (!_editors.ContainsKey(type)) 
+            {
+                OpenMultiValueEditorCommand.Execute(type);
+            }
+            _editors[type].Values.Add(new() { Value = value});
+        }
+
         private async Task<bool> LoadPartsAsync(bool first = false)
         {
             if (lockUpdate) return false;
@@ -1907,9 +1963,12 @@ namespace remeLog.ViewModels
                 sb.AppendFormat("AND Shift = '{0}' ", ShiftFilter.FilterText);
             }
 
-            AppendCondition(sb, "Operator", OperatorFilter);
+            AppendMultiValueCondition(sb, "Operator", OperatorFilter);
+
             AppendCondition(sb, "PartName", PartNameFilter);
-            AppendCondition(sb, "[Order]", OrderFilter);
+
+            AppendMultiValueCondition(sb, "[Order]", OrderFilter);
+
             AppendCondition(sb, "EngineerComment", EngineerCommentFilter);
 
             if (Util.TryParseComparison(FinishedCountFilter, out var finishedCountOperator, out var finishedCountValue))
@@ -1924,14 +1983,54 @@ namespace remeLog.ViewModels
             if (OnlySerialPartsFilter)
             {
                 var serialNamesNormalized = string.Join(", ", SerialParts.Select(sp => $"'{sp.PartName.NormalizedPartNameWithoutComments()}'"));
-
                 sb.AppendFormat("AND NormalizedPartName IN ({0}) ", serialNamesNormalized);
             }
-                
+
             var machines = string.Join(", ", MachineFilters.Where(mf => mf.Filter).Select(m => $"'{m.Machine}'").Distinct());
             sb.AppendFormat("AND Machine IN ({0}) ", machines);
 
             return sb.ToString();
+        }
+
+        private void AppendMultiValueCondition(StringBuilder sb, string column, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+
+            // Проверяем, есть ли множественные значения (через ;)
+            if (value.Contains(';'))
+            {
+                var values = value.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                                  .Select(v => v.Trim())
+                                  .Where(v => !string.IsNullOrWhiteSpace(v))
+                                  .ToList();
+
+                if (values.Count > 0)
+                {
+                    var patterns = values.Select(v => new SearchPattern(v)).ToList();
+
+                    // Если все паттерны без LIKE
+                    if (patterns.All(p => p.IsExactMatch))
+                    {
+                        var quotedValues = string.Join(", ", values.Select(v => $"'{v}'"));
+                        sb.AppendFormat("AND {0} IN ({1}) ", column, quotedValues);
+                    }
+                    else
+                    {
+                        // Если есть LIKE паттерны, то OR
+                        sb.Append("AND (");
+                        for (int i = 0; i < patterns.Count; i++)
+                        {
+                            if (i > 0) sb.Append(" OR ");
+                            sb.AppendFormat("{0} {1}", column, patterns[i]);
+                        }
+                        sb.Append(") ");
+                    }
+                }
+            }
+            else
+            {
+                AppendCondition(sb, column, value);
+            }
         }
 
         /// <summary>
@@ -1955,7 +2054,7 @@ namespace remeLog.ViewModels
         /// <param name="sb">StringBuilder в котором формируется строка запроса</param>
         /// <param name="column">Столбец в который будем писать</param>
         /// <param name="value">Значение</param>
-        private void AppendCondition(StringBuilder sb, string column, string value)
+        private static void AppendCondition(StringBuilder sb, string column, string value)
         {
             if (!string.IsNullOrEmpty(value))
             {

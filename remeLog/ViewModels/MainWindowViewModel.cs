@@ -454,6 +454,8 @@ namespace remeLog.ViewModels
                     await semaphoreSlim.WaitAsync(cancellationToken);
                     await Util.UpdateAppSettingsAsync();
 
+                    Constants.Dates.Holidays = await Database.GetHolidaysAsync(null);
+
                     Status = "Получение списка станков...";
 
                     switch (await Task.Run(Machines.ReadMachines))

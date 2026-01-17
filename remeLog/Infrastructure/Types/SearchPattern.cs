@@ -8,37 +8,45 @@ namespace remeLog.Infrastructure.Types
 {
     public class SearchPattern
     {
-        public string Value { get; }
-        public string Operator { get; }
+        public string Pattern { get; }
+        public bool IsExactMatch { get; }
 
         public SearchPattern(string input)
         {
             if (string.IsNullOrEmpty(input))
             {
-                Value = input;
-                Operator = "LIKE";
+                Pattern = "IS NULL";
+                IsExactMatch = true;
                 return;
             }
 
             if (input.StartsWith('='))
             {
-                Value = input[1..];
-                Operator = "=";
-                return;
+                Pattern = $"= '{input[1..]}'";
+                IsExactMatch = true;
             }
-
-            Operator = "LIKE";
-
-            if (input.Contains('*'))
+            else if (input.StartsWith('*') && input.EndsWith('*'))
             {
-                Value = input.Replace('*', '%');
-                return;
+                Pattern = $"LIKE '{input.Replace('*', '%')}'";
+                IsExactMatch = false;
             }
-
-            Value = $"%{input}%";
+            else if (input.StartsWith('*'))
+            {
+                Pattern = $"LIKE '%{input[1..]}'";
+                IsExactMatch = false;
+            }
+            else if (input.EndsWith('*'))
+            {
+                Pattern = $"LIKE '{input[..^1]}%'";
+                IsExactMatch = false;
+            }
+            else
+            {
+                Pattern = $"LIKE '%{input}%'";
+                IsExactMatch = false;
+            }
         }
 
-
-        public override string ToString() => $"{Operator} '{Value}'";
+        public override string ToString() => Pattern;
     }
 }

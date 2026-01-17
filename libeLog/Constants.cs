@@ -99,16 +99,7 @@ namespace libeLog
 
         public static class Dates
         {
-            public static readonly DateTime[] Holidays =
-            {
-                new(2024, 05, 09),
-                new(2024, 12, 29),
-                new(2024, 12, 30),
-                new(2024, 12, 31),
-                new(2025, 01, 01),
-                new(2025, 01, 02),
-                new(2025, 05, 09),
-            };
+            public static List<DateTime> Holidays { get; set; } = new();
         }
     }
 }

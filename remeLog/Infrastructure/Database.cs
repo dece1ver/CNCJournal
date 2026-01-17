@@ -361,6 +361,34 @@ namespace remeLog.Infrastructure
             return false;
         }
 
+        public async static Task<List<DateTime>> GetHolidaysAsync(IProgress<string>? progress)
+        {
+            List<DateTime> holidays = new();
+
+            await Task.Run(async () =>
+            {
+                progress?.Report("Подключение к БД...");
+                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                {
+                    await connection.OpenAsync();
+                    string query = $"SELECT Holidays FROM cnc_remelog_config;";
+                    using (SqlCommand command = new(query, connection))
+                    {
+                        using (SqlDataReader reader = await command.ExecuteReaderAsync())
+                        {
+                            progress?.Report("Чтение данных из БД...");
+                            while (await reader.ReadAsync())
+                            {
+                                holidays.Add(reader.GetDateTime(0));
+                            }
+                        }
+                    }
+                }
+                progress?.Report("Чтение завершено");
+            });
+            return holidays;
+        }
+
         /// <summary>
         /// Сохраняет информацию о серийной детали в базе данных.
         /// Если деталь с заданным Id существует, выполняется обновление её имени,
