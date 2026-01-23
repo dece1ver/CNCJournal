@@ -457,7 +457,6 @@ namespace remeLog.Views
         private void OnAddMultiFilterValueClick(object sender, RoutedEventArgs e)
         {
             if (sender is not MenuItem) return;
-            DependencyObject depObj = (DependencyObject)e.OriginalSource;
             if (Keyboard.FocusedElement is DataGridCell cell)
             {
                 DataGridColumn column = cell.Column;

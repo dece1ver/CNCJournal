@@ -543,6 +543,7 @@ namespace remeLog.Infrastructure
                 .Add(CM.CountPerMachine, "Количество записей")
                 .Add(CM.SerialCount)
                 .Add(CM.SerialCountRatio)
+                .Add(CM.SetupsCount)
                 .Build();
 
             var headerRow = 2;
@@ -560,7 +561,6 @@ namespace remeLog.Infrastructure
             progress?.Report("Подготовка данных...");
             var serialPartNames = serialParts.Select(p => p.PartName.NormalizedPartNameWithoutComments()).ToImmutableHashSet();
             var filteredParts = parts
-                .Where(p => !p.ExcludeFromReports)
                 .GroupBy(p => p.Machine)
                 .SelectMany(machineGroup =>
                     machineGroup
@@ -575,7 +575,8 @@ namespace remeLog.Infrastructure
             foreach (var partGroup in filteredParts.GroupBy(p => p.Machine).OrderBy(pg => pg.Key))
             {
                 ws.Row(row).Height = 20;
-                parts = partGroup.OrderBy(p => p.StartSetupTime).ToList();
+                var totalMachineParts = partGroup.OrderBy(p => p.StartSetupTime);
+                parts = totalMachineParts.Where(p => !p.ExcludeFromReports).ToList();
                 double totalWorkedMinutes = parts.FullWorkedTime().TotalMinutes;
 
                 // ---------- ОСНОВНАЯ ИНФОРМАЦИЯ ----------
@@ -701,13 +702,16 @@ namespace remeLog.Infrastructure
                 ws.Cell(row, ci[CM.AverageReplacementTime]).SetValue(parts.AverageReplacementTimeRatio())
                     .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.Precision2;
 
+                // количество полных наладок и половина частичных т.к. по 2 частичных на 1 деталь
+                ws.Cell(row, ci[CM.SetupsCount]).Value = totalMachineParts.Count(p => p.SetupTimeFact > 0) + totalMachineParts.Count(p => p.PartialSetupTime > 0) / 2;
+
                 double totalReplacementTime = parts.Aggregate(0.0, (acc, p) => double.IsFinite(p.PartReplacementTime) ? acc + p.PartReplacementTime * p.FinishedCount : acc);
 
                 //ws.Cell(row, ci[CM.TotalReplacementTime])
                 //    .SetValue(totalReplacementTime / 60)
                 //    .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.Precision2;
                 ws.Range(row, ci[CM.SpecifiedDowntimes], row, ci[CM.SpecifiedDowntimes]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
-
+                
                 row++;
             }
 
@@ -827,6 +831,7 @@ namespace remeLog.Infrastructure
             ws.Cell(row, ci[CM.AveragePartsCount]).FormulaA1 = $"SUBTOTAL(101, {ws.Range(firstDataRow, ci[CM.AveragePartsCount], lastDataRow, ci[CM.AveragePartsCount]).RangeAddress})";
             ws.Cell(row, ci[CM.AveragePartsCountSerial]).FormulaA1 = $"SUBTOTAL(101, {ws.Range(firstDataRow, ci[CM.AveragePartsCountSerial], lastDataRow, ci[CM.AveragePartsCountSerial]).RangeAddress})";
             ws.Cell(row, ci[CM.AveragePartsCountNonSerial]).FormulaA1 = $"SUBTOTAL(101, {ws.Range(firstDataRow, ci[CM.AveragePartsCountNonSerial], lastDataRow, ci[CM.AveragePartsCountNonSerial]).RangeAddress})";
+            ws.Cell(row, ci[CM.SetupsCount]).FormulaA1 = $"SUBTOTAL(109, {ws.Range(firstDataRow, ci[CM.SetupsCount], lastDataRow, ci[CM.SetupsCount])})";
 
             ws.Cell(row, ci[CM.SerialPartsTimeRatio]).FormulaA1 = $"{ws.Cell(row, ci[CM.SerialPartsTime]).Address}" +
                 $"/{ws.Cell(row, ci[CM.TotalTime]).Address}";
@@ -1226,6 +1231,10 @@ namespace remeLog.Infrastructure
 
                 var qualification = partGroup.Key.Operator.GetOperatorQualification(operators);
                 var validQualification = int.TryParse(qualification, out int qualificationNumber);
+                if (qualificationNumber == 0)
+                {
+                    continue;
+                }
                 var qual = qualifications.First(q => q.Value == qualificationNumber);
                 ws.Cell(row, ci[CM.Qualification]).SetValue(validQualification ? qualificationNumber : qualification);
                 ws.Cell(row, ci[CM.Machine]).SetValue(groupParts.First().Machine);
