@@ -455,7 +455,8 @@ namespace eLog.Models
 
                     if (downTime.Time.TotalMinutes > 0) downTimesMinutes += downTime.Time.TotalMinutes - partialBreaks;
                 }
-                var totalCount = TotalCount > 1 ? TotalCount - 1 : TotalCount;
+                var totalCount = TotalCount + DefectiveCount;
+                totalCount = totalCount > 1 ? totalCount - 1 : totalCount;
                 var startMachiningTime = SetupIsFinished
                     ? StartMachiningTime
                     : StartSetupTime
