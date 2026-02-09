@@ -536,6 +536,16 @@ namespace remeLog.Infrastructure
         public const string AverageSetupTime = "averageSetupTime";
 
         /// <summary>
+        /// Среднее время простоев
+        /// </summary>
+        public const string AverageDowntimesTime = "averageDowntimesTime";
+
+        /// <summary>
+        /// Среднее время норматива наладки
+        /// </summary>
+        public const string AverageSetupNormative = "averageSetupNormative";
+
+        /// <summary>
         /// Время в наладке
         /// </summary>
         public const string TotalSetupTime = "setupTime";
@@ -787,6 +797,8 @@ namespace remeLog.Infrastructure
             { UnspecifiedDowntimes, "Неуказанные простои" },
             { CountPerMachine, $"Количество{Environment.NewLine}по станку" },
             { AverageSetupTime, $"Среднее{Environment.NewLine}время наладки" },
+            { AverageDowntimesTime, $"Среднее время{Environment.NewLine}простоев" },
+            { AverageSetupNormative, $"Среднее время{Environment.NewLine}норматива наладки" },
             { TotalSetupTime, $"Время наладки" },
             { TotalSetupTimeSerial, $"Время наладки на серийке" },
             { TotalProductionTime, $"Время изготовления" },

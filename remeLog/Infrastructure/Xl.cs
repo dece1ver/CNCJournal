@@ -521,6 +521,8 @@ namespace remeLog.Infrastructure
                 .Add(CM.UnspecifiedDowntimes)
                 .Add(CM.TotalMachinigTime)
                 .Add(CM.AverageReplacementTime, "Среднее время замены детали, мин")
+                .Add(CM.AverageDowntimesTime, "Среднее время простоев, час")
+                .Add(CM.AverageSetupNormative, $"Среднее время{Environment.NewLine}норматива наладки, час")
                 .Add(CM.AverageSetupTime, "Среднее время наладки, час")
                 .Add(CM.TotalSetupTime, "Общее время наладок, час")
                 .Add(CM.TotalSetupTimeSerial, "Общее время наладок серийки, час")
@@ -641,6 +643,12 @@ namespace remeLog.Infrastructure
 
                 ws.Cell(row, ci[CM.MachineTimeToTotalRatio]).SetFormulaA1($"{ws.Cell(row, ci[CM.TotalMachinigTime]).Address.ToStringRelative()}/{ws.Cell(row, ci[CM.TotalTime]).Address.ToStringRelative()}");
 
+                ws.Cell(row, ci[CM.AverageDowntimesTime]).SetValue(parts
+                    .Where(p => (p.SetupDowntimes + p.MachiningDowntimes) > 0)
+                    .Select(p => p.SetupDowntimes + p.MachiningDowntimes)
+                    .DefaultIfEmpty(0)
+                    .Average() / 60);
+                ws.Cell(row, ci[CM.AverageSetupNormative]).SetValue(totalMachineParts.AverageSetupNormatives().TotalHours);
                 ws.Cell(row, ci[CM.AverageSetupTime]).SetValue(parts.AverageSetupTime().TotalHours);
                 ws.Cell(row, ci[CM.TotalSetupTime]).SetValue(parts.TotalSetupTime().TotalHours);
                 ws.Cell(row, ci[CM.TotalSetupTimeSerial]).SetValue(parts.Where(p => serialPartNames.Contains(p.PartName.NormalizedPartNameWithoutComments())).TotalSetupTime().TotalHours);
@@ -1125,7 +1133,7 @@ namespace remeLog.Infrastructure
         /// <param name="serialParts">Серийные детали (опционально)</param>
         /// <returns>При удачном выполнении возвращает путь к записанному файлу</returns>
         public static async Task<string> ExportOperatorReportAsync(IEnumerable<Part> parts, DateTime fromDate, DateTime toDate,
-            string path, int minPartsCount, int maxPartsCount, HashSet<string>? serialParts = null, IProgress<string>? progress = null)
+            string path, int minPartsCount, int maxPartsCount, HashSet<string>? serialParts = null, bool includeExcludedParts = false, IProgress<string>? progress = null)
         {
             // ============================================================================
             // ВАЛИДАЦИЯ ВХОДНЫХ ПАРАМЕТРОВ
@@ -1153,7 +1161,11 @@ namespace remeLog.Infrastructure
             // ФИЛЬТРАЦИЯ ДАННЫХ
             // ============================================================================
             progress?.Report("Фильтрация данных");
-            var filteredParts = parts.Where(p => !p.ExcludeFromReports).ToList();
+            var filteredParts = parts;
+            if (!includeExcludedParts)
+            {
+                filteredParts = parts.Where(p => !p.ExcludeFromReports).ToList();
+            }
             var onlySerial = serialParts?.Any() == true;
 
             if (onlySerial)

@@ -460,10 +460,27 @@ namespace remeLog.Infrastructure.Extensions
         /// Рассчитывает среднее время наладки для коллекции деталей (без частичных наладок).
         /// </summary>
         /// <param name="parts">Коллекция деталей, для которых выполняется расчет.</param>
-        /// <returns>Среднее арифметическое время в наладке <see cref="SetupDowntimes"/> тех деталей в коллекции, где осуществлялась полноценная наладка.</returns>
+        /// <returns>Среднее арифметическое время в наладке тех деталей в коллекции, где осуществлялась полноценная наладка.</returns>
         public static TimeSpan AverageSetupTime(this IEnumerable<Models.Part> parts)
         {
             return parts.Where(p => p.SetupTimeFact > 0).Any() ? TimeSpan.FromMinutes(parts.Where(p => p.SetupTimeFact > 0).Average(p => p.SetupTimeFact)) : TimeSpan.Zero;
+        }
+
+        /// <summary>
+        /// Рассчитывает среднее время нормативов наладки для коллекции деталей (без частичных наладок).
+        /// </summary>
+        /// <param name="parts">Коллекция деталей, для которых выполняется расчет.</param>
+        /// <returns>Среднее арифметическое время нормативов всех деталей из коллекции.</returns>
+        public static TimeSpan AverageSetupNormatives(this IEnumerable<Models.Part> parts)
+        {
+            var uniqueNormatives = parts
+                .Where(p => p.SetupTimePlanForCalc > 0)
+                .GroupBy(p => new { p.PartName, p.Machine, p.Setup, p.Order })
+                .Select(g => TimeSpan.FromMinutes(g.First().SetupTimePlanForCalc))
+                .ToList();
+            if (uniqueNormatives.Count == 0) return TimeSpan.Zero;
+            var total = uniqueNormatives.Aggregate(TimeSpan.Zero, (sum, t) => sum + t);
+            return TimeSpan.FromTicks(total.Ticks / uniqueNormatives.Count);
         }
 
         /// <summary>
