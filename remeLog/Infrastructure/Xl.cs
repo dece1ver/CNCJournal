@@ -642,12 +642,13 @@ namespace remeLog.Infrastructure
                 ws.Cell(row, ci[CM.ProductionEfficiencyToTotalRatio]).Value = prodTimePlanSum / totalWorkedMinutes;
 
                 ws.Cell(row, ci[CM.MachineTimeToTotalRatio]).SetFormulaA1($"{ws.Cell(row, ci[CM.TotalMachinigTime]).Address.ToStringRelative()}/{ws.Cell(row, ci[CM.TotalTime]).Address.ToStringRelative()}");
-
-                ws.Cell(row, ci[CM.AverageDowntimesTime]).SetValue(parts
-                    .Where(p => (p.SetupDowntimes + p.MachiningDowntimes) > 0)
-                    .Select(p => p.SetupDowntimes + p.MachiningDowntimes)
-                    .DefaultIfEmpty(0)
-                    .Average() / 60);
+                var sumDowntimes = parts.Sum(p => p.SetupDowntimes + p.MachiningDowntimes);
+                //ws.Cell(row, ci[CM.AverageDowntimesTime]).SetValue(parts
+                //    .Where(p => (p.SetupDowntimes + p.MachiningDowntimes) > 0)
+                //    .Select(p => p.SetupDowntimes + p.MachiningDowntimes)
+                //    .DefaultIfEmpty(0)
+                //    .Average() / 60);
+                ws.Cell(row, ci[CM.AverageDowntimesTime]).SetValue(sumDowntimes / parts.Count / 60);
                 ws.Cell(row, ci[CM.AverageSetupNormative]).SetValue(totalMachineParts.AverageSetupNormatives().TotalHours);
                 ws.Cell(row, ci[CM.AverageSetupTime]).SetValue(parts.AverageSetupTime().TotalHours);
                 ws.Cell(row, ci[CM.TotalSetupTime]).SetValue(parts.TotalSetupTime().TotalHours);
@@ -1234,7 +1235,8 @@ namespace remeLog.Infrastructure
 
                 var isSerialMachine = await Database.GetMachineSerialStatus(partGroup.Key.Machine);
                 var groupParts = partGroup.ToList();
-                
+
+                var machine = groupParts.First().Machine;
 
                 // ------------------------------------------------------------------------
                 // Основные данные оператора
@@ -1249,7 +1251,7 @@ namespace remeLog.Infrastructure
                 }
                 var qual = qualifications.First(q => q.Value == qualificationNumber);
                 ws.Cell(row, ci[CM.Qualification]).SetValue(validQualification ? qualificationNumber : qualification);
-                ws.Cell(row, ci[CM.Machine]).SetValue(groupParts.First().Machine);
+                ws.Cell(row, ci[CM.Machine]).SetValue(machine);
                 ws.Cell(row, ci[CM.SerialOrders]).SetValue(isSerialMachine ? 1 : 0)
                     .Style.NumberFormat.SetFormat("\"✓\";;\"✗\"")
                     .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
@@ -1257,7 +1259,7 @@ namespace remeLog.Infrastructure
                 // ------------------------------------------------------------------------
                 // Коэффициенты наладки и изготовления
                 // ------------------------------------------------------------------------
-                var averageSetupRatio = groupParts.AverageSetupRatio();
+                var averageSetupRatio = groupParts.AverageSetupRatio(machine);
                 ws.Cell(row, ci[CM.SetupRatio])
                     .SetValue(averageSetupRatio)
                     .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;

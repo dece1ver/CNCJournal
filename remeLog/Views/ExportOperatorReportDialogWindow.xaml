@@ -7,7 +7,7 @@
         WindowStartupLocation="CenterOwner"
         xmlns:vm="clr-namespace:remeLog.ViewModels"
         mc:Ignorable="d"
-        Title="Параметры отчета" Height="150" Width="300">
+        Title="Параметры отчета" Height="160" Width="300">
     <Window.DataContext>
         <vm:ExportOperatorDailogWindowViewModel/>
     </Window.DataContext>

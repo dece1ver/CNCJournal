@@ -9,6 +9,7 @@ using libeLog.Extensions;
 using libeLog.Models;
 using libeLog;
 using System.Security;
+using DocumentFormat.OpenXml.Wordprocessing;
 
 
 namespace remeLog.Infrastructure.Extensions
@@ -21,11 +22,12 @@ namespace remeLog.Infrastructure.Extensions
             return validReplacementTimesRatios.Any() ? validReplacementTimesRatios.Average() : 0.0;
         }
 
-        public static double AverageSetupRatio(this IEnumerable<Models.Part> parts)
+        public static double AverageSetupRatio(this IEnumerable<Models.Part> parts, string? machine = null)
         {
+            var maxSetupLimit = string.IsNullOrEmpty(machine) ? AppSettings.MaxSetupLimit : AppSettings.MaxSetupLimits[machine];
             var validSetupRatios = parts
                 .Where(p => p.SetupRatio > 0 && !double.IsNaN(p.SetupRatio) && !double.IsPositiveInfinity(p.SetupRatio))
-                .Select(p => p.SetupRatio <= AppSettings.MaxSetupLimit ? p.SetupRatio : AppSettings.MaxSetupLimit)
+                .Select(p => p.SetupRatio <= maxSetupLimit ? p.SetupRatio : maxSetupLimit)
                 .DefaultIfEmpty(0.0);
 
             return validSetupRatios.Any() ? validSetupRatios.Average() : 0.0;
