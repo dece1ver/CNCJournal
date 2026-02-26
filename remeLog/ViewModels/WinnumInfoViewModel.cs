@@ -13,16 +13,17 @@ using remeLog.Infrastructure;
 using libeLog;
 using System.Windows.Input;
 using System.Diagnostics;
-using System.Security.Policy;
 using System.IO;
 using System.Windows;
+using System.Data;
 
 namespace remeLog.ViewModels
 {
     public class WinnumInfoViewModel : ViewModel
     {
+        public DataTable? TimelineData { get; set; }
 
-        public WinnumInfoViewModel(string generalInfo, string ncProgramFolder, List<PriorityTagDuration> priorityTagDurations, List<TimeInterval> timeIntervals)
+        public WinnumInfoViewModel(string generalInfo, string ncProgramFolder, List<PriorityTagDuration> priorityTagDurations, List<TimeInterval> timeIntervals, DataTable? timeline = null)
         {
             OpenArchiveNcProgramFolderCommand = new LambdaCommand(OnOpenArchiveNcProgramFolderCommandExecuted, CanOpenArchiveNcProgramFolderCommandExecute);
             OpenIntermediateNcProgramFolderCommand = new LambdaCommand(OnOpenIntermediateNcProgramFolderCommandExecuted, CanOpenIntermediateNcProgramFolderCommandExecute);
@@ -32,9 +33,10 @@ namespace remeLog.ViewModels
             NcArchiveProgramFolder = AppSettings.NcArchivePath;
             NcIntermediateProgramFolder = AppSettings.NcIntermediatePath;
             NcWinnumProgramFolder = ncProgramFolder;
-
             PriorityTagDurations = priorityTagDurations;
             TimeIntervals = timeIntervals;
+
+            TimelineData = timeline;
 
             var series = new ObservableCollection<ISeries>();
 

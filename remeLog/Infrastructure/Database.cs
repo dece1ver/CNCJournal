@@ -307,30 +307,139 @@ namespace remeLog.Infrastructure
         public async static Task<List<Machine>> GetMachinesAsync(IProgress<string> progress)
         {
             List<Machine> machines = new();
-
             await Task.Run(async () =>
             {
                 progress.Report("Подключение к БД...");
-                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                using SqlConnection connection = new(AppSettings.Instance.ConnectionString);
+                await connection.OpenAsync();
+
+                const string query = @"
+            SELECT
+                Id, Name, IsActive, IsSerial, Type, SetupLimit, SetupCoefficient,
+                WnId, WnUuid,
+                WnCounterSignal, WnNcProgramNameSignal, WnNcPartNameSignal,
+                WnCurrentCSSignal, WnCurrentPlaneSignal,
+                WnCurrentBlockNumberSignal, WnCurrentBlockTextSignal, WnNcModeSignal,
+                WnFeedHoldSignal, WnSBKSignal, WnDryRunSignal, WnMSTLKSignal, WnMLKSignal,
+                WnProgramRunningSignal, WnStopSignal, WnOpStopSignal,
+                WnMcodeSignal, WnGMoveSignal, WnGCycleSignal, WnGcodeSignal,
+                WnRapidMultiplierSignal, WnFeedMultiplierSignal,
+                WnSpindleSpeed1MultiplierSignal, WnSpindleSpeed2MultiplierSignal,
+                WnActSpindle1SpeedSignal, WnActSpindle2SpeedSignal, WnActCutSpeedSignal,
+                WnActFeedPerMinSignal, WnActFeedPerRevSignal,
+                WnAbsXSignal, WnAbsYSignal, WnAbsZSignal, WnAbsZASignal, WnAbsBSignal, WnAbsCSignal, WnAbsWSignal,
+                WnRelXSignal, WnRelYSignal, WnRelZSignal, WnRelZASignal, WnRelBSignal, WnRelCSignal, WnRelWSignal,
+                WnMachXSignal, WnMachYSignal, WnMachZSignal, WnMachZASignal, WnMachBSignal, WnMachCSignal, WnMachWSignal,
+                WnToolSignal, WnToolHSignal, WnToolDSignal, WnToolVectorSignal,
+                WnToolGeomRSignal, WnToolGeomXSignal, WnToolGeomYSignal, WnToolGeomZSignal,
+                WnToolWearRSignal, WnToolWearXSignal, WnToolWearYSignal, WnToolWearZSignal,
+                WnAlarmMessageSignal,
+                WnLoadXSignal, WnLoadYSignal, WnLoadZSignal, WnLoadCSignal, WnLoadBSignal, WnLoadWSignal, WnLoadSpindle1Signal, WnLoadSpindle2Signal
+            FROM cnc_machines
+            WHERE IsActive = 1;";
+
+                using SqlCommand command = new(query, connection);
+                using SqlDataReader reader = await command.ExecuteReaderAsync();
+
+                progress.Report("Чтение данных из БД...");
+                var ct = CancellationToken.None;
+
+                while (await reader.ReadAsync())
                 {
-                    await connection.OpenAsync();
-                    string query = $"SELECT Name, WnId, WnUuid, WnCounterSignal, WnNcNameSignal FROM cnc_machines WHERE IsActive = 1;";
-                    using (SqlCommand command = new(query, connection))
+                    int i = 0;
+                    machines.Add(new Machine
                     {
-                        using (SqlDataReader reader = await command.ExecuteReaderAsync())
-                        {
-                            progress.Report("Чтение данных из БД...");
-                            while (await reader.ReadAsync())
-                            {
-                                machines.Add(new Machine(
-                                    await reader.GetValueOrDefaultAsync(0, "", CancellationToken.None),             // Name
-                                    await reader.GetValueOrDefaultAsync(1, 0, CancellationToken.None),              // Winnum Id
-                                    await reader.GetValueOrDefaultAsync(2, Guid.Empty, CancellationToken.None),     // Winnum Uuid
-                                    await reader.GetValueOrDefaultAsync(3, string.Empty, CancellationToken.None),   // Winnum Counter Signal
-                                    await reader.GetValueOrDefaultAsync(4, string.Empty, CancellationToken.None))); // Winnum NcName Signal
-                            }
-                        }
-                    }
+                        // Основные
+                        Id = await reader.GetValueOrDefaultAsync(i++, 0, ct),
+                        Name = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        IsActive = await reader.GetValueOrDefaultAsync(i++, false, ct),
+                        IsSerial = await reader.GetValueOrDefaultAsync(i++, false, ct),
+                        Type = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        SetupLimit = await reader.GetValueOrDefaultAsync(i++, 0, ct),
+                        SetupCoefficient = await reader.GetValueOrDefaultAsync(i++, 0.0, ct),
+                        // Winnum
+                        WnId = await reader.GetValueOrDefaultAsync(i++, 0, ct),
+                        WnUuid = await reader.GetValueOrDefaultAsync(i++, Guid.Empty, ct),
+                        // Общие
+                        WnCounterSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnNcProgramNameSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnNcPartNameSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnCurrentCSSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnCurrentPlaneSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnCurrentBlockNumberSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnCurrentBlockTextSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnNcModeSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnFeedHoldSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnSBKSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnDryRunSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMSTLKSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMLKSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnProgramRunningSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnStopSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnOpStopSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMcodeSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnGMoveSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnGCycleSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnGcodeSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Коррекции
+                        WnRapidMultiplierSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnFeedMultiplierSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnSpindleSpeed1MultiplierSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnSpindleSpeed2MultiplierSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Актуальные значения
+                        WnActSpindle1SpeedSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnActSpindle2SpeedSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnActCutSpeedSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnActFeedPerMinSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnActFeedPerRevSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Абсолютные координаты
+                        WnAbsXSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnAbsYSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnAbsZSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnAbsZASignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnAbsBSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnAbsCSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnAbsWSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Относительные координаты
+                        WnRelXSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnRelYSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnRelZSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnRelZASignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnRelBSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnRelCSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnRelWSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Машинные координаты
+                        WnMachXSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMachYSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMachZSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMachZASignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMachBSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMachCSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMachWSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Инструмент
+                        WnToolSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolHSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolDSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolVectorSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolGeomRSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolGeomXSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolGeomYSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolGeomZSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolWearRSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolWearXSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolWearYSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolWearZSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Аварии и нагрузки
+                        WnAlarmMessageSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadXSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadYSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadZSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadCSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadBSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadWSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadSpindle1Signal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadSpindle2Signal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                    });
                 }
                 progress.Report("Чтение завершено");
             });

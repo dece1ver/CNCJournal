@@ -6,7 +6,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF"
         mc:Ignorable="d" FontFamily="Consolas"
-        Title="WinnumInfoWindow" Height="720" Width="1368"
+        Title="Данные из Winnum" Height="720" Width="1368"
         d:DataContext="{d:DesignInstance Type=vm:WinnumInfoViewModel}">
     <DockPanel>
         
@@ -45,6 +45,16 @@
                         
                     </lvc:CartesianChart>
                 </DockPanel>
+            </TabItem>
+            <TabItem Header="Сводная таблица">
+                <DataGrid ItemsSource="{Binding TimelineData}"
+                          AutoGenerateColumns="True"
+                          ColumnWidth="Auto"
+                          CanUserAddRows="False"
+                          CanUserDeleteRows="False"
+                          IsReadOnly="True"
+                          EnableRowVirtualization="True"
+                          VirtualizingPanel.IsVirtualizing="True"/>
             </TabItem>
             <TabItem Header="Тэги с приритетом">
                 <DataGrid ItemsSource="{Binding PriorityTagDurations}" AutoGenerateColumns="False"
