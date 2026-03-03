@@ -907,8 +907,8 @@ namespace remeLog.ViewModels
                     var intervals = orderedTagIntervalCalculations.Select(interval => new TimeInterval(interval.Start, interval.End)).ToList();
                     var sb = new StringBuilder();
 
-                    var end = SelectedPart.EndMachiningTime.AddMinutes(5);
                     var start = startTime.AddMinutes(-5);
+                    var end = SelectedPart.EndMachiningTime.AddMinutes(5);
                     var signalNames = Enumerable.Range(0, 2000).Select(i => $"A{i}").ToList();
                     var signals = new ConcurrentDictionary<string, ConcurrentBag<string>>();
 
@@ -933,16 +933,16 @@ namespace remeLog.ViewModels
 
                     progress.Report("Построение сводной таблицы");
 
-                    var timelineSources = new List<TimelineSource>
-                    {
-                        TimelineSource.FromPriorityTag(
-                            displayName: "Тэг",
-                            fetchAsync: () => operation.GetPriorityTagDurationAsync(
-                                AppId.CNC_MONITORING_WITH_STOPS_AND_MANUAL,
-                                startTime, SelectedPart.EndMachiningTime)),
-                    };
-
-                    timelineSources.AddRange(BuildMachineTimelineSources(signal, machine, startTime, SelectedPart.EndMachiningTime));
+                    var timelineSources = new List<TimelineSource>();
+                    var tagsTimelineSource = TimelineSource.FromPriorityTag(
+                        displayName: "Тэг",
+                        fetchAsync: () => operation.GetPriorityTagDurationAsync(
+                            AppId.CNC_MONITORING_WITH_STOPS_AND_MANUAL,
+                            start, end),
+                        filterStart: start,
+                        filterEnd: end);
+                    timelineSources.Add(tagsTimelineSource);
+                    timelineSources.AddRange(BuildMachineTimelineSources(signal, machine, start, end));
 
                     var timeline = await TimelineBuilder.BuildAsync(timelineSources, TimeSpan.FromSeconds(5), progress);
 
@@ -2106,105 +2106,102 @@ namespace remeLog.ViewModels
             return $"%{input}%";
         }
 
-        private IEnumerable<TimelineSource> BuildMachineTimelineSources(Signal signal, Machine machine, DateTime start, DateTime end)
+        private static IEnumerable<TimelineSource> BuildMachineTimelineSources(Signal signal, Machine machine, DateTime start, DateTime end)
         {
-            var s = start.AddMinutes(-5);
-            var e = end.AddMinutes(5);
-
-            TimelineSource? FromSignal(string displayName, string signalId)
+            TimelineSource? FromSignal(string displayName, string signalId, Func<string, string>? mapper = null)
             {
                 if (string.IsNullOrEmpty(signalId)) return null;
                 return TimelineSource.FromSignal(
                     displayName,
-                    () => signal.GetSignalAsync(signalId, SignalType.ByTime, Ordering.Asc, s, e));
+                    () => signal.GetSignalAsync(signalId, SignalType.ByTime, Ordering.Asc, start, end), valueMapper: mapper);
             }
 
-            var sources = new (string DisplayName, string SignalId)[]
+            var sources = new (string DisplayName, string SignalId, Func<string, string>? Mapper)[]
             {
                 // Общие
-                ("№ УП",                machine.WnNcProgramNameSignal),
-                ("Имя УП",              machine.WnNcPartNameSignal),
-                ("Счётчик",             machine.WnCounterSignal),
-                ("Режим ЧПУ",           machine.WnNcModeSignal),
-                ("УП выполняется",      machine.WnProgramRunningSignal),
-                ("Останов по M0",       machine.WnStopSignal),
-                ("Останов по М1",       machine.WnOpStopSignal),
-                ("М-код",               machine.WnMcodeSignal),
-                ("Движение",            machine.WnGMoveSignal),
-                ("Цикл",                machine.WnGCycleSignal),
-                ("G-код",               machine.WnGcodeSignal),
-                ("Feed Hold",           machine.WnFeedHoldSignal),
-                ("Single Block",        machine.WnSBKSignal),
-                ("Dry Run",             machine.WnDryRunSignal),
-                ("MSTLK",               machine.WnMSTLKSignal),
-                ("MLK",                 machine.WnMLKSignal),
-                ("N",                   machine.WnCurrentBlockNumberSignal),
-                ("Текст кадра",         machine.WnCurrentBlockTextSignal),
-                ("СК",                  machine.WnCurrentCSSignal),
-                ("Плоскость",           machine.WnCurrentPlaneSignal),
-                // Коррекции
-                ("Корр. подачи",        machine.WnFeedMultiplierSignal),
-                ("Корр. ускор. хода",   machine.WnRapidMultiplierSignal),
-                ("Корр. шпинделя 1",    machine.WnSpindleSpeed1MultiplierSignal),
-                ("Корр. шпинделя 2",    machine.WnSpindleSpeed2MultiplierSignal),
-                // Актуальные значения
-                ("Обор. 1 шпинделя",    machine.WnActSpindle1SpeedSignal),
-                ("Обор. 2 шпинделя",    machine.WnActSpindle2SpeedSignal),
-                ("Скорость резания",    machine.WnActCutSpeedSignal),
-                ("Подача мм/мин",       machine.WnActFeedPerMinSignal),
-                ("Подача мм/об",        machine.WnActFeedPerRevSignal),
-                // Инструмент
-                ("Инструмент",          machine.WnToolSignal),
-                ("Корр. H",             machine.WnToolHSignal),
-                ("Корр. D",             machine.WnToolDSignal),
-                ("Вектор инстр.",       machine.WnToolVectorSignal),
-                ("Геом. R",             machine.WnToolGeomRSignal),
-                ("Геом. X",             machine.WnToolGeomXSignal),
-                ("Геом. Y",             machine.WnToolGeomYSignal),
-                ("Геом. Z",             machine.WnToolGeomZSignal),
-                ("Износ R",             machine.WnToolWearRSignal),
-                ("Износ X",             machine.WnToolWearXSignal),
-                ("Износ Y",             machine.WnToolWearYSignal),
-                ("Износ Z",             machine.WnToolWearZSignal),
-                // Абсолютные координаты
-                ("Abs X",               machine.WnAbsXSignal),
-                ("Abs Y",               machine.WnAbsYSignal),
-                ("Abs Z",               machine.WnAbsZSignal),
-                ("Abs ZA",              machine.WnAbsZASignal),
-                ("Abs B",               machine.WnAbsBSignal),
-                ("Abs C",               machine.WnAbsCSignal),
-                ("Abs W",               machine.WnAbsWSignal),
-                // Относительные координаты
-                ("Rel X",               machine.WnRelXSignal),
-                ("Rel Y",               machine.WnRelYSignal),
-                ("Rel Z",               machine.WnRelZSignal),
-                ("Rel ZA",              machine.WnRelZASignal),
-                ("Rel B",               machine.WnRelBSignal),
-                ("Rel C",               machine.WnRelCSignal),
-                ("Rel W",               machine.WnRelWSignal),
-                // Машинные координаты
-                ("Mach X",              machine.WnMachXSignal),
-                ("Mach Y",              machine.WnMachYSignal),
-                ("Mach Z",              machine.WnMachZSignal),
-                ("Mach ZA",             machine.WnMachZASignal),
-                ("Mach B",              machine.WnMachBSignal),
-                ("Mach C",              machine.WnMachCSignal),
-                ("Mach W",              machine.WnMachWSignal),
-                // Аварии и нагрузки
-                ("Авария",              machine.WnAlarmMessageSignal),
-                ("Нагрузка X",          machine.WnLoadXSignal),
-                ("Нагрузка Y",          machine.WnLoadYSignal),
-                ("Нагрузка Z",          machine.WnLoadZSignal),
-                ("Нагрузка C",          machine.WnLoadCSignal),
-                ("Нагрузка B",          machine.WnLoadBSignal),
-                ("Нагрузка W",          machine.WnLoadWSignal),
-                ("Нагрузка 1 шпинд.",   machine.WnLoadSpindle1Signal),
-                ("Нагрузка 2 шпинд.",   machine.WnLoadSpindle2Signal),
+                ("№ УП",                machine.WnNcProgramNameSignal,           null),
+                ("Имя УП",              machine.WnNcPartNameSignal,              null),
+                ("Счётчик",             machine.WnCounterSignal,                 null),
+                ("Режим ЧПУ",           machine.WnNcModeSignal,                  machine.Name.Contains("XH6300") ? SignalMappers.NcModeSiemens : SignalMappers.NcModeFanuc),
+                ("УП выполняется",      machine.WnProgramRunningSignal,          SignalMappers.Bool),
+                ("Останов по M0",       machine.WnStopSignal,                    SignalMappers.Bool),
+                ("Останов по М1",       machine.WnOpStopSignal,                  SignalMappers.Bool),
+                ("М-код",               machine.WnMcodeSignal,                   null),
+                ("Движение",            machine.WnGMoveSignal,                   null),
+                ("Цикл",                machine.WnGCycleSignal,                  null),
+                ("G-код",               machine.WnGcodeSignal,                   null),
+                ("Feed Hold",           machine.WnFeedHoldSignal,                SignalMappers.Bool),
+                ("Single Block",        machine.WnSBKSignal,                     SignalMappers.Bool),
+                ("Dry Run",             machine.WnDryRunSignal,                  SignalMappers.Bool),
+                ("MSTLK",               machine.WnMSTLKSignal,                   SignalMappers.Bool),
+                ("MLK",                 machine.WnMLKSignal,                     SignalMappers.Bool),
+                ("N",                   machine.WnCurrentBlockNumberSignal,      null),
+                ("Текст кадра",         machine.WnCurrentBlockTextSignal,        null),
+                ("СК",                  machine.WnCurrentCSSignal,               null),
+                ("Плоскость",           machine.WnCurrentPlaneSignal,            null),
+                // Коррекции                                                     
+                ("Корр. подачи",        machine.WnFeedMultiplierSignal,          null),
+                ("Корр. ускор. хода",   machine.WnRapidMultiplierSignal,         null),
+                ("Корр. шпинделя 1",    machine.WnSpindleSpeed1MultiplierSignal, null),
+                ("Корр. шпинделя 2",    machine.WnSpindleSpeed2MultiplierSignal, null),
+                // Актуальные значения                                           
+                ("Обор. 1 шпинделя",    machine.WnActSpindle1SpeedSignal,        null),
+                ("Обор. 2 шпинделя",    machine.WnActSpindle2SpeedSignal,        null),
+                ("Скорость резания",    machine.WnActCutSpeedSignal,             null),
+                ("Подача мм/мин",       machine.WnActFeedPerMinSignal,           null),
+                ("Подача мм/об",        machine.WnActFeedPerRevSignal,           null),
+                // Инструмент                                                    
+                ("Инструмент",          machine.WnToolSignal,                    null),
+                ("Корр. H",             machine.WnToolHSignal,                   null),
+                ("Корр. D",             machine.WnToolDSignal,                   null),
+                ("Вектор инстр.",       machine.WnToolVectorSignal,              null),
+                ("Геом. R",             machine.WnToolGeomRSignal,               null),
+                ("Геом. X",             machine.WnToolGeomXSignal,               null),
+                ("Геом. Y",             machine.WnToolGeomYSignal,               null),
+                ("Геом. Z",             machine.WnToolGeomZSignal,               null),
+                ("Износ R",             machine.WnToolWearRSignal,               null),
+                ("Износ X",             machine.WnToolWearXSignal,               null),
+                ("Износ Y",             machine.WnToolWearYSignal,               null),
+                ("Износ Z",             machine.WnToolWearZSignal,               null),
+                // Абсолютные координаты                                         
+                ("Abs X",               machine.WnAbsXSignal,                    null),
+                ("Abs Y",               machine.WnAbsYSignal,                    null),
+                ("Abs Z",               machine.WnAbsZSignal,                    null),
+                ("Abs ZA",              machine.WnAbsZASignal,                   null),
+                ("Abs B",               machine.WnAbsBSignal,                    null),
+                ("Abs C",               machine.WnAbsCSignal,                    null),
+                ("Abs W",               machine.WnAbsWSignal,                    null),
+                // Относительные координаты                                      
+                ("Rel X",               machine.WnRelXSignal,                    null),
+                ("Rel Y",               machine.WnRelYSignal,                    null),
+                ("Rel Z",               machine.WnRelZSignal,                    null),
+                ("Rel ZA",              machine.WnRelZASignal,                   null),
+                ("Rel B",               machine.WnRelBSignal,                    null),
+                ("Rel C",               machine.WnRelCSignal,                    null),
+                ("Rel W",               machine.WnRelWSignal,                    null),
+                // Машинные координаты                                           
+                ("Mach X",              machine.WnMachXSignal,                   null),
+                ("Mach Y",              machine.WnMachYSignal,                   null),
+                ("Mach Z",              machine.WnMachZSignal,                   null),
+                ("Mach ZA",             machine.WnMachZASignal,                  null),
+                ("Mach B",              machine.WnMachBSignal,                   null),
+                ("Mach C",              machine.WnMachCSignal,                   null),
+                ("Mach W",              machine.WnMachWSignal,                   null),
+                // Аварии и нагрузки                                             
+                ("Авария",              machine.WnAlarmMessageSignal,            null),
+                ("Нагрузка X",          machine.WnLoadXSignal,                   null),
+                ("Нагрузка Y",          machine.WnLoadYSignal,                   null),
+                ("Нагрузка Z",          machine.WnLoadZSignal,                   null),
+                ("Нагрузка C",          machine.WnLoadCSignal,                   null),
+                ("Нагрузка B",          machine.WnLoadBSignal,                   null),
+                ("Нагрузка W",          machine.WnLoadWSignal,                   null),
+                ("Нагрузка 1 шпинд.",   machine.WnLoadSpindle1Signal,            null),
+                ("Нагрузка 2 шпинд.",   machine.WnLoadSpindle2Signal,            null),
             };
 
-            foreach (var (displayName, signalId) in sources)
+            foreach (var (displayName, signalId, mapper) in sources)
             {
-                var source = FromSignal(displayName, signalId);
+                var source = FromSignal(displayName, signalId, mapper);
                 if (source != null)
                     yield return source;
             }

@@ -77,6 +77,7 @@ namespace remeLog.Models
         public string WnAbsYSignal { get; set; } = string.Empty;
         public string WnAbsZSignal { get; set; } = string.Empty;
         public string WnAbsZASignal { get; set; } = string.Empty;
+        public string WnAbsASignal { get; set; } = string.Empty;
         public string WnAbsBSignal { get; set; } = string.Empty;
         public string WnAbsCSignal { get; set; } = string.Empty;
         public string WnAbsWSignal { get; set; } = string.Empty;
@@ -89,6 +90,7 @@ namespace remeLog.Models
         public string WnRelYSignal { get; set; } = string.Empty;
         public string WnRelZSignal { get; set; } = string.Empty;
         public string WnRelZASignal { get; set; } = string.Empty;
+        public string WnRelASignal { get; set; } = string.Empty;
         public string WnRelBSignal { get; set; } = string.Empty;
         public string WnRelCSignal { get; set; } = string.Empty;
         public string WnRelWSignal { get; set; } = string.Empty;
@@ -101,6 +103,7 @@ namespace remeLog.Models
         public string WnMachYSignal { get; set; } = string.Empty;
         public string WnMachZSignal { get; set; } = string.Empty;
         public string WnMachZASignal { get; set; } = string.Empty;
+        public string WnMachASignal { get; set; } = string.Empty;
         public string WnMachBSignal { get; set; } = string.Empty;
         public string WnMachCSignal { get; set; } = string.Empty;
         public string WnMachWSignal { get; set; } = string.Empty;

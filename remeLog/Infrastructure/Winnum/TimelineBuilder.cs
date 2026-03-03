@@ -99,10 +99,12 @@ namespace remeLog.Infrastructure.Winnum
                 if (!item.TryGetValue(source.ValueKey, out var value)) continue;
                 if (!TryParseDateTime(timeStr, formats, out var time)) continue;
 
+                var displayValue = source.ValueMapper?.Invoke(value) ?? value;
+
                 events.Add(new TimelineEvent(
                     time,
                     source.DisplayName,
-                    value,
+                    displayValue,
                     EventKind.Start));
             }
         }
@@ -126,17 +128,36 @@ namespace remeLog.Infrastructure.Winnum
                                ? v
                                : source.DisplayName;
 
+                if (source.FilterStart.HasValue && end < source.FilterStart.Value)
+                    continue;
+
+                if (source.FilterEnd.HasValue && start >= source.FilterEnd.Value)
+                    continue;
+
+                DateTime effectiveStart = start;
+                DateTime effectiveEnd = end;
+
+                if (source.FilterStart.HasValue && effectiveStart < source.FilterStart.Value)
+                    effectiveStart = source.FilterStart.Value;
+
+                bool endsAfterFilter =
+                    source.FilterEnd.HasValue &&
+                    effectiveEnd >= source.FilterEnd.Value;
+
                 events.Add(new TimelineEvent(
-                    start,
+                    effectiveStart,
                     source.DisplayName,
                     value,
                     EventKind.Start));
 
-                events.Add(new TimelineEvent(
-                    end,
-                    source.DisplayName,
-                    "",
-                    EventKind.End));
+                if (!endsAfterFilter)
+                {
+                    events.Add(new TimelineEvent(
+                        effectiveEnd,
+                        source.DisplayName,
+                        "",
+                        EventKind.End));
+                }
             }
         }
 
@@ -158,8 +179,6 @@ namespace remeLog.Infrastructure.Winnum
             if (events.Count == 0)
                 return table;
 
-            // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ:
-            // сортировка по времени + приоритету события
             events.Sort((a, b) =>
             {
                 int t = a.Time.CompareTo(b.Time);

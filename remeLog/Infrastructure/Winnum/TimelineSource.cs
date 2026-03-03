@@ -29,18 +29,26 @@ namespace remeLog.Infrastructure.Winnum
         /// </summary>
         public string[]? TimeFormats { get; }
 
+        /// <summary>
+        /// Опциональный преобразователь сырого значения в отображаемую строку.
+        /// Если null — значение выводится как есть.
+        /// </summary>
+        public Func<string, string>? ValueMapper { get; }
+
         public TimelineSource(
             string displayName,
             Func<Task<string>> fetchAsync,
             string timeKey,
             string valueKey,
-            string[]? timeFormats = null)
+            string[]? timeFormats = null,
+        Func<string, string>? valueMapper = null) 
         {
             DisplayName = displayName;
             FetchAsync = fetchAsync;
             TimeKey = timeKey;
             ValueKey = valueKey;
             TimeFormats = timeFormats;
+            ValueMapper = valueMapper;
         }
 
         /// <summary>
@@ -50,8 +58,9 @@ namespace remeLog.Infrastructure.Winnum
             string displayName,
             Func<Task<string>> fetchAsync,
             string timeKey = "event_time",
-            string valueKey = "value") =>
-            new(displayName, fetchAsync, timeKey, valueKey);
+            string valueKey = "value",
+            Func<string, string>? valueMapper = null) =>
+            new(displayName, fetchAsync, timeKey, valueKey, valueMapper: valueMapper);
 
         /// <summary>
         /// Источник на основе GetTagIntervalCalculationAsync / GetSimpleTagIntervalCalculationAsync.
@@ -70,12 +79,16 @@ namespace remeLog.Infrastructure.Winnum
         /// </summary>
         public static IntervalTimelineSource FromPriorityTag(
             string displayName,
-            Func<Task<string>> fetchAsync) =>
-            new(displayName, fetchAsync,
+            Func<Task<string>> fetchAsync,
+            DateTime? filterStart = null,
+            DateTime? filterEnd = null) =>
+                new(displayName, fetchAsync,
                 startKey: "START",
                 endKey: "END",
                 valueKey: "TAG",
-                timeFormats: new[] { "dd.MM.yyyy HH:mm:ss.fff", "dd.MM.yyyy HH:mm:ss" });
+                timeFormats: new[] { "dd.MM.yyyy HH:mm:ss.fff", "dd.MM.yyyy HH:mm:ss" },
+                filterStart: filterStart,
+                filterEnd: filterEnd);
     }
 
     /// <summary>
@@ -86,12 +99,9 @@ namespace remeLog.Infrastructure.Winnum
     {
         public string StartKey { get; }
         public string EndKey { get; }
-
-        /// <summary>
-        /// Атрибут, из которого берётся значение для отображения в колонке.
-        /// Если null — при начале ставится "▶", при конце "■".
-        /// </summary>
         public string? IntervalValueKey { get; }
+        public DateTime? FilterStart { get; }
+        public DateTime? FilterEnd { get; }
 
         public IntervalTimelineSource(
             string displayName,
@@ -99,12 +109,16 @@ namespace remeLog.Infrastructure.Winnum
             string startKey,
             string endKey,
             string? valueKey = null,
-            string[]? timeFormats = null)
+            string[]? timeFormats = null,
+            DateTime? filterStart = null,
+            DateTime? filterEnd = null)
             : base(displayName, fetchAsync, startKey, valueKey ?? "▶", timeFormats)
         {
             StartKey = startKey;
             EndKey = endKey;
             IntervalValueKey = valueKey;
+            FilterStart = filterStart;
+            FilterEnd = filterEnd;
         }
     }
 }
