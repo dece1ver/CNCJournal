@@ -1205,8 +1205,8 @@ namespace remeLog.Infrastructure
                 .Add(CM.ContactingDepartmentsTime)
                 .Add(CM.FixtureMakingTime)
                 .Add(CM.HardwareFailureTime)
-                .Add(CM.SpecifiedDowntimes)
                 .Add(CM.SpecialDowntimeTime)
+                .Add(CM.SpecifiedDowntimes)
                 .Add(CM.SpecifiedDowntimesEx, $"Простои{Environment.NewLine}(без отказа оборудования и обучения)")
                 .Add(CM.GeneralRatio)
                 .Add(CM.SetupsCount)
@@ -1338,6 +1338,7 @@ namespace remeLog.Infrastructure
                     .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
 
                 var specDowntimesEx = groupParts.SpecifiedDowntimesRatioExcluding(new[] { Downtime.HardwareFailure, Downtime.Mentoring, Downtime.Special });
+
                 ws.Cell(row, ci[CM.SpecifiedDowntimesEx])
                     .SetValue(specDowntimesEx)
                     .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
