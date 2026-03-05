@@ -1122,7 +1122,7 @@ namespace remeLog.Infrastructure
 
         //}
 
-
+        /// <summary>
         /// Экспорт отчета по операторам
         /// </summary>
         /// <param name="parts">Отметки по которым будут производиться расчеты</param>
@@ -1133,8 +1133,15 @@ namespace remeLog.Infrastructure
         /// <param name="maxPartsCount">Максимальное количество деталей</param>
         /// <param name="serialParts">Серийные детали (опционально)</param>
         /// <returns>При удачном выполнении возвращает путь к записанному файлу</returns>
-        public static async Task<string> ExportOperatorReportAsync(IEnumerable<Part> parts, DateTime fromDate, DateTime toDate,
-            string path, int minPartsCount, int maxPartsCount, HashSet<string>? serialParts = null, bool includeExcludedParts = false, IProgress<string>? progress = null)
+        public static async Task<string> ExportOperatorReportAsync(IEnumerable<Part> parts,
+                                                                   DateTime fromDate,
+                                                                   DateTime toDate,
+                                                                   string path,
+                                                                   int minPartsCount,
+                                                                   int maxPartsCount,
+                                                                   HashSet<string>? serialParts = null,
+                                                                   bool includeExcludedParts = false,
+                                                                   IProgress<string>? progress = null)
         {
             // ============================================================================
             // ВАЛИДАЦИЯ ВХОДНЫХ ПАРАМЕТРОВ

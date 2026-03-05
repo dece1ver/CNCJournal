@@ -87,7 +87,7 @@ namespace libeLog.Infrastructure
         public async Task<string> FindRowByValue(string searchValue, string machine, IEnumerable<string> machines, IProgress<(int, string)> progress, int column = 2)
         {
             progress.Report((0, "Подключение к списку заданий"));
-            string range = "Загрузка станков!A1:J200";
+            string range = "Загрузка станков!A1:K200";
             await Task.Delay(1000);
             Credential = GetCredentialsFromFile(_credentialFile);
             SheetsService = new SheetsService(new BaseClientService.Initializer()
@@ -193,7 +193,7 @@ namespace libeLog.Infrastructure
             {
                 HttpClientInitializer = Credential,
             });
-            SpreadsheetsResource.ValuesResource.GetRequest request = SheetsService.Spreadsheets.Values.Get(_sheetId, "Загрузка станков!A1:K200");
+            SpreadsheetsResource.ValuesResource.GetRequest request = SheetsService.Spreadsheets.Values.Get(_sheetId, "Загрузка станков!A1:L200");
             progress.Report("Подключение к списку...");
             ValueRange response = await request.ExecuteAsync(cancellationToken);
             progress.Report("Формирование списка работы...");
@@ -233,9 +233,10 @@ namespace libeLog.Infrastructure
                         var plantComment = SafeGet(row, 5);
                         var priority = SafeGet(row, 6);
                         var engineerComment = SafeGet(row, 7);
-                        var laborInput = SafeGet(row, 8);
-                        var pdComment = SafeGet(row, 9);
-                        var ncProgramHref = SafeGet(row, 10);
+                        var setup_technician = SafeGet(row, 8);
+                        var laborInput = SafeGet(row, 9);
+                        var pdComment = SafeGet(row, 10);
+                        var ncProgramHref = SafeGet(row, 11);
 
                         if (!string.IsNullOrEmpty(partName))
                         {
@@ -247,7 +248,7 @@ namespace libeLog.Infrastructure
                                 plantComment.IfEmpty("-"),
                                 priority,
                                 engineerComment.IfEmpty("-"),
-                                laborInput.IfEmpty("-"),
+                                setup_technician.IfEmpty("-"),
                                 pdComment.IfEmpty("-"),
                                 ncProgramHref.IfEmpty("-")));
                         }

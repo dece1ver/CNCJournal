@@ -23,7 +23,7 @@ namespace libeLog.Models
 
         public string EngeneersComment { get; set; }
 
-        public string LaborInput { get; set; }
+        public string SetupTechnician { get; set; }
 
         public string PdComment { get; set; }
 
@@ -50,7 +50,7 @@ namespace libeLog.Models
             }
         }
 
-        public ProductionTaskData(string partName, string order, string partsCount, string date, string plantComment, string priority, string engeneersComment, string laborInput, string pdComment, string ncProgramHref)
+        public ProductionTaskData(string partName, string order, string partsCount, string date, string plantComment, string priority, string engeneersComment, string setupTechnician, string pdComment, string ncProgramHref)
         {
             PartName = partName;
             Order = order;
@@ -59,7 +59,7 @@ namespace libeLog.Models
             PlantComment = plantComment;
             Priority = priority;
             EngeneersComment = engeneersComment;
-            LaborInput = laborInput;
+            SetupTechnician = setupTechnician;
             PdComment = pdComment;
             _NcProgramHref = ncProgramHref;
         }
