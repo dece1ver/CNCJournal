@@ -1,8 +1,14 @@
-﻿using System;
+﻿using libeLog.WinApi.AD;
+using System;
 using System.Collections.Generic;
+using System.DirectoryServices;
 using System.Linq;
+using System.Management;
+using System.Net;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Threading.Tasks;
+using static Google.Apis.Sheets.v4.SpreadsheetsResource.DeveloperMetadataResource;
 
 namespace libeLog.Infrastructure
 {
@@ -23,6 +29,193 @@ namespace libeLog.Infrastructure
             return letters;
         }
 
-        
+        [SupportedOSPlatform("windows")]
+        public static UserInfo GetUserInfo()
+        {
+            string userName = Environment.UserName;
+            string domainName = Environment.UserDomainName;
+            bool isLocal = domainName.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase);
+
+            if (isLocal)
+            {
+                try
+                {
+                    string query = $"SELECT FullName FROM Win32_UserAccount WHERE Name='{userName.Replace("'", "''")}' AND LocalAccount=True";
+                    using var searcher = new ManagementObjectSearcher(query);
+                    foreach (ManagementObject obj in searcher.Get().Cast<ManagementObject>())
+                    {
+                        var fullName = obj["FullName"]?.ToString();
+                        if (!string.IsNullOrWhiteSpace(fullName))
+                            return CreateEmpty(userName, fullName, isLocal: true);
+                    }
+                }
+                catch { }
+                return CreateEmpty(userName, userName, isLocal: true);
+            }
+
+            SearchResult? result = null;
+            try
+            {
+                using var entry = new DirectoryEntry($"LDAP://{domainName}");
+                using var adSearcher = new DirectorySearcher(entry)
+                {
+                    Filter = $"(&(objectClass=user)(sAMAccountName={userName}))"
+                };
+                adSearcher.PropertiesToLoad.AddRange(new string[] {
+                    "displayName", "givenName", "sn", "middleName", "initials",
+            "title", "department", "company", "division", "employeeID", "employeeType",
+            "mail", "telephoneNumber", "mobile", "facsimileTelephoneNumber", "ipPhone", "wWWHomePage",
+            "physicalDeliveryOfficeName", "streetAddress", "l", "st", "postalCode", "co",
+            "manager",
+            "sAMAccountName", "userPrincipalName", "distinguishedName",
+            "accountExpires", "lastLogon", "pwdLastSet", "whenCreated", "whenChanged",
+            "userAccountControl",
+            "memberOf",
+            "thumbnailPhoto"
+                });
+                result = adSearcher.FindOne();
+            }
+            catch { }
+
+            if (result == null)
+                return CreateEmpty(userName, userName, isLocal: false);
+
+            // Каждый геттер изолирован — падение одного не роняет остальные
+            string Get(string key)
+            {
+                try { return result.Properties[key]?[0]?.ToString() ?? ""; }
+                catch { return ""; }
+            }
+
+            DateTime? GetDate(string key)
+            {
+                try
+                {
+                    if (result.Properties[key]?[0] is not { } raw) return null;
+                    return raw switch
+                    {
+                        DateTime dt => dt,
+                        long ticks when ticks > 0 && ticks != long.MaxValue => DateTime.FromFileTime(ticks),
+                        _ => null
+                    };
+                }
+                catch { return null; }
+            }
+
+            bool isEnabled = false;
+            try { isEnabled = result.Properties["userAccountControl"]?[0] is int uac && (uac & 2) == 0; }
+            catch { }
+
+            var groups = Array.Empty<string>() as IReadOnlyList<string>;
+            try
+            {
+                groups = result.Properties["memberOf"]
+                    .Cast<string>()
+                    .Select(dn => dn.Split(',')[0].Replace("CN=", "").Trim())
+                    .ToList()
+                    .AsReadOnly();
+            }
+            catch { }
+
+            byte[]? photo = null;
+            try
+            {
+                if (result.Properties["thumbnailPhoto"]?.Count > 0)
+                    photo = (byte[])result.Properties["thumbnailPhoto"][0];
+            }
+            catch { }
+
+            string manager = "";
+            try
+            {
+                var raw = result.Properties["manager"]?[0]?.ToString();
+                if (!string.IsNullOrWhiteSpace(raw))
+                    manager = raw.Split(',')[0].Replace("CN=", "").Trim();
+            }
+            catch { }
+
+            string displayName = "";
+            try { displayName = Get("displayName") is { Length: > 0 } dn ? dn : userName; }
+            catch { displayName = userName; }
+
+            return new UserInfo(
+                UserName: userName,
+                DisplayName: displayName,
+                FirstName: Get("givenName"),
+                LastName: Get("sn"),
+                MiddleName: Get("middleName"),
+                Initials: Get("initials"),
+                Title: Get("title"),
+                Department: Get("department"),
+                Company: Get("company"),
+                Division: Get("division"),
+                EmployeeId: Get("employeeID"),
+                EmployeeType: Get("employeeType"),
+                Mail: Get("mail"),
+                Phone: Get("telephoneNumber"),
+                Mobile: Get("mobile"),
+                Fax: Get("facsimileTelephoneNumber"),
+                IPPhone: Get("ipPhone"),
+                HomePage: Get("wWWHomePage"),
+                Office: Get("physicalDeliveryOfficeName"),
+                StreetAddress: Get("streetAddress"),
+                City: Get("l"),
+                State: Get("st"),
+                PostalCode: Get("postalCode"),
+                Country: Get("co"),
+                Manager: manager,
+                SamAccountName: Get("sAMAccountName"),
+                UserPrincipalName: Get("userPrincipalName"),
+                DistinguishedName: Get("distinguishedName"),
+                AccountExpires: GetDate("accountExpires"),
+                LastLogon: GetDate("lastLogon"),
+                PasswordLastSet: GetDate("pwdLastSet"),
+                Created: GetDate("whenCreated"),
+                Modified: GetDate("whenChanged"),
+                IsLocal: false,
+                IsEnabled: isEnabled,
+                Groups: groups,
+                Photo: photo);
+        }
+
+        private static UserInfo CreateEmpty(string userName, string displayName, bool isLocal) => new(
+        UserName: userName,
+        DisplayName: displayName,
+        FirstName: "",
+        LastName: "",
+        MiddleName: "",
+        Initials: "",
+        Title: "",
+        Department: "",
+        Company: "",
+        Division: "",
+        EmployeeId: "",
+        EmployeeType: "",
+        Mail: "",
+        Phone: "",
+        Mobile: "",
+        Fax: "",
+        IPPhone: "",
+        HomePage: "",
+        Office: "",
+        StreetAddress: "",
+        City: "",
+        State: "",
+        PostalCode: "",
+        Country: "",
+        Manager: "",
+        SamAccountName: userName,
+        UserPrincipalName: "",
+        DistinguishedName: "",
+        AccountExpires: null,
+        LastLogon: null,
+        PasswordLastSet: null,
+        Created: null,
+        Modified: null,
+        IsLocal: isLocal,
+        IsEnabled: true,
+        Groups: Array.Empty<string>(),
+        Photo: null);
+
     }
 }

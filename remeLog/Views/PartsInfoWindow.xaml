@@ -1118,6 +1118,13 @@
                         <TextBlock Text="Ⓦ" FontSize="20" Margin="0 -7 0 -4" TextAlignment="Center" Width="21"/>
                     </MenuItem.Header>
                 </MenuItem>
+                <MenuItem Command="{Binding FillProcessComplianceAuditCommand}" 
+                          CommandParameter="{Binding SelectedPart}" 
+                          ToolTip="Заполнить КТД">
+                    <MenuItem.Header>
+                        <TextBlock Text="КТД" Margin="0 -7 0 -4" TextAlignment="Center" Width="21"/>
+                    </MenuItem.Header>
+                </MenuItem>
                 <MenuItem Header="|" Margin="0" Padding="0 -4 0 0" IsEnabled="False"/>
                 <MenuItem Header="Станки">
                     <MenuItem Command="{Binding ShowAllMachinesCommand}" HorizontalAlignment="Stretch" Header="Выбрать все"/>

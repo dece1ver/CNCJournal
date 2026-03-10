@@ -70,6 +70,7 @@ namespace remeLog.ViewModels
             InvertMachinesCommand = new LambdaCommand(OnInvertMachinesCommandExecuted, CanInvertMachinesCommandExecute);
             NormsAndWorkloadAnalysisCommand = new LambdaCommand(OnNormsAndWorkloadAnalysisCommandExecuted, CanNormsAndWorkloadAnalysisCommandExecute);
             OpenDailyReportWindowCommand = new LambdaCommand(OnOpenDailyReportWindowCommandExecuted, CanOpenDailyReportWindowCommandExecute);
+            FillProcessComplianceAuditCommand = new LambdaCommand(OnFillProcessComplianceAuditCommandExecuted, CanFillProcessComplianceAuditCommandExecute);
             OperatorReportToExcelCommand = new LambdaCommand(OnOperatorReportToExcelCommandExecuted, CanOperatorReportToExcelCommandExecute);
             OperatorsShiftsReportToExcelCommand = new LambdaCommand(OnOperatorsShiftsReportToExcelCommandExecuted, CanOperatorsShiftsReportToExcelCommandExecute);
             RefreshPartsCommand = new LambdaCommand(OnRefreshPartsCommandExecuted, CanRefreshPartsCommandExecute);
@@ -1764,6 +1765,40 @@ namespace remeLog.ViewModels
         private static bool CanChangeCalcFixedCommandExecute(object p) => true;
         #endregion
 
+        #region FillProcessComplianceAudit
+        public ICommand FillProcessComplianceAuditCommand { get; }
+
+        private async void OnFillProcessComplianceAuditCommandExecuted(object p)
+        {
+            if (p is not Part part) return;
+            try
+            {
+
+                var path = Util.GetXlsxPath();
+                if (string.IsNullOrEmpty(path))
+                {
+                    Status = "Выбор файла отменён";
+                    return;
+                }
+                await Task.Run(() =>
+                {
+                    InProgress = true;
+                    Status = Xl.FillPcaReport(part, path);
+                });
+
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+            finally { InProgress = false; }
+            using (Overlay = new())
+            {
+                
+            }
+        }
+        private bool CanFillProcessComplianceAuditCommandExecute(object p) => SelectedPart is { };
+        #endregion
         #region OpenDailyReportWindow
         public ICommand OpenDailyReportWindowCommand { get; }
 
