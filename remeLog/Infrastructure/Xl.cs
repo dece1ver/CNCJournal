@@ -581,7 +581,8 @@ namespace remeLog.Infrastructure
             {
                 ws.Row(row).Height = 20;
                 var totalMachineParts = partGroup.OrderBy(p => p.StartSetupTime);
-                parts = totalMachineParts.Where(p => !p.ExcludeFromReports).ToList();
+                //parts = totalMachineParts.Where(p => !p.ExcludeFromReports).ToList();
+                parts = totalMachineParts.ToList();
                 double totalWorkedMinutes = parts.FullWorkedTime().TotalMinutes;
 
                 // ---------- ОСНОВНАЯ ИНФОРМАЦИЯ ----------
