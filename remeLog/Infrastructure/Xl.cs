@@ -1444,16 +1444,21 @@ namespace remeLog.Infrastructure
 
                     downtimeCoeff = $"=IF(AND({workedShiftsAddr}>={workDays / 6},{includedOperationsTimeAddr}>={totalTimeAddr}*{minimumIncludedTimeRatioAddr}),{downtimeCoeff},\"\")";
 
+                    var reasons = new List<string>();
 
                     ws.Cell(row, ci[CM.DowntimesCoefficient]).FormulaA1 = downtimeCoeff;
 
-                    var reasons = new List<string>();
                     if (workedShifts < workDays / 6) reasons.Add($"Недостаточно смен (минимум {workDays / 6});");
                     if (includedOperationsTime < totalTime * MinimumIncludedTimeRatio) reasons.Add($"Больше {MinimumIncludedTimeRatio*100:N0}% отработанного времени не учитывается.\n(Учтено {includedOperationsTime/totalTime:0.##%})");
 
                     // Итоговая формула: коэффициент применяется только при выполнении условий
                     string coefficientFormula = $"=IFERROR({efficiencyCoeffAddr}*{downtimeCoeffAddr},\"\")";
                     ws.Cell(row, ci[CM.Coefficient]).FormulaA1 = coefficientFormula;
+                    if (!isSerialMachine && ws.Cell(row, ci[CM.EfficiencyCoefficient]).Value.IsNumber && ws.Cell(row, ci[CM.EfficiencyCoefficient]).Value.GetNumber() is double effCoeff && effCoeff > 1 && productionRatio < 0.75)
+                    {
+                        ws.Cell(row, ci[CM.Coefficient]).Value = "";
+                        reasons.Add("Изготовление менее 75% на несерийном станке");
+                    }
                     if (reasons.Count > 0) ws.Cell(row, ci[CM.Coefficient]).CreateComment().AddText($"Причины:\n{string.Join('\n', reasons)}");
                 }
                 row++;
