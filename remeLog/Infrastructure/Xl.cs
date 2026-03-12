@@ -1448,7 +1448,7 @@ namespace remeLog.Infrastructure
 
                     var reasons = new List<string>();
                     if (workedShifts < workDays / 6) reasons.Add($"Недостаточно смен (минимум {workDays / 6});");
-                    if (includedOperationsTime * 2 < totalTime) reasons.Add($"Больше {MinimumIncludedTimeRatio*100:N0}% отработанного времени не учитывается.");
+                    if (includedOperationsTime < totalTime * MinimumIncludedTimeRatio) reasons.Add($"Больше {MinimumIncludedTimeRatio*100:N0}% отработанного времени не учитывается.\n(Учтено {includedOperationsTime/totalTime:0.##%})");
 
                     // Итоговая формула: коэффициент применяется только при выполнении условий
                     string coefficientFormula = $"=IFERROR({efficiencyCoeffAddr}*{downtimeCoeffAddr},\"\")";
