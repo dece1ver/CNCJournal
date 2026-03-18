@@ -120,6 +120,9 @@ namespace remeLog.Views
                                         p.EngineerComment = "Изменение технологии";
                                         break;
                                     case "Изменение технологии":
+                                        p.EngineerComment = "Создание альтернативного техпроцесса";
+                                        break;
+                                    case "Создание альтернативного техпроцесса":
                                         p.EngineerComment = "";
                                         break;
                                 }

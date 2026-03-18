@@ -723,6 +723,7 @@
             </MenuItem>
             <MenuItem Header="Временные нормативы" Click="OnVariantClick"/>
             <MenuItem Header="Изменение технологии" Click="OnVariantClick"/>
+            <MenuItem Header="Создание альтернативного техпроцесса" Click="OnVariantClick"/>
             <Separator/>
             <MenuItem Header="Очистить" Click="OnClearVariantClick" Icon="{StaticResource CleanData}"/>
         </ContextMenu>
