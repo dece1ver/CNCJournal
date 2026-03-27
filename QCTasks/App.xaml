@@ -1,0 +1,16 @@
+﻿<Application x:Class="QCTasks.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:QCTasks"
+             xmlns:cnv="clr-namespace:QCTasks.Converters"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <cnv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
+            <cnv:StatusToAccentBrushConverter x:Key="StatusToAccentBrushConverter"/>
+            <cnv:StatusToBackgroundConverter x:Key="StatusToBackgroundConverter"/>
+            <cnv:StatusToForegroundConverter x:Key="StatusToForegroundConverter"/>
+            <cnv:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

@@ -87,7 +87,7 @@ namespace libeLog.Infrastructure
         public async Task<string> FindRowByValue(string searchValue, string machine, IEnumerable<string> machines, IProgress<(int, string)> progress, int column = 2)
         {
             progress.Report((0, "Подключение к списку заданий"));
-            string range = "Загрузка станков!A1:K200";
+            string range = "Загрузка станков!A1:K500";
             await Task.Delay(1000);
             Credential = GetCredentialsFromFile(_credentialFile);
             SheetsService = new SheetsService(new BaseClientService.Initializer()
@@ -131,9 +131,9 @@ namespace libeLog.Infrastructure
             return "";
         }
 
-        public async Task UpdateCellValue(string range, string value, IProgress<(int, string)> progress)
+        public async Task UpdateCellValue(string range, string value, IProgress<(int, string)>? progress = null)
         {
-            progress.Report((0, "Запись статуса"));
+            progress?.Report((0, "Запись статуса"));
             await Task.Delay(1000);
             Credential = GetCredentialsFromFile(_credentialFile);
             SheetsService = new SheetsService(new BaseClientService.Initializer()
@@ -149,7 +149,7 @@ namespace libeLog.Infrastructure
             updateRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.RAW;
 
             await updateRequest.ExecuteAsync();
-            progress.Report((1, "Записано"));
+            progress?.Report((1, "Записано"));
             await Task.Delay(1000);
         }
 
@@ -185,42 +185,56 @@ namespace libeLog.Infrastructure
             return parts.OrderBy(d => d).ToHashSet();
         }
 
-        public async Task<IReadOnlyList<ProductionTaskData>> GetProductionTasksData(string machine, IEnumerable<string> machines,  IProgress<string> progress, CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<ProductionTaskData>> GetProductionTasksData(
+    string machine,
+    IEnumerable<string> machines,
+    IProgress<string> progress,
+    CancellationToken cancellationToken)
         {
             List<ProductionTaskData> data = new List<ProductionTaskData>();
+
             Credential = GetCredentialsFromFile(_credentialFile);
             SheetsService = new SheetsService(new BaseClientService.Initializer()
             {
                 HttpClientInitializer = Credential,
             });
-            SpreadsheetsResource.ValuesResource.GetRequest request = SheetsService.Spreadsheets.Values.Get(_sheetId, "Загрузка станков!A1:L200");
+
+            SpreadsheetsResource.ValuesResource.GetRequest request =
+                SheetsService.Spreadsheets.Values.Get(_sheetId, "Загрузка станков!A1:L200");
+
             progress.Report("Подключение к списку...");
             ValueRange response = await request.ExecuteAsync(cancellationToken);
             progress.Report("Формирование списка работы...");
+
             var values = response.Values;
             bool machineFound = false;
             int skipCnt = 0;
+
             if (values != null && values.Count > 0)
             {
-                foreach (var row in values)
+                for (int rowIndex = 0; rowIndex < values.Count; rowIndex++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    var row = values[rowIndex];
                     if (row == null || row.Count == 0) continue;
+
                     if (skipCnt > 0)
                     {
                         skipCnt--;
                         continue;
                     }
-                    if (row[0] is string currentMachine 
-                        && currentMachine.Contains('|') 
+
+                    if (row[0] is string currentMachine
+                        && currentMachine.Contains('|')
                         && machine.Contains(currentMachine.Split('|')[0].Trim()))
                     {
                         machineFound = true;
                         skipCnt = 2;
                     }
-                    else if (machineFound && row[0] is string otherMachine 
-                        && (otherMachine.ToLower() == "маркировка" || otherMachine.Contains('|') 
-                        && machines.Any(name => name.Contains(otherMachine.Split('|')[0].Trim()))))
+                    else if (machineFound && row[0] is string otherMachine
+                        && (otherMachine.ToLower() == "маркировка" ||
+                            otherMachine.Contains('|') &&
+                            machines.Any(name => name.Contains(otherMachine.Split('|')[0].Trim()))))
                     {
                         break;
                     }
@@ -240,6 +254,8 @@ namespace libeLog.Infrastructure
 
                         if (!string.IsNullOrEmpty(partName))
                         {
+                            string cellAddress = $"H{rowIndex + 1}";
+
                             data.Add(new ProductionTaskData(
                                 partName,
                                 order.IfEmpty("Без М/Л", o => o.ToUpper()),
@@ -250,13 +266,14 @@ namespace libeLog.Infrastructure
                                 engineerComment.IfEmpty("-"),
                                 setup_technician.IfEmpty("-"),
                                 pdComment.IfEmpty("-"),
-                                ncProgramHref.IfEmpty("-")));
+                                ncProgramHref.IfEmpty("-"), cellAddress));
                         }
                     }
                 }
-                progress.Report("Список работы сформирован.");
 
+                progress.Report("Список работы сформирован.");
             }
+
             progress.Report("Сортировка списка.");
             var sortedData = data
                 .Select((item, index) => new { Item = item, Index = index })
@@ -265,6 +282,7 @@ namespace libeLog.Infrastructure
                 .Select(x => x.Item)
                 .ToList()
                 .AsReadOnly();
+
             return sortedData;
         }
 

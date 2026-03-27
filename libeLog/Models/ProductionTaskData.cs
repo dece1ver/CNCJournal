@@ -1,9 +1,4 @@
 ﻿using libeLog.Base;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace libeLog.Models
 {
@@ -27,9 +22,11 @@ namespace libeLog.Models
 
         public string PdComment { get; set; }
 
+        public string CellAddress { get; set; }
+
 
         private string _NcProgramHref;
-        /// <summary> Описание </summary>
+        /// <summary> Ссылка на УП </summary>
         public string NcProgramHref
         {
             get => _NcProgramHref;
@@ -50,7 +47,7 @@ namespace libeLog.Models
             }
         }
 
-        public ProductionTaskData(string partName, string order, string partsCount, string date, string plantComment, string priority, string engeneersComment, string setupTechnician, string pdComment, string ncProgramHref)
+        public ProductionTaskData(string partName, string order, string partsCount, string date, string plantComment, string priority, string engeneersComment, string setupTechnician, string pdComment, string ncProgramHref, string cellAdderss)
         {
             PartName = partName;
             Order = order;
@@ -62,6 +59,7 @@ namespace libeLog.Models
             SetupTechnician = setupTechnician;
             PdComment = pdComment;
             _NcProgramHref = ncProgramHref;
+            CellAddress = cellAdderss;
         }
     }
 }
