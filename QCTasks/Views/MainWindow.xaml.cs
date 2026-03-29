@@ -59,7 +59,6 @@ public partial class MainWindow : Window
         return IntPtr.Zero;
     }
 
-    // Структуры для MINMAXINFO
     [StructLayout(LayoutKind.Sequential)]
     private struct MINMAXINFO
     {

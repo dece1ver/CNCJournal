@@ -24,20 +24,16 @@
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
-        <!-- Конвертеры -->
-        <BooleanToVisibilityConverter      x:Key="BoolToVis"/>
+        <BooleanToVisibilityConverter         x:Key="BoolToVis"/>
         <cnv:InverseBoolToVisibilityConverter x:Key="InvBoolToVis"/>
-        <cnv:StringToVisibilityConverter   x:Key="StringToVis"/>
-        <cnv:StatusToAccentBrushConverter  x:Key="StatusToAccent"/>
-        <cnv:StatusToForegroundConverter   x:Key="StatusToFg"/>
-        <cnv:StatusToBackgroundConverter   x:Key="StatusToBg"/>
+        <cnv:StringToVisibilityConverter      x:Key="StringToVis"/>
+        <cnv:StatusToAccentBrushConverter     x:Key="StatusToAccent"/>
+        <cnv:StatusToForegroundConverter      x:Key="StatusToFg"/>
+        <cnv:StatusToBackgroundConverter      x:Key="StatusToBg"/>
 
-        <!-- Шаблон закруглённой кнопки -->
         <ControlTemplate x:Key="PillButtonTemplate" TargetType="Button">
-            <Border x:Name="Bd"
-                    Background="{TemplateBinding Background}"
-                    CornerRadius="7"
-                    Padding="{TemplateBinding Padding}">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                    CornerRadius="7" Padding="{TemplateBinding Padding}">
                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
@@ -53,39 +49,64 @@
             </ControlTemplate.Triggers>
         </ControlTemplate>
 
-        <!-- Базовый стиль кнопок -->
+        <ControlTemplate x:Key="WinCtrlTemplate" TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Bd" Property="Background" Value="#283593"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter TargetName="Bd" Property="Background" Value="#1A2272"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <ControlTemplate x:Key="WinCloseTemplate" TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Bd" Property="Background" Value="#C62828"/>
+                    <Setter Property="Foreground" Value="White"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter TargetName="Bd" Property="Background" Value="#B71C1C"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
         <Style x:Key="Btn" TargetType="Button">
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground"      Value="White"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontFamily" Value="Segoe UI"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Template" Value="{StaticResource PillButtonTemplate}"/>
+            <Setter Property="Cursor"          Value="Hand"/>
+            <Setter Property="FontFamily"      Value="Segoe UI"/>
+            <Setter Property="FontWeight"      Value="SemiBold"/>
+            <Setter Property="Template"        Value="{StaticResource PillButtonTemplate}"/>
         </Style>
 
         <Style x:Key="BtnComplete" TargetType="Button" BasedOn="{StaticResource Btn}">
-            <Setter Property="Background"  Value="#2E7D32"/>
-            <Setter Property="Padding"     Value="20,11"/>
-            <Setter Property="FontSize"    Value="14"/>
+            <Setter Property="Background" Value="#2E7D32"/>
+            <Setter Property="Padding"    Value="20,11"/>
+            <Setter Property="FontSize"   Value="14"/>
         </Style>
 
         <Style x:Key="BtnChangeStatus" TargetType="Button" BasedOn="{StaticResource Btn}">
-            <Setter Property="Background"  Value="#1565C0"/>
-            <Setter Property="Padding"     Value="16,9"/>
-            <Setter Property="FontSize"    Value="13"/>
+            <Setter Property="Background" Value="#1565C0"/>
+            <Setter Property="Padding"    Value="16,9"/>
+            <Setter Property="FontSize"   Value="13"/>
         </Style>
 
-        <Style x:Key="BtnRefresh" TargetType="Button" BasedOn="{StaticResource Btn}">
-            <Setter Property="Background"  Value="#283593"/>
-            <Setter Property="Padding"     Value="18,9"/>
-            <Setter Property="FontSize"    Value="14"/>
+        <Style x:Key="BtnHeader" TargetType="Button" BasedOn="{StaticResource Btn}">
+            <Setter Property="Background" Value="#283593"/>
+            <Setter Property="Padding"    Value="18,9"/>
+            <Setter Property="FontSize"   Value="14"/>
         </Style>
 
-        <!-- Тень для карточек -->
-        <DropShadowEffect x:Key="CardShadow" Color="#000000" Opacity="0.08"
-                          BlurRadius="10" ShadowDepth="2" Direction="270"/>
-        <DropShadowEffect x:Key="CardShadowFaint" Color="#000000" Opacity="0.04"
-                          BlurRadius="6" ShadowDepth="1" Direction="270"/>
+        <DropShadowEffect x:Key="CardShadow"     Color="#000" Opacity="0.08" BlurRadius="10" ShadowDepth="2" Direction="270"/>
+        <DropShadowEffect x:Key="CardShadowFaint" Color="#000" Opacity="0.04" BlurRadius="6"  ShadowDepth="1" Direction="270"/>
     </Window.Resources>
 
     <Grid x:Name="RootGrid">
@@ -94,11 +115,13 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
+        <!-- ══ ШАПКА ══ -->
         <Border Grid.Row="0" Background="#1A237E" Padding="20,0,0,0"
                 MouseLeftButtonDown="Header_MouseLeftButtonDown">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="1"/>
                     <ColumnDefinition Width="Auto"/>
@@ -107,122 +130,92 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal"
-                            VerticalAlignment="Center" Margin="0 14 16 14">
-
+                            VerticalAlignment="Center" Margin="0,14,16,14">
                     <TextBlock Text="Контроль ОТК"
-                               Foreground="White" FontSize="20"
-                               VerticalAlignment="Center"/>
-
+                               Foreground="White" FontSize="20" VerticalAlignment="Center"/>
                     <TextBlock Text="  •  Обновление..."
-                               Foreground="#90CAF9" FontSize="13"
-                               VerticalAlignment="Center"
+                               Foreground="#90CAF9" FontSize="13" VerticalAlignment="Center"
                                Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"/>
-
                     <TextBlock Text="{Binding StatusMessage, StringFormat='  •  {0}'}"
-                               Foreground="#5C6BC0" FontSize="12"
-                               VerticalAlignment="Center"
+                               Foreground="#5C6BC0" FontSize="12" VerticalAlignment="Center"
                                Visibility="{Binding IsLoading, Converter={StaticResource InvBoolToVis}}"/>
                 </StackPanel>
 
-                <Button Grid.Column="1"
-                        Content="↻  Обновить"
-                        Style="{StaticResource BtnRefresh}"
+                <Button Grid.Column="1" Content="🛠" FontSize="18"
+                        Style="{StaticResource BtnHeader}" FontWeight="ExtraLight" Padding="14,9"
+                        Command="{Binding OpenSettingsCommand}"
+                        Margin="0,10,6,10"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+
+                <Button Grid.Column="2" Content="↻  Обновить"
+                        Style="{StaticResource BtnHeader}"
                         Command="{Binding RefreshCommand}"
                         Margin="0,10,8,10"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
 
-                <Rectangle Grid.Column="2" Width="1" Fill="#283593" Margin="0 8"/>
+                <Rectangle Grid.Column="3" Width="1" Fill="#283593" Margin="0,8"/>
 
-                <Button Grid.Column="3"
-                        Width="58" Height="58"
-                        Content="_"
-                        FontSize="18"
-                        Foreground="#90CAF9"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Cursor="Hand"
+                <Button Grid.Column="4" Width="58" Height="58" Content="—"
+                        FontSize="18" Foreground="#90CAF9" Background="Transparent"
+                        BorderThickness="0" Cursor="Hand"
                         Click="MinimizeButton_Click"
-                        shell:WindowChrome.IsHitTestVisibleInChrome="True"
-                        Margin="0 -8 0 0">
-                    <Button.Template>
-                        <ControlTemplate TargetType="Button">
-                            <Border x:Name="Bd" Background="{TemplateBinding Background}">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Bd" Property="Background" Value="#283593"/>
-                                </Trigger>
-                                <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="Bd" Property="Background" Value="#1A2272"/>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Button.Template>
-                </Button>
+                        Template="{StaticResource WinCtrlTemplate}"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
 
-                <Button Grid.Column="4"
-                        Width="58" Height="58"
-                        Content="⬜"
-                        FontSize="15"
-                        Foreground="#90CAF9"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Cursor="Hand"
+                <Button Grid.Column="5" Width="58" Height="58" Content="⬜"
+                        FontSize="15" Foreground="#90CAF9" Background="Transparent"
+                        BorderThickness="0" Cursor="Hand"
                         Click="MaximizeButton_Click"
-                        shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Button.Template>
-                        <ControlTemplate TargetType="Button">
-                            <Border x:Name="Bd" Background="{TemplateBinding Background}">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Bd" Property="Background" Value="#283593"/>
-                                </Trigger>
-                                <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="Bd" Property="Background" Value="#1A2272"/>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Button.Template>
-                </Button>
+                        Template="{StaticResource WinCtrlTemplate}"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
 
-                <Button Grid.Column="5"
-                        Width="68" Height="58"
-                        Content="✕"
-                        FontSize="18"
-                        Foreground="#EF9A9A"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Cursor="Hand"
+                <Button Grid.Column="6" Width="68" Height="58" Content="✕"
+                        FontSize="18" Foreground="#EF9A9A" Background="Transparent"
+                        BorderThickness="0" Cursor="Hand"
                         Click="CloseButton_Click"
-                        shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Button.Template>
-                        <ControlTemplate TargetType="Button">
-                            <Border x:Name="Bd" Background="{TemplateBinding Background}">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Bd" Property="Background" Value="#C62828"/>
-                                    <Setter Property="Foreground" Value="White"/>
-                                </Trigger>
-                                <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="Bd" Property="Background" Value="#B71C1C"/>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Button.Template>
-                </Button>
+                        Template="{StaticResource WinCloseTemplate}"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1" Margin="16 14 16 10">
+        <Grid Grid.Row="1" Margin="16,14,16,10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto" MaxHeight="300"/>
             </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Grid.RowSpan="2" Background="#F0F2F5"
+                    Visibility="{Binding IsNotConfigured, Converter={StaticResource BoolToVis}}"
+                    Panel.ZIndex="10">
+                <Border Background="White" CornerRadius="12"
+                        Effect="{StaticResource CardShadow}"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Padding="48,40" MinWidth="440">
+                    <StackPanel HorizontalAlignment="Center">
+                        <Border Width="68" Height="68" CornerRadius="34"
+                                Background="#FFF8E1" HorizontalAlignment="Center"
+                                Margin="0,0,0,18">
+                            <TextBlock Text="🛠" FontSize="32"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="#F9A825"/>
+                        </Border>
+                        <TextBlock Text="Требуется настройка"
+                                   FontSize="19" FontWeight="Bold" Foreground="#1A237E"
+                                   HorizontalAlignment="Center" Margin="0,0,0,12"/>
+                        <Border Background="#FFF8E1" CornerRadius="8"
+                                Padding="16,12" Margin="0,0,0,24" MaxWidth="360">
+                            <TextBlock Text="{Binding StatusMessage}"
+                                       Foreground="#E65100" FontSize="13"
+                                       TextWrapping="Wrap" TextAlignment="Center"/>
+                        </Border>
+                        <Button Content="Открыть настройки"
+                                HorizontalAlignment="Center"
+                                Style="{StaticResource BtnHeader}"
+                                Padding="32,14" FontSize="15"
+                                Command="{Binding OpenSettingsCommand}"/>
+                    </StackPanel>
+                </Border>
+            </Border>
 
             <Grid Grid.Row="0" Margin="0,0,0,14">
                 <Grid.RowDefinitions>
@@ -240,7 +233,7 @@
                                    Foreground="#1565C0" FontSize="13" FontWeight="Bold"/>
                     </Border>
                 </StackPanel>
-                
+
                 <Border Grid.Row="1" Background="White" CornerRadius="10"
                         Effect="{StaticResource CardShadowFaint}"
                         Visibility="{Binding IsTasksEmpty, Converter={StaticResource BoolToVis}}">
@@ -253,86 +246,79 @@
                     </StackPanel>
                 </Border>
 
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden"
                               Visibility="{Binding IsTasksEmpty, Converter={StaticResource InvBoolToVis}}">
                     <ItemsControl ItemsSource="{Binding Tasks}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Margin="0 0 0 10" CornerRadius="9" Background="White"
+                                <Border Margin="0,0,0,10" CornerRadius="9" Background="White"
                                         Effect="{StaticResource CardShadow}">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="5"/>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
- 
                                         </Grid.ColumnDefinitions>
 
-                                        <!-- Синяя полоса слева -->
                                         <Border Grid.Column="0" Background="#1565C0"
-                                                CornerRadius="9 0 0 9"/>
+                                                CornerRadius="9,0,0,9"/>
 
-                                        <!-- Данные -->
-                                        <StackPanel Grid.Column="1" Margin="10 5 5 5">
+                                        <StackPanel Grid.Column="1" Margin="10,5,5,5">
                                             <StackPanel Orientation="Horizontal">
                                                 <Border HorizontalAlignment="Left"
                                                         Background="#FFEBEE" CornerRadius="5"
-                                                        Width="50" Margin="0 0 6 6"
+                                                        Width="50" Margin="0,0,6,6"
                                                         Visibility="{Binding Priority, Converter={StaticResource StringToVis}}">
                                                     <TextBlock Text="{Binding Priority}"
-                                                               Foreground="#E65100" TextAlignment="Center" VerticalAlignment="Center"
+                                                               Foreground="#E65100"
+                                                               TextAlignment="Center" VerticalAlignment="Center"
                                                                FontWeight="Bold" FontSize="12"/>
                                                 </Border>
-                                                <TextBlock Text="{Binding PartName}" 
+                                                <TextBlock Text="{Binding PartName}"
                                                            FontSize="17" FontWeight="Bold"
-                                                           Foreground="#1A237E"
-                                                           TextWrapping="Wrap"
-                                                           Margin="0,0,0,8"/>                   
+                                                           Foreground="#1A237E" TextWrapping="Wrap"
+                                                           Margin="0,0,0,8"/>
                                             </StackPanel>
-                                        
 
-                                            <WrapPanel Margin="0 0 0 6">
+                                            <WrapPanel Margin="0,0,0,6">
                                                 <Border Background="#E3F2FD" CornerRadius="5"
-                                                        Width="150" Height="24" Margin="0 0 8 0"
+                                                        Width="150" Height="24" Margin="0,0,8,0"
                                                         Visibility="{Binding Order, Converter={StaticResource StringToVis}}">
-                                                    <TextBlock FontSize="13" Foreground="#1565C0" TextAlignment="Center" VerticalAlignment="Center">
+                                                    <TextBlock FontSize="13" Foreground="#1565C0"
+                                                               TextAlignment="Center" VerticalAlignment="Center">
                                                         <Run Text="М/Л: " FontWeight="SemiBold"/>
                                                         <Run Text="{Binding Order}"/>
                                                     </TextBlock>
                                                 </Border>
-
                                                 <Border Background="#E3F2FD" CornerRadius="5"
-                                                        Width="150" Height="24" Margin="0 0 8 0"
+                                                        Width="150" Height="24" Margin="0,0,8,0"
                                                         Visibility="{Binding PartsCount, Converter={StaticResource StringToVis}}">
-                                                    <TextBlock FontSize="13" Foreground="#1565C0" TextAlignment="Center" VerticalAlignment="Center">
+                                                    <TextBlock FontSize="13" Foreground="#1565C0"
+                                                               TextAlignment="Center" VerticalAlignment="Center">
                                                         <Run Text="Количество: " FontWeight="SemiBold"/>
                                                         <Run Text="{Binding PartsCount}"/>
                                                     </TextBlock>
                                                 </Border>
-
                                                 <Border Background="#E3F2FD" CornerRadius="5"
-                                                        Width="150" Height="24" Margin="0 0 0 0"
+                                                        Width="150" Height="24"
                                                         Visibility="{Binding Date, Converter={StaticResource StringToVis}}">
-                                                    <TextBlock FontSize="13" Foreground="#1565C0" TextAlignment="Center" VerticalAlignment="Center">
+                                                    <TextBlock FontSize="13" Foreground="#1565C0"
+                                                               TextAlignment="Center" VerticalAlignment="Center">
                                                         <Run Text="Дата: " FontWeight="SemiBold"/>
                                                         <Run Text="{Binding Date}"/>
                                                     </TextBlock>
                                                 </Border>
                                             </WrapPanel>
 
-                                            <TextBlock Margin="0 0 0 0"
-                                                       FontSize="13" Foreground="#424242"
-                                                       TextWrapping="Wrap" 
+                                            <TextBlock FontSize="13" Foreground="#424242" TextWrapping="Wrap"
                                                        Visibility="{Binding PlantComment, Converter={StaticResource StringToVis}}">
                                                 <Run Text="Комментарий: " Foreground="#757575"/>
                                                 <Run Text="{Binding PlantComment}"/>
                                             </TextBlock>
                                         </StackPanel>
 
-                                        <Border Grid.Column="2" Padding="0 14 18 14"
-                                                VerticalAlignment="Center">
-                                            <Button Content="Завершить"
-                                                    Width="136"
+                                        <Border Grid.Column="2" Padding="0,14,18,14" VerticalAlignment="Center">
+                                            <Button Content="Завершить" Width="136"
                                                     Style="{StaticResource BtnComplete}"
                                                     Command="{Binding DataContext.CompleteCommand,
                                                               RelativeSource={RelativeSource AncestorType=Window}}"
@@ -346,6 +332,7 @@
                 </ScrollViewer>
             </Grid>
 
+            <!-- Завершённые задачи -->
             <Grid Grid.Row="1"
                   Visibility="{Binding HasCompletedTasks, Converter={StaticResource BoolToVis}}">
                 <Grid.RowDefinitions>
@@ -364,7 +351,7 @@
                     </Border>
                 </StackPanel>
 
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden">
                     <ItemsControl ItemsSource="{Binding CompletedTasks}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -390,10 +377,8 @@
                                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding PartName}"
                                                            FontSize="15" FontWeight="SemiBold"
-                                                           Foreground="#616161"
-                                                           TextWrapping="Wrap"
+                                                           Foreground="#616161" TextWrapping="Wrap"
                                                            Margin="0,0,0,5"/>
-
                                                 <WrapPanel>
                                                     <TextBlock FontSize="12" Foreground="#9E9E9E" Margin="0,0,14,0"
                                                                Visibility="{Binding Order, Converter={StaticResource StringToVis}}"
@@ -407,8 +392,7 @@
                                                 </WrapPanel>
                                             </StackPanel>
 
-                                            <Border Grid.Column="1"
-                                                    CornerRadius="5" Padding="12,4"
+                                            <Border Grid.Column="1" CornerRadius="5" Padding="12,4"
                                                     VerticalAlignment="Center" Margin="10,0,0,0"
                                                     Background="{Binding EngeneersComment, Converter={StaticResource StatusToBg}}">
                                                 <TextBlock Text="{Binding EngeneersComment}"
@@ -417,10 +401,8 @@
                                             </Border>
                                         </Grid>
 
-                                        <Border Grid.Column="2" Padding="0,11,18,11"
-                                                VerticalAlignment="Center">
-                                            <Button Content="Изменить статус"
-                                                    Width="155"
+                                        <Border Grid.Column="2" Padding="0,11,18,11" VerticalAlignment="Center">
+                                            <Button Content="Изменить статус" Width="155"
                                                     Style="{StaticResource BtnChangeStatus}"
                                                     Command="{Binding DataContext.ChangeStatusCommand,
                                                               RelativeSource={RelativeSource AncestorType=Window}}"
@@ -434,6 +416,5 @@
                 </ScrollViewer>
             </Grid>
         </Grid>
-
     </Grid>
 </Window>

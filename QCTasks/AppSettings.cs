@@ -5,26 +5,41 @@ namespace QCTasks;
 
 public sealed class AppSettings
 {
-    private static readonly Lazy<AppSettings> _instance = new(LoadInternal);
+    // ── Singleton ──────────────────────────────────────────────────────────
+    private static AppSettings? _instance;
+    private static readonly object _lock = new();
 
-    public static AppSettings Instance => _instance.Value;
+    public static AppSettings Instance
+    {
+        get
+        {
+            if (_instance is null)
+                lock (_lock)
+                    _instance ??= LoadInternal();
+            return _instance;
+        }
+    }
 
+    // ── Пути ──────────────────────────────────────────────────────────────
     public const string BasePath = @"C:\ProgramData\dece1ver\QCTasks";
     public static readonly string ConfigFilePath = Path.Combine(BasePath, "config.json");
 
+    // ── Поля конфига ──────────────────────────────────────────────────────
     public string CredentialsFile { get; set; } = "";
     public string SheetId { get; set; } = "";
+    public string SqlConnectionString { get; set; } = "";
 
-    private static readonly JsonSerializerSettings _jsonSettings = new()
-    {
-        Formatting = Formatting.Indented
-    };
+    // ── Валидация ─────────────────────────────────────────────────────────
+    /// <summary>Все обязательные поля заполнены.</summary>
+    [JsonIgnore]
+    public bool IsValid =>
+        !string.IsNullOrWhiteSpace(CredentialsFile) &&
+        !string.IsNullOrWhiteSpace(SheetId);
 
+    // ── Конструктор приватный ─────────────────────────────────────────────
     private AppSettings() { }
 
-    /// <summary>
-    /// Загрузка конфига
-    /// </summary>
+    // ── Загрузка ──────────────────────────────────────────────────────────
     private static AppSettings LoadInternal()
     {
         try
@@ -33,9 +48,7 @@ public sealed class AppSettings
                 return CreateDefault();
 
             var json = File.ReadAllText(ConfigFilePath);
-            var cfg = JsonConvert.DeserializeObject<AppSettings>(json);
-
-            return cfg ?? CreateDefault();
+            return JsonConvert.DeserializeObject<AppSettings>(json) ?? CreateDefault();
         }
         catch
         {
@@ -44,32 +57,40 @@ public sealed class AppSettings
     }
 
     /// <summary>
-    /// Сохранение конфига
+    /// Перечитывает конфиг с диска и обновляет текущий Singleton.
+    /// Вызывать после сохранения из окна настроек.
     /// </summary>
+    public static AppSettings Reload()
+    {
+        lock (_lock)
+        {
+            _instance = LoadInternal();
+            return _instance;
+        }
+    }
+
+    private static readonly JsonSerializerSettings _jsonSettings = new()
+    {
+        Formatting = Formatting.Indented
+    };
+
+    /// <summary>Атомарное сохранение через tmp-файл.</summary>
     public void Save()
     {
         Directory.CreateDirectory(BasePath);
-
         var json = JsonConvert.SerializeObject(this, _jsonSettings);
-
-        var tempFile = ConfigFilePath + ".tmp";
-        File.WriteAllText(tempFile, json);
-
-        File.Copy(tempFile, ConfigFilePath, true);
-        File.Delete(tempFile);
+        var tmpPath = ConfigFilePath + ".tmp";
+        File.WriteAllText(tmpPath, json);
+        File.Copy(tmpPath, ConfigFilePath, overwrite: true);
+        File.Delete(tmpPath);
     }
 
-    /// <summary>
-    /// Создание дефолтного конфига
-    /// </summary>
     private static AppSettings CreateDefault()
     {
         var cfg = new AppSettings();
         Directory.CreateDirectory(BasePath);
-
-        var json = JsonConvert.SerializeObject(cfg, _jsonSettings);
-        File.WriteAllText(ConfigFilePath, json);
-
+        File.WriteAllText(ConfigFilePath,
+            JsonConvert.SerializeObject(cfg, _jsonSettings));
         return cfg;
     }
 }
