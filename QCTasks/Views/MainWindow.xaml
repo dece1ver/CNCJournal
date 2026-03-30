@@ -9,7 +9,7 @@
         xmlns:vm="clr-namespace:QCTasks.ViewModels"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
-        Title="Контроль ОТК" Height="760" Width="1200"
+        Title="Контроль ОТК" Height="800" Width="1200"
         MinWidth="860" MinHeight="520"
         Background="#F0F2F5"
         FontFamily="Segoe UI"
@@ -24,14 +24,7 @@
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
-        <BooleanToVisibilityConverter         x:Key="BoolToVis"/>
-        <cnv:InverseBoolToVisibilityConverter x:Key="InvBoolToVis"/>
-        <cnv:StringToVisibilityConverter      x:Key="StringToVis"/>
-        <cnv:StatusToAccentBrushConverter     x:Key="StatusToAccent"/>
-        <cnv:StatusToForegroundConverter      x:Key="StatusToFg"/>
-        <cnv:StatusToBackgroundConverter      x:Key="StatusToBg"/>
-        <cnv:IsInWorkToVisibilityConverter    x:Key="IsInWorkToVis"/>
-        <cnv:IsNotInWorkToVisibilityConverter x:Key="IsNotInWorkToVis"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
         <ControlTemplate x:Key="PillButtonTemplate" TargetType="Button">
             <Border x:Name="Bd" Background="{TemplateBinding Background}"
@@ -81,41 +74,39 @@
         </ControlTemplate>
 
         <Style x:Key="Btn" TargetType="Button">
-            <Setter Property="Foreground"      Value="White"/>
+            <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Cursor"          Value="Hand"/>
-            <Setter Property="FontFamily"      Value="Segoe UI"/>
-            <Setter Property="FontWeight"      Value="SemiBold"/>
-            <Setter Property="Template"        Value="{StaticResource PillButtonTemplate}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template" Value="{StaticResource PillButtonTemplate}"/>
         </Style>
 
-        <!-- "В работу" — синяя -->
         <Style x:Key="BtnStartWork" TargetType="Button" BasedOn="{StaticResource Btn}">
             <Setter Property="Background" Value="#283593"/>
             <Setter Property="Padding"    Value="20,11"/>
             <Setter Property="FontSize"   Value="14"/>
         </Style>
 
-        <!-- "Завершить" — зелёная -->
         <Style x:Key="BtnComplete" TargetType="Button" BasedOn="{StaticResource Btn}">
             <Setter Property="Background" Value="#2E7D32"/>
-            <Setter Property="Padding"    Value="20,11"/>
-            <Setter Property="FontSize"   Value="14"/>
+            <Setter Property="Padding" Value="20,11"/>
+            <Setter Property="FontSize" Value="14"/>
         </Style>
 
         <Style x:Key="BtnChangeStatus" TargetType="Button" BasedOn="{StaticResource Btn}">
             <Setter Property="Background" Value="#1565C0"/>
-            <Setter Property="Padding"    Value="16,9"/>
-            <Setter Property="FontSize"   Value="13"/>
+            <Setter Property="Padding" Value="16,9"/>
+            <Setter Property="FontSize" Value="13"/>
         </Style>
 
         <Style x:Key="BtnHeader" TargetType="Button" BasedOn="{StaticResource Btn}">
             <Setter Property="Background" Value="#283593"/>
-            <Setter Property="Padding"    Value="18,9"/>
-            <Setter Property="FontSize"   Value="14"/>
+            <Setter Property="Padding" Value="18,9"/>
+            <Setter Property="FontSize" Value="14"/>
         </Style>
 
-        <DropShadowEffect x:Key="CardShadow"     Color="#000" Opacity="0.08" BlurRadius="10" ShadowDepth="2" Direction="270"/>
+        <DropShadowEffect x:Key="CardShadow" Color="#000" Opacity="0.08" BlurRadius="10" ShadowDepth="2" Direction="270"/>
         <DropShadowEffect x:Key="CardShadowFaint" Color="#000" Opacity="0.04" BlurRadius="6"  ShadowDepth="1" Direction="270"/>
     </Window.Resources>
 
@@ -125,7 +116,6 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- ══ ШАПКА ══ -->
         <Border Grid.Row="0" Background="#1A237E" Padding="20,0,0,0"
                 MouseLeftButtonDown="Header_MouseLeftButtonDown">
             <Grid>
@@ -148,7 +138,7 @@
                                Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"/>
                     <TextBlock Text="{Binding StatusMessage, StringFormat='  •  {0}'}"
                                Foreground="#5C6BC0" FontSize="12" VerticalAlignment="Center"
-                               Visibility="{Binding IsLoading, Converter={StaticResource InvBoolToVis}}"/>
+                               Visibility="{Binding IsLoading, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
                 </StackPanel>
 
                 <Button Grid.Column="1" Content="⚙" FontSize="18" FontWeight="ExtraLight"
@@ -165,7 +155,7 @@
 
                 <Rectangle Grid.Column="3" Width="1" Fill="#283593" Margin="0,8"/>
 
-                <Button Grid.Column="4" Width="58" Height="58" Content="—"
+                <Button Grid.Column="4" Width="58" Height="58" Content="_"
                         FontSize="18" Foreground="#90CAF9" Background="Transparent"
                         BorderThickness="0" Cursor="Hand"
                         Click="MinimizeButton_Click"
@@ -188,14 +178,12 @@
             </Grid>
         </Border>
 
-        <!-- ══ КОНТЕНТ ══ -->
         <Grid Grid.Row="1" Margin="16,14,16,10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto" MaxHeight="300"/>
             </Grid.RowDefinitions>
 
-            <!-- Баннер "не настроено" -->
             <Border Grid.Row="0" Grid.RowSpan="2" Background="#F0F2F5"
                     Visibility="{Binding IsNotConfigured, Converter={StaticResource BoolToVis}}"
                     Panel.ZIndex="10">
@@ -259,8 +247,8 @@
                     </StackPanel>
                 </Border>
 
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
-                              Visibility="{Binding IsTasksEmpty, Converter={StaticResource InvBoolToVis}}">
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden"
+                              Visibility="{Binding IsTasksEmpty, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                     <ItemsControl ItemsSource="{Binding Tasks}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -275,7 +263,7 @@
 
                                         <!-- Полоса: синяя в ожидании, чуть ярче когда в работе -->
                                         <Border Grid.Column="0"
-                                                Background="{Binding EngeneersComment, Converter={StaticResource StatusToAccent}}"
+                                                Background="{Binding EngeneersComment, Converter={StaticResource StatusToAccentBrushConverter}}"
                                                 CornerRadius="9,0,0,9"/>
 
                                         <StackPanel Grid.Column="1" Margin="10,5,5,5">
@@ -283,7 +271,7 @@
                                                 <Border HorizontalAlignment="Left"
                                                         Background="#FFEBEE" CornerRadius="5"
                                                         Width="50" Margin="0,0,6,6"
-                                                        Visibility="{Binding Priority, Converter={StaticResource StringToVis}}">
+                                                        Visibility="{Binding Priority, Converter={StaticResource StringToVisibilityConverter}}">
                                                     <TextBlock Text="{Binding Priority}"
                                                                Foreground="#E65100"
                                                                TextAlignment="Center" VerticalAlignment="Center"
@@ -298,7 +286,7 @@
                                             <WrapPanel Margin="0,0,0,6">
                                                 <Border Background="#E3F2FD" CornerRadius="5"
                                                         Width="150" Height="24" Margin="0,0,8,0"
-                                                        Visibility="{Binding Order, Converter={StaticResource StringToVis}}">
+                                                        Visibility="{Binding Order, Converter={StaticResource StringToVisibilityConverter}}">
                                                     <TextBlock FontSize="13" Foreground="#1565C0"
                                                                TextAlignment="Center" VerticalAlignment="Center">
                                                         <Run Text="М/Л: " FontWeight="SemiBold"/>
@@ -307,7 +295,7 @@
                                                 </Border>
                                                 <Border Background="#E3F2FD" CornerRadius="5"
                                                         Width="150" Height="24" Margin="0,0,8,0"
-                                                        Visibility="{Binding PartsCount, Converter={StaticResource StringToVis}}">
+                                                        Visibility="{Binding PartsCount, Converter={StaticResource StringToVisibilityConverter}}">
                                                     <TextBlock FontSize="13" Foreground="#1565C0"
                                                                TextAlignment="Center" VerticalAlignment="Center">
                                                         <Run Text="Количество: " FontWeight="SemiBold"/>
@@ -316,7 +304,7 @@
                                                 </Border>
                                                 <Border Background="#E3F2FD" CornerRadius="5"
                                                         Width="150" Height="24"
-                                                        Visibility="{Binding Date, Converter={StaticResource StringToVis}}">
+                                                        Visibility="{Binding Date, Converter={StaticResource StringToVisibilityConverter}}">
                                                     <TextBlock FontSize="13" Foreground="#1565C0"
                                                                TextAlignment="Center" VerticalAlignment="Center">
                                                         <Run Text="Дата: " FontWeight="SemiBold"/>
@@ -326,7 +314,7 @@
                                             </WrapPanel>
 
                                             <TextBlock FontSize="13" Foreground="#424242" TextWrapping="Wrap"
-                                                       Visibility="{Binding PlantComment, Converter={StaticResource StringToVis}}">
+                                                       Visibility="{Binding PlantComment, Converter={StaticResource StringToVisibilityConverter}}">
                                                 <Run Text="Комментарий: " Foreground="#757575"/>
                                                 <Run Text="{Binding PlantComment}"/>
                                             </TextBlock>
@@ -340,7 +328,7 @@
                                                         Width="136"
                                                         Style="{StaticResource BtnStartWork}"
                                                         Visibility="{Binding EngeneersComment,
-                                                            Converter={StaticResource IsNotInWorkToVis}}"
+                                                            Converter={StaticResource IsNotInWorkToVisibilityConverter}}"
                                                         Command="{Binding DataContext.StartWorkCommand,
                                                             RelativeSource={RelativeSource AncestorType=Window}}"
                                                         CommandParameter="{Binding}"/>
@@ -349,7 +337,7 @@
                                                         Width="136"
                                                         Style="{StaticResource BtnComplete}"
                                                         Visibility="{Binding EngeneersComment,
-                                                            Converter={StaticResource IsInWorkToVis}}"
+                                                            Converter={StaticResource IsInWorkToVisibilityConverter}}"
                                                         Command="{Binding DataContext.CompleteCommand,
                                                             RelativeSource={RelativeSource AncestorType=Window}}"
                                                         CommandParameter="{Binding}"/>
@@ -365,12 +353,13 @@
 
             <!-- Завершённые задачи -->
             <Grid Grid.Row="1"
-                  Visibility="{Binding HasCompletedTasks, Converter={StaticResource BoolToVis}}">
+                  Visibility="{Binding HasCompletedTasks, Converter={StaticResource BoolToVis}}"
+                  MaxHeight="300">
+
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
                     <TextBlock Text="Завершённые"
                                FontSize="14" FontWeight="SemiBold" Foreground="#616161"
@@ -381,8 +370,7 @@
                                    Foreground="#757575" FontSize="13" FontWeight="Bold"/>
                     </Border>
                 </StackPanel>
-
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden">
                     <ItemsControl ItemsSource="{Binding CompletedTasks}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -396,7 +384,7 @@
                                         </Grid.ColumnDefinitions>
 
                                         <Border Grid.Column="0"
-                                                Background="{Binding EngeneersComment, Converter={StaticResource StatusToAccent}}"
+                                                Background="{Binding EngeneersComment, Converter={StaticResource StatusToAccentBrushConverter}}"
                                                 CornerRadius="9,0,0,9"/>
 
                                         <Grid Grid.Column="1" Margin="18,11,14,11">
@@ -412,23 +400,23 @@
                                                            Margin="0,0,0,5"/>
                                                 <WrapPanel>
                                                     <TextBlock FontSize="12" Foreground="#9E9E9E" Margin="0,0,14,0"
-                                                               Visibility="{Binding Order, Converter={StaticResource StringToVis}}"
+                                                               Visibility="{Binding Order, Converter={StaticResource StringToVisibilityConverter}}"
                                                                Text="{Binding Order}"/>
                                                     <TextBlock FontSize="12" Foreground="#9E9E9E" Margin="0,0,14,0"
-                                                               Visibility="{Binding Date, Converter={StaticResource StringToVis}}"
+                                                               Visibility="{Binding Date, Converter={StaticResource StringToVisibilityConverter}}"
                                                                Text="{Binding Date}"/>
                                                     <TextBlock FontSize="12" Foreground="#9E9E9E"
-                                                               Visibility="{Binding PartsCount, Converter={StaticResource StringToVis}}"
+                                                               Visibility="{Binding PartsCount, Converter={StaticResource StringToVisibilityConverter}}"
                                                                Text="{Binding PartsCount}"/>
                                                 </WrapPanel>
                                             </StackPanel>
 
                                             <Border Grid.Column="1" CornerRadius="5" Padding="12,4"
                                                     VerticalAlignment="Center" Margin="10,0,0,0"
-                                                    Background="{Binding EngeneersComment, Converter={StaticResource StatusToBg}}">
+                                                    Background="{Binding EngeneersComment, Converter={StaticResource StatusToBackgroundConverter}}">
                                                 <TextBlock Text="{Binding EngeneersComment}"
                                                            FontWeight="Bold" FontSize="13"
-                                                           Foreground="{Binding EngeneersComment, Converter={StaticResource StatusToFg}}"/>
+                                                           Foreground="{Binding EngeneersComment, Converter={StaticResource StatusToForegroundConverter}}"/>
                                             </Border>
                                         </Grid>
 

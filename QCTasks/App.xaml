@@ -7,6 +7,8 @@
     <Application.Resources>
         <ResourceDictionary>
             <cnv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
+            <cnv:IsInWorkToVisibilityConverter x:Key="IsInWorkToVisibilityConverter"/>
+            <cnv:IsNotInWorkToVisibilityConverter x:Key="IsNotInWorkToVisibilityConverter"/>
             <cnv:StatusToAccentBrushConverter x:Key="StatusToAccentBrushConverter"/>
             <cnv:StatusToBackgroundConverter x:Key="StatusToBackgroundConverter"/>
             <cnv:StatusToForegroundConverter x:Key="StatusToForegroundConverter"/>
