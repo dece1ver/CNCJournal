@@ -1,6 +1,7 @@
 ﻿using Microsoft.Data.SqlClient;
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -18,10 +19,10 @@ namespace libeLog.Infrastructure.Sql
         /// <param name="connection">Открытое соединение с SQL Server.</param>
         /// <param name="progress">Опциональный вывод прогресса.</param>
         /// <param name="cancellationToken">Токен отмены.</param>
-        public static async Task ApplyAllAsync(SqlConnection connection, IProgress<(string, Status?)>? progress = null, CancellationToken cancellationToken = default)
+        public static async Task ApplyAllAsync(string connectionString, SqlConnection connection, IProgress<(string, Status?)>? progress = null, CancellationToken cancellationToken = default)
         {
             var fnBuilder = new FunctionSqlBuilder();
-            var manager = new FunctionManager(connection.ConnectionString, fnBuilder);
+            var manager = new FunctionManager(connectionString, fnBuilder);
 
             manager.Register(new FunctionDefinition
             {
@@ -60,19 +61,71 @@ namespace libeLog.Infrastructure.Sql
             var tables = GetAllTableDefinitions();
             foreach (var table in tables)
             {
-                await ApplyAsync(connection, table, progress, cancellationToken);
+                await ApplyAsync(connectionString, connection, table, progress, cancellationToken);
             }
         }
 
-        public static async Task ApplyAsync(SqlConnection connection, TableDefinition table, IProgress<(string, Status?)>? progress = null, CancellationToken cancellationToken = default)
+        public static async Task ApplyAsync(
+            string connectionString,
+            SqlConnection connection,
+            TableDefinition table,
+            IProgress<(string, Status?)>? progress = null,
+            CancellationToken cancellationToken = default)
         {
-            var helper = new SqlSchemaDiffHelper(connection.ConnectionString);
+            var helper = new SqlSchemaDiffHelper(connectionString);
             progress?.Report(($"Таблица: {table.Name}", Status.Sync));
-            var updated = await helper.ApplyMissingColumnsAndConstraintsAsync(table, progress, cancellationToken);
-            if (updated)
-                progress?.Report(($"Таблица: {table.Name}", Status.Ok));
-            else
-                progress?.Report(($"Таблица: {table.Name}", Status.Ok));   
+
+            await helper.ApplyMissingColumnsAndConstraintsAsync(table, progress, cancellationToken);
+
+            if (table.Indexes.Count > 0)
+            {
+                string indexScript = SqlSchemaAlterHelper.GenerateAddIndexesScript(table.Name, table.Indexes);
+                if (!string.IsNullOrWhiteSpace(indexScript))
+                {
+                    await ExecuteRawAsync(connection, indexScript, cancellationToken);
+                    progress?.Report(($"Индексы таблицы {table.Name}", Status.Ok));
+                }
+            }
+
+            progress?.Report(($"Таблица: {table.Name}", Status.Ok));
+        }
+
+        /// <summary>
+        /// Выполняет произвольный DDL/DML-скрипт через SqlCommand
+        /// Скрипт разбивается на батчи по разделителю GO (как SSMS).
+        /// Удобно для индексов, представлений и прочего, что не описывается через TableBuilder.
+        /// </summary>
+        /// <param name="connection">Соединение с базой данных (открывать не нужно — метод управляет состоянием).</param>
+        /// <param name="sql">Скрипт, возможно многобатчевый (с GO).</param>
+        /// <param name="cancellationToken">Токен отмены.</param>
+        public static async Task ExecuteRawAsync(
+            SqlConnection connection,
+            string sql,
+            CancellationToken cancellationToken = default)
+        {
+            var batches = Regex.Split(sql, @"^\s*GO\s*($|--.*)", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+
+            bool wasOpen = connection.State == System.Data.ConnectionState.Open;
+            if (!wasOpen)
+                await connection.OpenAsync(cancellationToken);
+
+            try
+            {
+                foreach (var batch in batches)
+                {
+                    string text = batch.Trim();
+                    if (string.IsNullOrEmpty(text)) continue;
+
+                    using var cmd = connection.CreateCommand();
+                    cmd.CommandText = text;
+                    await cmd.ExecuteNonQueryAsync(cancellationToken);
+                }
+            }
+            finally
+            {
+                if (!wasOpen)
+                    connection.Close();
+            }
         }
 
         /// <summary>
@@ -80,6 +133,21 @@ namespace libeLog.Infrastructure.Sql
         /// </summary>
         public static List<TableDefinition> GetAllTableDefinitions() => new()
         {
+            new TableBuilder("qc_inspections")
+                .AddIdColumn()
+                .AddStringColumn("part_name", 255, false)
+                .AddStringColumn("order_number", 100, false)
+                .AddStringColumn("parts_count", 50)
+                .AddSmallDateTimeColumn("started_at")
+                .AddSmallDateTimeColumn("completed_at")
+                .AddStringColumn("result", 20)
+                .AddStringColumn("operator", 100, false, "SUSER_SNAME()")
+                .AddIndex(
+                    columns: new[] { "part_name", "order_number" },
+                    filter:  "completed_at IS NULL",
+                    name:    "IX_qc_inspections_active")
+                .Build(),
+
             new TableBuilder("cnc_deviation_reasons")
                 .AddIdColumn()
                 .AddStringColumn("Reason", -1, false)

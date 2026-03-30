@@ -177,5 +177,50 @@ namespace libeLog.Infrastructure.Sql
 
             return sb.ToString();
         }
+
+        /// <summary>
+        /// Генерирует скрипт CREATE INDEX для всех индексов таблицы.
+        /// Каждый индекс оборачивается в проверку sys.indexes, поэтому скрипт
+        /// безопасно запускать повторно — существующие индексы пропускаются.
+        /// </summary>
+        /// <param name="tableName">Имя таблицы.</param>
+        /// <param name="indexes">Список описаний индексов.</param>
+        /// <returns>SQL-скрипт; пустая строка если индексов нет.</returns>
+        public static string GenerateAddIndexesScript(string tableName, IEnumerable<IndexDefinition> indexes)
+        {
+            SqlValidationHelper.ValidateName(tableName);
+
+            var sb = new StringBuilder();
+
+            foreach (var idx in indexes)
+            {
+                if (idx.Columns == null || idx.Columns.Count == 0)
+                    throw new ArgumentException($"Индекс в таблице '{tableName}' не содержит столбцов.");
+
+                string indexName = idx.ResolveName(tableName);
+                SqlValidationHelper.ValidateName(indexName);
+
+                string cols = string.Join(", ", idx.Columns.Select(c => $"[{c}]"));
+                string unique = idx.IsUnique ? "UNIQUE " : string.Empty;
+                string include = idx.IncludeColumns.Count > 0
+                    ? $"\n    INCLUDE ({string.Join(", ", idx.IncludeColumns.Select(c => $"[{c}]"))})"
+                    : string.Empty;
+                string filter = !string.IsNullOrWhiteSpace(idx.Filter)
+                    ? $"\n    WHERE {idx.Filter}"
+                    : string.Empty;
+
+                sb.AppendLine($@"
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE name = N'{indexName}'
+      AND object_id = OBJECT_ID(N'dbo.{tableName}')
+)
+    CREATE {unique}INDEX [{indexName}]
+        ON [dbo].[{tableName}] ({cols}){include}{filter};
+");
+            }
+
+            return sb.ToString();
+        }
     }
 }

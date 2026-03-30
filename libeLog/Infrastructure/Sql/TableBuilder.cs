@@ -427,6 +427,51 @@ namespace libeLog.Infrastructure.Sql
         }
 
         /// <summary>
+        /// Добавляет описание индекса к таблице.
+        /// Индекс создаётся при деплое через SqlSchemaBootstrapper.ApplyAsync.
+        /// </summary>
+        /// <param name="columns">Столбцы индекса.</param>
+        /// <param name="filter">
+        /// Необязательное WHERE-условие для фильтрованного индекса,
+        /// например: <c>"completed_at IS NULL"</c>.
+        /// </param>
+        /// <param name="name">
+        /// Явное имя индекса. Если null — формируется как
+        /// <c>IX_{таблица}_{столбец1}_{столбец2}</c>.
+        /// </param>
+        /// <param name="unique">Создать уникальный индекс.</param>
+        /// <param name="include">INCLUDE-столбцы для покрывающего индекса.</param>
+        /// <returns>Текущий экземпляр <see cref="TableBuilder"/>.</returns>
+        public TableBuilder AddIndex(
+            string[] columns,
+            string? filter = null,
+            string? name = null,
+            bool unique = false,
+            string[]? include = null)
+        {
+            if (columns == null || columns.Length == 0)
+                throw new ArgumentException("Индекс должен содержать хотя бы один столбец.", nameof(columns));
+
+            foreach (var col in columns)
+                SqlValidationHelper.ValidateName(col);
+
+            if (include != null)
+                foreach (var col in include)
+                    SqlValidationHelper.ValidateName(col);
+
+            _table.Indexes.Add(new IndexDefinition
+            {
+                Name = name,
+                Columns = new List<string>(columns),
+                IncludeColumns = include != null ? new List<string>(include) : new List<string>(),
+                Filter = filter,
+                IsUnique = unique,
+            });
+
+            return this;
+        }
+
+        /// <summary>
         /// Финализирует построение таблицы и возвращает <see cref="TableDefinition"/>.
         /// </summary>
         /// <returns>Описание таблицы.</returns>

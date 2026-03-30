@@ -30,6 +30,8 @@
         <cnv:StatusToAccentBrushConverter     x:Key="StatusToAccent"/>
         <cnv:StatusToForegroundConverter      x:Key="StatusToFg"/>
         <cnv:StatusToBackgroundConverter      x:Key="StatusToBg"/>
+        <cnv:IsInWorkToVisibilityConverter    x:Key="IsInWorkToVis"/>
+        <cnv:IsNotInWorkToVisibilityConverter x:Key="IsNotInWorkToVis"/>
 
         <ControlTemplate x:Key="PillButtonTemplate" TargetType="Button">
             <Border x:Name="Bd" Background="{TemplateBinding Background}"
@@ -87,6 +89,14 @@
             <Setter Property="Template"        Value="{StaticResource PillButtonTemplate}"/>
         </Style>
 
+        <!-- "В работу" — синяя -->
+        <Style x:Key="BtnStartWork" TargetType="Button" BasedOn="{StaticResource Btn}">
+            <Setter Property="Background" Value="#283593"/>
+            <Setter Property="Padding"    Value="20,11"/>
+            <Setter Property="FontSize"   Value="14"/>
+        </Style>
+
+        <!-- "Завершить" — зелёная -->
         <Style x:Key="BtnComplete" TargetType="Button" BasedOn="{StaticResource Btn}">
             <Setter Property="Background" Value="#2E7D32"/>
             <Setter Property="Padding"    Value="20,11"/>
@@ -141,8 +151,8 @@
                                Visibility="{Binding IsLoading, Converter={StaticResource InvBoolToVis}}"/>
                 </StackPanel>
 
-                <Button Grid.Column="1" Content="🛠" FontSize="18"
-                        Style="{StaticResource BtnHeader}" FontWeight="ExtraLight" Padding="14,9"
+                <Button Grid.Column="1" Content="⚙" FontSize="18" FontWeight="ExtraLight"
+                        Style="{StaticResource BtnHeader}" Padding="14 9 14 9"
                         Command="{Binding OpenSettingsCommand}"
                         Margin="0,10,6,10"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
@@ -178,12 +188,14 @@
             </Grid>
         </Border>
 
+        <!-- ══ КОНТЕНТ ══ -->
         <Grid Grid.Row="1" Margin="16,14,16,10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto" MaxHeight="300"/>
             </Grid.RowDefinitions>
 
+            <!-- Баннер "не настроено" -->
             <Border Grid.Row="0" Grid.RowSpan="2" Background="#F0F2F5"
                     Visibility="{Binding IsNotConfigured, Converter={StaticResource BoolToVis}}"
                     Panel.ZIndex="10">
@@ -195,7 +207,7 @@
                         <Border Width="68" Height="68" CornerRadius="34"
                                 Background="#FFF8E1" HorizontalAlignment="Center"
                                 Margin="0,0,0,18">
-                            <TextBlock Text="🛠" FontSize="32"
+                            <TextBlock Text="⚙" FontSize="32" FontWeight="ExtraLight" Padding="0 0 0 4.5"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                        Foreground="#F9A825"/>
                         </Border>
@@ -217,6 +229,7 @@
                 </Border>
             </Border>
 
+            <!-- Текущие задачи -->
             <Grid Grid.Row="0" Margin="0,0,0,14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -246,7 +259,7 @@
                     </StackPanel>
                 </Border>
 
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden"
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
                               Visibility="{Binding IsTasksEmpty, Converter={StaticResource InvBoolToVis}}">
                     <ItemsControl ItemsSource="{Binding Tasks}">
                         <ItemsControl.ItemTemplate>
@@ -260,7 +273,9 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <Border Grid.Column="0" Background="#1565C0"
+                                        <!-- Полоса: синяя в ожидании, чуть ярче когда в работе -->
+                                        <Border Grid.Column="0"
+                                                Background="{Binding EngeneersComment, Converter={StaticResource StatusToAccent}}"
                                                 CornerRadius="9,0,0,9"/>
 
                                         <StackPanel Grid.Column="1" Margin="10,5,5,5">
@@ -317,12 +332,28 @@
                                             </TextBlock>
                                         </StackPanel>
 
+                                        <!-- Кнопки: одна из двух видима в зависимости от статуса -->
                                         <Border Grid.Column="2" Padding="0,14,18,14" VerticalAlignment="Center">
-                                            <Button Content="Завершить" Width="136"
-                                                    Style="{StaticResource BtnComplete}"
-                                                    Command="{Binding DataContext.CompleteCommand,
-                                                              RelativeSource={RelativeSource AncestorType=Window}}"
-                                                    CommandParameter="{Binding}"/>
+                                            <StackPanel>
+                                                <!-- "В работу" — видна когда статус НЕ "В работе" -->
+                                                <Button Content="В работу"
+                                                        Width="136"
+                                                        Style="{StaticResource BtnStartWork}"
+                                                        Visibility="{Binding EngeneersComment,
+                                                            Converter={StaticResource IsNotInWorkToVis}}"
+                                                        Command="{Binding DataContext.StartWorkCommand,
+                                                            RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"/>
+                                                <!-- "Завершить" — видна только когда "В работе" -->
+                                                <Button Content="Завершить"
+                                                        Width="136"
+                                                        Style="{StaticResource BtnComplete}"
+                                                        Visibility="{Binding EngeneersComment,
+                                                            Converter={StaticResource IsInWorkToVis}}"
+                                                        Command="{Binding DataContext.CompleteCommand,
+                                                            RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"/>
+                                            </StackPanel>
                                         </Border>
                                     </Grid>
                                 </Border>
@@ -351,7 +382,7 @@
                     </Border>
                 </StackPanel>
 
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden">
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <ItemsControl ItemsSource="{Binding CompletedTasks}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>

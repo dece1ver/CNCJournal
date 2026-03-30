@@ -1,6 +1,7 @@
 ﻿using libeLog.Infrastructure;
 using libeLog.Models;
 using QCTasks.Commands;
+using QCTasks.Services;
 using QCTasks.Views;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -13,9 +14,15 @@ namespace QCTasks.ViewModels;
 
 public class MainViewModel : INotifyPropertyChanged
 {
+    private readonly TimeSpan TimerInterval = TimeSpan.FromSeconds(30);
     private GoogleSheet? _googleSheet;
+    private DbService _db;
     private readonly DispatcherTimer _timer;
     private readonly CancellationTokenSource _cts = new();
+
+    // Карта: (PartName, Order) -> ID строки в qc_inspections
+    // Заполняется при "В работу" и при восстановлении после рестарта
+    private readonly Dictionary<(string, string), int> _activeDbIds = new();
 
     private bool _isLoading;
     private bool _isConfigured;
@@ -30,7 +37,6 @@ public class MainViewModel : INotifyPropertyChanged
         private set => SetField(ref _isLoading, value);
     }
 
-    /// <summary>Все обязательные поля конфига заполнены и файл существует.</summary>
     public bool IsConfigured
     {
         get => _isConfigured;
@@ -38,7 +44,6 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (!SetField(ref _isConfigured, value)) return;
             OnPropertyChanged(nameof(IsNotConfigured));
-            // Обновляем CanExecute у RefreshCommand
             CommandManager.InvalidateRequerySuggested();
         }
     }
@@ -55,6 +60,7 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     public ICommand RefreshCommand { get; }
+    public ICommand StartWorkCommand { get; }
     public ICommand CompleteCommand { get; }
     public ICommand ChangeStatusCommand { get; }
     public ICommand OpenSettingsCommand { get; }
@@ -63,7 +69,10 @@ public class MainViewModel : INotifyPropertyChanged
 
     public MainViewModel()
     {
+        _db = new DbService(AppSettings.Instance.SqlConnectionString);
+
         RefreshCommand = new RelayCommand(() => _ = RefreshAsync(), () => IsConfigured && !IsLoading);
+        StartWorkCommand = new RelayCommand<ProductionTaskData>(task => _ = StartWorkAsync(task));
         CompleteCommand = new RelayCommand<ProductionTaskData>(task => _ = CompleteTaskAsync(task));
         ChangeStatusCommand = new RelayCommand<ProductionTaskData>(task => _ = ChangeStatusAsync(task));
         OpenSettingsCommand = new RelayCommand(OpenSettings);
@@ -71,18 +80,12 @@ public class MainViewModel : INotifyPropertyChanged
         Tasks.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsTasksEmpty));
         CompletedTasks.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasCompletedTasks));
 
-        _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        _timer = new DispatcherTimer { Interval = TimerInterval };
         _timer.Tick += async (_, _) => await RefreshAsync();
 
         ApplyConfig();
     }
 
-    // ── Конфиг ────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Проверяет конфиг и либо стартует загрузку, либо показывает предупреждение.
-    /// Вызывается при старте и после сохранения настроек.
-    /// </summary>
     private void ApplyConfig()
     {
         var cfg = AppSettings.Instance;
@@ -98,21 +101,21 @@ public class MainViewModel : INotifyPropertyChanged
 
         IsConfigured = true;
         _googleSheet = new GoogleSheet(cfg.CredentialsFile, cfg.SheetId);
+        _db = new DbService(cfg.SqlConnectionString);
         StatusMessage = "Загрузка...";
         _ = RefreshAsync();
     }
 
-    /// <summary>Возвращает текст проблемы или null если всё ок.</summary>
     private static string? Validate(AppSettings cfg)
     {
         if (string.IsNullOrWhiteSpace(cfg.CredentialsFile))
-            return "Не указан файл учётных данных Google. Откройте настройки и заполните конфигурацию.";
+            return "Не указан файл учётных данных Google.";
 
         if (!System.IO.File.Exists(cfg.CredentialsFile))
-            return $"Файл учётных данных не найден:\n{cfg.CredentialsFile}\n\nПроверьте путь в настройках.";
+            return $"Файл учётных данных не найден: {cfg.CredentialsFile}";
 
         if (string.IsNullOrWhiteSpace(cfg.SheetId))
-            return "Не указан ID таблицы Google Sheets. Откройте настройки и заполните конфигурацию.";
+            return "Не указан ID таблицы Google Sheets.";
 
         return null;
     }
@@ -138,6 +141,7 @@ public class MainViewModel : INotifyPropertyChanged
             foreach (var task in data)
             {
                 bool isDone = task.EngeneersComment is "Принято" or "Отклонено";
+
                 if (isDone)
                 {
                     if (!CompletedTasks.Any(t => t.PartName == task.PartName && t.Order == task.Order))
@@ -150,7 +154,10 @@ public class MainViewModel : INotifyPropertyChanged
                 }
             }
 
-            StatusMessage = $"Обновлено: {DateTime.Now:HH:mm:ss}  •  следующее через 30 сек";
+            // Восстанавливаем DB-ID для позиций "В работе" после перезапуска
+            await RestoreActiveDbIdsAsync();
+
+            StatusMessage = $"Обновлено: {DateTime.Now:HH:mm:ss}  •  интервал: {TimerInterval.TotalSeconds} сек.";
         }
         catch (Exception ex)
         {
@@ -164,50 +171,103 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    // ── Действия ──────────────────────────────────────────────────────────
+    /// <summary>
+    /// После рестарта приложения для позиций "В работе" пытаемся найти
+    /// незакрытые строки в БД, чтобы корректно завершить их при нажатии "Завершить".
+    /// </summary>
+    private async Task RestoreActiveDbIdsAsync()
+    {
+        foreach (var task in Tasks.Where(t => t.EngeneersComment == "В работе"))
+        {
+            var key = (task.PartName, task.Order);
+            if (_activeDbIds.ContainsKey(key)) continue;
 
+            var id = await _db.FindActiveInspectionAsync(task.PartName, task.Order);
+            if (id.HasValue)
+                _activeDbIds[key] = id.Value;
+        }
+    }
+
+    /// <summary>Нажата кнопка "В работу" — отправляем статус в таблицу и пишем в БД.</summary>
+    private async Task StartWorkAsync(ProductionTaskData? task)
+    {
+        if (task is null || !IsConfigured) return;
+        _timer.Stop();
+
+        var staleId = await _db.FindActiveInspectionAsync(task.PartName, task.Order);
+        if (staleId.HasValue)
+            await _db.CancelInspectionAsync(staleId.Value);
+
+        task.EngeneersComment = "В работе";
+        int idx = Tasks.IndexOf(task);
+        if (idx >= 0) { Tasks.RemoveAt(idx); Tasks.Insert(idx, task); }
+
+        await WriteStatusAsync(task, "В работе");
+
+        var dbId = await _db.StartInspectionAsync(task.PartName, task.Order, task.PartsCount);
+        if (dbId.HasValue)
+            _activeDbIds[(task.PartName, task.Order)] = dbId.Value;
+
+        _timer.Start();
+    }
+
+    /// <summary>Нажата кнопка "Завершить" — показываем диалог и фиксируем итог.</summary>
     private async Task CompleteTaskAsync(ProductionTaskData? task)
     {
         if (task is null || !IsConfigured) return;
 
         _timer.Stop();
 
-        var result = MessageBox.Show(
-            $"Принять или отклонить деталь?\n\n{task.PartName}\n\nДа — Принято,  Нет — Отклонено",
-            "Решение по детали",
-            MessageBoxButton.YesNoCancel,
-            MessageBoxImage.Question);
+        var result = ConfirmDialog.Show(
+            OwnerWindow,
+            title: "Результат проверки",
+            message: task.PartName,
+            detail: string.IsNullOrWhiteSpace(task.Order) ? null : $"М/Л: {task.Order}",
+            yesText: "Принято",
+            noText: "Отклонено",
+            cancelText: "Отмена");
 
-        if (result == MessageBoxResult.Cancel)
+        if (result is null)
         {
             _timer.Start();
             return;
         }
 
-        bool accepted = result == MessageBoxResult.Yes;
+        bool accepted = result.Value;
         task.EngeneersComment = accepted ? "Принято" : "Отклонено";
 
         Tasks.Remove(task);
         if (!CompletedTasks.Contains(task))
             CompletedTasks.Add(task);
 
-        await WriteResultAsync(task, accepted);
+        await WriteStatusAsync(task, task.EngeneersComment);
+
+        var key = (task.PartName, task.Order);
+        if (_activeDbIds.TryGetValue(key, out int dbId))
+        {
+            await _db.CompleteInspectionAsync(dbId, accepted);
+            _activeDbIds.Remove(key);
+        }
+
         _timer.Start();
     }
 
+    /// <summary>Изменение статуса уже завершённой позиции.</summary>
     private async Task ChangeStatusAsync(ProductionTaskData? task)
     {
         if (task is null || !IsConfigured) return;
 
-        var result = MessageBox.Show(
-            $"Изменить статус для:\n\n{task.PartName}\n\nДа — Принято,  Нет — Отклонено",
-            "Изменить статус",
-            MessageBoxButton.YesNoCancel,
-            MessageBoxImage.Question);
+        var result = ConfirmDialog.Show(
+            OwnerWindow,
+            title: "Изменить статус",
+            message: task.PartName,
+            detail: string.IsNullOrWhiteSpace(task.Order) ? null : $"М/Л: {task.Order}",
+            yesText: "Принято",
+            noText: "Отклонено");
 
-        if (result == MessageBoxResult.Cancel) return;
+        if (result is null) return;
 
-        bool accepted = result == MessageBoxResult.Yes;
+        bool accepted = result.Value;
 
         int idx = CompletedTasks.IndexOf(task);
         if (idx >= 0)
@@ -217,14 +277,18 @@ public class MainViewModel : INotifyPropertyChanged
             CompletedTasks.Insert(idx, task);
         }
 
-        await WriteResultAsync(task, accepted);
+        await WriteStatusAsync(task, task.EngeneersComment);
+
+        await _db.UpdateInspectionAsync(task);
     }
 
-    private async Task WriteResultAsync(ProductionTaskData task, bool accepted)
+    private async Task WriteStatusAsync(ProductionTaskData task, string status)
     {
         if (_googleSheet is null) return;
-        await _googleSheet.UpdateCellValue(task.CellAddress, accepted ? "Принято" : "Отклонено");
+        await _googleSheet.UpdateCellValue(task.CellAddress, status);
     }
+
+    // ── Настройки ─────────────────────────────────────────────────────────
 
     private void OpenSettings()
     {
@@ -236,6 +300,7 @@ public class MainViewModel : INotifyPropertyChanged
         if (win.DataContext is SettingsViewModel { Saved: true })
         {
             AppSettings.Reload();
+            _activeDbIds.Clear();
             ApplyConfig();
             return;
         }

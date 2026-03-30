@@ -118,7 +118,7 @@ namespace remeLog.ViewModels
             try
             {
                 using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
-                await SqlSchemaBootstrapper.ApplyAllAsync(connection, progress, _cts.Token);
+                await SqlSchemaBootstrapper.ApplyAllAsync(connection.ConnectionString, connection, progress, _cts.Token);
                 Status = "Готово";
             }
             catch (OperationCanceledException)
