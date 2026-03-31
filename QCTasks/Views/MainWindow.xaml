@@ -7,13 +7,14 @@
         xmlns:local="clr-namespace:QCTasks"
         xmlns:cnv="clr-namespace:QCTasks.Converters"
         xmlns:vm="clr-namespace:QCTasks.ViewModels"
+        xmlns:lib="clr-namespace:libeLog;assembly=libeLog"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
         Title="Контроль ОТК" Height="800" Width="1200"
         MinWidth="860" MinHeight="520"
         Background="#F0F2F5"
         FontFamily="Segoe UI"
-        WindowStyle="None"
+        WindowStyle="None" AllowsTransparency="True"
         ResizeMode="CanResizeWithGrip">
 
     <shell:WindowChrome.WindowChrome>
@@ -50,7 +51,7 @@
             </Border>
             <ControlTemplate.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter TargetName="Bd" Property="Background" Value="#283593"/>
+                    <Setter TargetName="Bd" Property="Background" Value="{x:Static lib:Constants+Colors.AreopagBlue90}"/>
                 </Trigger>
                 <Trigger Property="IsPressed" Value="True">
                     <Setter TargetName="Bd" Property="Background" Value="#1A2272"/>
@@ -64,11 +65,27 @@
             </Border>
             <ControlTemplate.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter TargetName="Bd" Property="Background" Value="#C62828"/>
+                    <Setter TargetName="Bd" Property="Background" Value="{x:Static lib:Constants+Colors.AreopagRed90}"/>
                     <Setter Property="Foreground" Value="White"/>
                 </Trigger>
                 <Trigger Property="IsPressed" Value="True">
-                    <Setter TargetName="Bd" Property="Background" Value="#B71C1C"/>
+                    <Setter TargetName="Bd" Property="Background" Value="{x:Static lib:Constants+Colors.AreopagRed80}"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <ControlTemplate x:Key="LimitPresetTemplate" TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                    CornerRadius="7" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Bd" Property="Background" Value="{x:Static lib:Constants+Colors.AreopagBlue20}"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter TargetName="Bd" Property="Background" Value="{x:Static lib:Constants+Colors.AreopagBlue90}"/>
+                    <Setter Property="Foreground" Value="White"/>
                 </Trigger>
             </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -83,31 +100,45 @@
         </Style>
 
         <Style x:Key="BtnStartWork" TargetType="Button" BasedOn="{StaticResource Btn}">
-            <Setter Property="Background" Value="#283593"/>
-            <Setter Property="Padding"    Value="20,11"/>
-            <Setter Property="FontSize"   Value="14"/>
+            <Setter Property="Background" Value="{x:Static lib:Constants+Colors.AreopagBlue90}"/>
+            <Setter Property="Padding" Value="20 11"/>
+            <Setter Property="FontSize" Value="14"/>
         </Style>
 
         <Style x:Key="BtnComplete" TargetType="Button" BasedOn="{StaticResource Btn}">
-            <Setter Property="Background" Value="#2E7D32"/>
-            <Setter Property="Padding" Value="20,11"/>
+            <Setter Property="Background" Value="{x:Static lib:Constants+Colors.AreopagGreen}"/>
+            <Setter Property="Padding" Value="20 11"/>
             <Setter Property="FontSize" Value="14"/>
         </Style>
 
         <Style x:Key="BtnChangeStatus" TargetType="Button" BasedOn="{StaticResource Btn}">
-            <Setter Property="Background" Value="#1565C0"/>
-            <Setter Property="Padding" Value="16,9"/>
+            <Setter Property="Background" Value="{x:Static lib:Constants+Colors.AreopagBlue90}"/>
+            <Setter Property="Padding" Value="16 9"/>
             <Setter Property="FontSize" Value="13"/>
         </Style>
 
         <Style x:Key="BtnHeader" TargetType="Button" BasedOn="{StaticResource Btn}">
-            <Setter Property="Background" Value="#283593"/>
-            <Setter Property="Padding" Value="18,9"/>
-            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Background" Value="{x:Static lib:Constants+Colors.AreopagBlue90}"/>
+            <Setter Property="Padding"    Value="18,9"/>
+            <Setter Property="FontSize"   Value="14"/>
+        </Style>
+
+        <Style x:Key="LimitPreset" TargetType="Button">
+            <Setter Property="Foreground" Value="{x:Static lib:Constants+Colors.AreopagBlue}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Width" Value="64"/>
+            <Setter Property="Height" Value="48"/>
+            <Setter Property="Template" Value="{StaticResource LimitPresetTemplate}"/>
         </Style>
 
         <DropShadowEffect x:Key="CardShadow" Color="#000" Opacity="0.08" BlurRadius="10" ShadowDepth="2" Direction="270"/>
         <DropShadowEffect x:Key="CardShadowFaint" Color="#000" Opacity="0.04" BlurRadius="6"  ShadowDepth="1" Direction="270"/>
+        <DropShadowEffect x:Key="PopupShadow" Color="#000" Opacity="0.18" BlurRadius="16" ShadowDepth="4" Direction="270"/>
     </Window.Resources>
 
     <Grid x:Name="RootGrid">
@@ -116,72 +147,126 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="#1A237E" Padding="20,0,0,0"
+        <Border Grid.Row="0" Background="{x:Static lib:Constants+Colors.AreopagBlue}" Padding="20 0 0 0"
                 MouseLeftButtonDown="Header_MouseLeftButtonDown">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="1"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
+                <!-- Заголовок + статус -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal"
-                            VerticalAlignment="Center" Margin="0,14,16,14">
-                    <TextBlock Text="Контроль ОТК"
+                            VerticalAlignment="Center" Margin="0 14 16 14">
+                    <TextBlock Text="Контроль ОТК" FontFamily="Segoe UI Light"
                                Foreground="White" FontSize="20" VerticalAlignment="Center"/>
                     <TextBlock Text="  •  Обновление..."
-                               Foreground="#90CAF9" FontSize="13" VerticalAlignment="Center"
+                               Foreground="{x:Static lib:Constants+Colors.AreopagBlue70}" FontSize="12"
+                               VerticalAlignment="Center"
                                Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"/>
                     <TextBlock Text="{Binding StatusMessage, StringFormat='  •  {0}'}"
-                               Foreground="#5C6BC0" FontSize="12" VerticalAlignment="Center"
+                               Foreground="{x:Static lib:Constants+Colors.AreopagBlue70}" FontSize="12"
+                               VerticalAlignment="Center"
                                Visibility="{Binding IsLoading, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
                 </StackPanel>
 
-                <Button Grid.Column="1" Content="⚙" FontSize="18" FontWeight="ExtraLight"
-                        Style="{StaticResource BtnHeader}" Padding="14 9 14 9"
+                <Button Grid.Column="1" Content="⚙" FontSize="20" FontWeight="ExtraLight"
+                        Style="{StaticResource BtnHeader}" Padding="0 0 0 2" Width="50"
                         Command="{Binding OpenSettingsCommand}"
-                        Margin="0,10,6,10"
-                        shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                        Margin="0 10 6 10"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True" Cursor="Hand"/>
 
-                <Button Grid.Column="2" Content="↻  Обновить"
+                <Button Grid.Column="2" d:Content="Скрыть выполненные"
+                        Content="{Binding ToggleCompletedLabel}"
+                        Style="{StaticResource BtnHeader}" Padding="0 0 0 0"
+                        Command="{Binding ToggleCompletedCommand}"
+                        Margin="0 10 6 10" Width="200"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True" Cursor="Hand"/>
+
+                <Grid Grid.Column="3" Margin="0 10 6 10">
+                    <Button x:Name="LimitButton" Width="50" d:Content="Все"
+                            Style="{StaticResource BtnHeader}"
+                            Click="LimitButton_Click"  Padding="0 0 0 0"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding TasksLimitLabel}" FontSize="14"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Popup x:Name="LimitPopup"
+                           PlacementTarget="{Binding ElementName=LimitButton}"
+                           Placement="Bottom"
+                           StaysOpen="False"
+                           AllowsTransparency="True"
+                           PopupAnimation="Fade">
+                        <Border Background="White" CornerRadius="10"
+                                Padding="8" Margin="0 4 0 0"
+                                Effect="{StaticResource PopupShadow}">
+                            <StackPanel>
+                                <TextBlock Text="Показывать задач" FontSize="12"
+                                           Foreground="#9E9E9E" FontWeight="SemiBold"
+                                           Margin="8,4,8,8" HorizontalAlignment="Center"/>
+                                
+                                <StackPanel Orientation="Horizontal" Margin="0 0 0 4">
+                                    <Button Content="Все" Style="{StaticResource LimitPreset}"
+                                            Click="LimitPreset_Click" Tag="0"/>
+                                    <Button Content="3" Style="{StaticResource LimitPreset}"
+                                            Click="LimitPreset_Click" Tag="3"/>
+                                    <Button Content="5" Style="{StaticResource LimitPreset}"
+                                            Click="LimitPreset_Click" Tag="5"/>
+                                    <Button Content="10" Style="{StaticResource LimitPreset}"
+                                            Click="LimitPreset_Click" Tag="10"/>
+                                    <Button Content="15" Style="{StaticResource LimitPreset}"
+                                            Click="LimitPreset_Click" Tag="15"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+                </Grid>
+
+                <Button Grid.Column="4" Content="↻" FontWeight="ExtraLight"
                         Style="{StaticResource BtnHeader}"
                         Command="{Binding RefreshCommand}"
-                        Margin="0,10,8,10"
-                        shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                        Margin="0 10 6 10" Width="50" Padding="0 0 0 2"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True" Cursor="Hand"/>
+                <Rectangle Grid.Column="5" Width="1"
+                           Fill="{x:Static lib:Constants+Colors.AreopagBlue90}" Margin="0 8 6 8"/>
 
-                <Rectangle Grid.Column="3" Width="1" Fill="#283593" Margin="0,8"/>
-
-                <Button Grid.Column="4" Width="58" Height="58" Content="_"
-                        FontSize="18" Foreground="#90CAF9" Background="Transparent"
-                        BorderThickness="0" Cursor="Hand"
+                <Button Grid.Column="6" Width="60" Height="60" Content="__"
+                        FontSize="18" Foreground="{x:Static lib:Constants+Colors.AreopagBlue70}"
+                        Background="Transparent" BorderThickness="0" Cursor="Hand"
                         Click="MinimizeButton_Click"
                         Template="{StaticResource WinCtrlTemplate}"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
 
-                <Button Grid.Column="5" Width="58" Height="58" Content="⬜"
-                        FontSize="15" Foreground="#90CAF9" Background="Transparent"
-                        BorderThickness="0" Cursor="Hand"
+                <Button Grid.Column="7" Width="60" Height="60" Content="⬜"
+                        FontSize="24" Foreground="{x:Static lib:Constants+Colors.AreopagBlue70}"
+                        Background="Transparent" BorderThickness="0" Cursor="Hand"
                         Click="MaximizeButton_Click"
                         Template="{StaticResource WinCtrlTemplate}"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
 
-                <Button Grid.Column="6" Width="68" Height="58" Content="✕"
-                        FontSize="18" Foreground="#EF9A9A" Background="Transparent"
-                        BorderThickness="0" Cursor="Hand"
+                <Button Grid.Column="8" Width="60" Height="60" Content="✕"
+                        FontSize="24" Foreground="{x:Static lib:Constants+Colors.AreopagRed90}"
+                        Background="Transparent" BorderThickness="0" Cursor="Hand"
                         Click="CloseButton_Click"
                         Template="{StaticResource WinCloseTemplate}"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1" Margin="16,14,16,10">
+        <Grid Grid.Row="1" Margin="16 14 16 10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto" MaxHeight="300"/>
+                <RowDefinition Height="Auto" MaxHeight="309"/>
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0" Grid.RowSpan="2" Background="#F0F2F5"
@@ -193,14 +278,14 @@
                         Padding="48,40" MinWidth="440">
                     <StackPanel HorizontalAlignment="Center">
                         <Border Width="68" Height="68" CornerRadius="34"
-                                Background="#FFF8E1" HorizontalAlignment="Center"
-                                Margin="0,0,0,18">
-                            <TextBlock Text="⚙" FontSize="32" FontWeight="ExtraLight" Padding="0 0 0 4.5"
+                                Background="#FFF8E1" HorizontalAlignment="Center" Margin="0,0,0,18">
+                            <TextBlock Text="⚙" FontSize="32" FontWeight="ExtraLight" Padding="0,0,0,4.5"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                        Foreground="#F9A825"/>
                         </Border>
                         <TextBlock Text="Требуется настройка"
-                                   FontSize="19" FontWeight="Bold" Foreground="#1A237E"
+                                   FontSize="19" FontWeight="Bold"
+                                   Foreground="{x:Static lib:Constants+Colors.AreopagBlue}"
                                    HorizontalAlignment="Center" Margin="0,0,0,12"/>
                         <Border Background="#FFF8E1" CornerRadius="8"
                                 Padding="16,12" Margin="0,0,0,24" MaxWidth="360">
@@ -217,7 +302,6 @@
                 </Border>
             </Border>
 
-            <!-- Текущие задачи -->
             <Grid Grid.Row="0" Margin="0,0,0,14">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -226,12 +310,22 @@
 
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
                     <TextBlock Text="Текущие задачи"
-                               FontSize="15" FontWeight="SemiBold" Foreground="#1A237E"
+                               FontSize="15" FontWeight="SemiBold"
+                               Foreground="{x:Static lib:Constants+Colors.AreopagBlue}"
                                VerticalAlignment="Center"/>
-                    <Border Background="#E3F2FD" CornerRadius="10" Padding="8,2"
-                            Margin="10,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Tasks.Count}"
-                                   Foreground="#1565C0" FontSize="13" FontWeight="Bold"/>
+                    <Border Background="{x:Static lib:Constants+Colors.AreopagBlue20}" CornerRadius="10"
+                            Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding DisplayedTasks.Count, Mode=OneWay}"
+                                       Foreground="{x:Static lib:Constants+Colors.AreopagBlue90}"
+                                       FontSize="13" FontWeight="Bold"/>
+                            <TextBlock Foreground="{x:Static lib:Constants+Colors.AreopagBlue90}"
+                                       FontSize="13" Opacity="0.6"
+                                       Visibility="{Binding IsLimitActive, Converter={StaticResource BoolToVis}}">
+                                <Run Text=" / "/>
+                                <Run Text="{Binding Tasks.Count, Mode=OneWay}"/>
+                            </TextBlock>
+                        </StackPanel>
                     </Border>
                 </StackPanel>
 
@@ -249,7 +343,7 @@
 
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden"
                               Visibility="{Binding IsTasksEmpty, Converter={StaticResource InverseBoolToVisibilityConverter}}">
-                    <ItemsControl ItemsSource="{Binding Tasks}">
+                    <ItemsControl ItemsSource="{Binding DisplayedTasks}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Border Margin="0,0,0,10" CornerRadius="9" Background="White"
@@ -261,7 +355,6 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <!-- Полоса: синяя в ожидании, чуть ярче когда в работе -->
                                         <Border Grid.Column="0"
                                                 Background="{Binding EngeneersComment, Converter={StaticResource StatusToAccentBrushConverter}}"
                                                 CornerRadius="9,0,0,9"/>
@@ -279,33 +372,33 @@
                                                 </Border>
                                                 <TextBlock Text="{Binding PartName}"
                                                            FontSize="17" FontWeight="Bold"
-                                                           Foreground="#1A237E" TextWrapping="Wrap"
-                                                           Margin="0,0,0,8"/>
+                                                           Foreground="{x:Static lib:Constants+Colors.AreopagBlue}"
+                                                           TextWrapping="Wrap" Margin="0,0,0,8"/>
                                             </StackPanel>
 
                                             <WrapPanel Margin="0,0,0,6">
-                                                <Border Background="#E3F2FD" CornerRadius="5"
+                                                <Border Background="{x:Static lib:Constants+Colors.AreopagBlue20}" CornerRadius="5"
                                                         Width="150" Height="24" Margin="0,0,8,0"
                                                         Visibility="{Binding Order, Converter={StaticResource StringToVisibilityConverter}}">
-                                                    <TextBlock FontSize="13" Foreground="#1565C0"
+                                                    <TextBlock FontSize="13" Foreground="{x:Static lib:Constants+Colors.AreopagBlue90}"
                                                                TextAlignment="Center" VerticalAlignment="Center">
                                                         <Run Text="М/Л: " FontWeight="SemiBold"/>
                                                         <Run Text="{Binding Order}"/>
                                                     </TextBlock>
                                                 </Border>
-                                                <Border Background="#E3F2FD" CornerRadius="5"
+                                                <Border Background="{x:Static lib:Constants+Colors.AreopagBlue20}" CornerRadius="5"
                                                         Width="150" Height="24" Margin="0,0,8,0"
                                                         Visibility="{Binding PartsCount, Converter={StaticResource StringToVisibilityConverter}}">
-                                                    <TextBlock FontSize="13" Foreground="#1565C0"
+                                                    <TextBlock FontSize="13" Foreground="{x:Static lib:Constants+Colors.AreopagBlue90}"
                                                                TextAlignment="Center" VerticalAlignment="Center">
                                                         <Run Text="Количество: " FontWeight="SemiBold"/>
                                                         <Run Text="{Binding PartsCount}"/>
                                                     </TextBlock>
                                                 </Border>
-                                                <Border Background="#E3F2FD" CornerRadius="5"
+                                                <Border Background="{x:Static lib:Constants+Colors.AreopagBlue20}" CornerRadius="5"
                                                         Width="150" Height="24"
                                                         Visibility="{Binding Date, Converter={StaticResource StringToVisibilityConverter}}">
-                                                    <TextBlock FontSize="13" Foreground="#1565C0"
+                                                    <TextBlock FontSize="13" Foreground="{x:Static lib:Constants+Colors.AreopagBlue90}"
                                                                TextAlignment="Center" VerticalAlignment="Center">
                                                         <Run Text="Дата: " FontWeight="SemiBold"/>
                                                         <Run Text="{Binding Date}"/>
@@ -320,21 +413,16 @@
                                             </TextBlock>
                                         </StackPanel>
 
-                                        <!-- Кнопки: одна из двух видима в зависимости от статуса -->
                                         <Border Grid.Column="2" Padding="0,14,18,14" VerticalAlignment="Center">
                                             <StackPanel>
-                                                <!-- "В работу" — видна когда статус НЕ "В работе" -->
-                                                <Button Content="В работу"
-                                                        Width="136"
+                                                <Button Content="В работу" Width="150" Height="50"
                                                         Style="{StaticResource BtnStartWork}"
                                                         Visibility="{Binding EngeneersComment,
                                                             Converter={StaticResource IsNotInWorkToVisibilityConverter}}"
                                                         Command="{Binding DataContext.StartWorkCommand,
                                                             RelativeSource={RelativeSource AncestorType=Window}}"
                                                         CommandParameter="{Binding}"/>
-                                                <!-- "Завершить" — видна только когда "В работе" -->
-                                                <Button Content="Завершить"
-                                                        Width="136"
+                                                <Button Content="Завершить" Width="150" Height="50"
                                                         Style="{StaticResource BtnComplete}"
                                                         Visibility="{Binding EngeneersComment,
                                                             Converter={StaticResource IsInWorkToVisibilityConverter}}"
@@ -351,26 +439,21 @@
                 </ScrollViewer>
             </Grid>
 
-            <!-- Завершённые задачи -->
-            <Grid Grid.Row="1"
-                  Visibility="{Binding HasCompletedTasks, Converter={StaticResource BoolToVis}}"
-                  MaxHeight="300">
+            <DockPanel Grid.Row="1" LastChildFill="True" MaxHeight="309"
+                       Visibility="{Binding CompletedSectionVisible, Converter={StaticResource BoolToVis}}">
 
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
                     <TextBlock Text="Завершённые"
                                FontSize="14" FontWeight="SemiBold" Foreground="#616161"
                                VerticalAlignment="Center"/>
                     <Border Background="#EEEEEE" CornerRadius="10" Padding="8,2"
                             Margin="10,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding CompletedTasks.Count}"
+                        <TextBlock Text="{Binding CompletedTasks.Count, Mode=OneWay}"
                                    Foreground="#757575" FontSize="13" FontWeight="Bold"/>
                     </Border>
                 </StackPanel>
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden">
+
+                <ScrollViewer VerticalScrollBarVisibility="Hidden">
                     <ItemsControl ItemsSource="{Binding CompletedTasks}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -411,17 +494,19 @@
                                                 </WrapPanel>
                                             </StackPanel>
 
-                                            <Border Grid.Column="1" CornerRadius="5" Padding="12,4"
+                                            <Border Grid.Column="1" CornerRadius="5" Padding="0"
                                                     VerticalAlignment="Center" Margin="10,0,0,0"
+                                                    Width="150" Height="38"
                                                     Background="{Binding EngeneersComment, Converter={StaticResource StatusToBackgroundConverter}}">
                                                 <TextBlock Text="{Binding EngeneersComment}"
-                                                           FontWeight="Bold" FontSize="13"
+                                                           VerticalAlignment="Center"
+                                                           FontWeight="Bold" FontSize="13" TextAlignment="Center"
                                                            Foreground="{Binding EngeneersComment, Converter={StaticResource StatusToForegroundConverter}}"/>
                                             </Border>
                                         </Grid>
 
-                                        <Border Grid.Column="2" Padding="0,11,18,11" VerticalAlignment="Center">
-                                            <Button Content="Изменить статус" Width="155"
+                                        <Border Grid.Column="2" Padding="0,0,12,0" VerticalAlignment="Center">
+                                            <Button Content="Изменить статус" Width="150" Height="38"
                                                     Style="{StaticResource BtnChangeStatus}"
                                                     Command="{Binding DataContext.ChangeStatusCommand,
                                                               RelativeSource={RelativeSource AncestorType=Window}}"
@@ -433,7 +518,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </ScrollViewer>
-            </Grid>
+            </DockPanel>
         </Grid>
     </Grid>
 </Window>

@@ -5,6 +5,7 @@ using QCTasks.Services;
 using QCTasks.Views;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
@@ -26,15 +27,23 @@ public class MainViewModel : INotifyPropertyChanged
 
     private bool _isLoading;
     private bool _isConfigured;
+    private bool _showCompletedTasks = true;
+    private int _tasksLimit = 0;           // 0 = все
     private string _statusMessage = "";
 
     public ObservableCollection<ProductionTaskData> Tasks { get; } = new();
     public ObservableCollection<ProductionTaskData> CompletedTasks { get; } = new();
+    public ObservableCollection<ProductionTaskData> DisplayedTasks { get; } = new();
 
     public bool IsLoading
     {
         get => _isLoading;
-        private set => SetField(ref _isLoading, value);
+        private set 
+        { 
+            Set(ref _isLoading, value); 
+            CommandManager.InvalidateRequerySuggested(); 
+        }
+
     }
 
     public bool IsConfigured
@@ -42,7 +51,7 @@ public class MainViewModel : INotifyPropertyChanged
         get => _isConfigured;
         private set
         {
-            if (!SetField(ref _isConfigured, value)) return;
+            if (!Set(ref _isConfigured, value)) return;
             OnPropertyChanged(nameof(IsNotConfigured));
             CommandManager.InvalidateRequerySuggested();
         }
@@ -51,12 +60,43 @@ public class MainViewModel : INotifyPropertyChanged
     public bool IsNotConfigured => !_isConfigured;
 
     public bool HasCompletedTasks => CompletedTasks.Count > 0;
-    public bool IsTasksEmpty => Tasks.Count == 0 && !IsLoading;
+    public bool IsTasksEmpty => DisplayedTasks.Count == 0 && !IsLoading;
+
+    /// <summary>Видимость секции завершённых задач.</summary>
+    public bool ShowCompletedTasks
+    {
+        get => _showCompletedTasks;
+        set
+        {
+            Set(ref _showCompletedTasks, value);
+            OnPropertyChanged(nameof(CompletedSectionVisible));
+            OnPropertyChanged(nameof(ToggleCompletedLabel));
+        }
+    }
+
+    public bool CompletedSectionVisible => ShowCompletedTasks && HasCompletedTasks;
+    public string ToggleCompletedLabel => ShowCompletedTasks ? "Скрыть выполненные" : "Показать выполненные";
+
+    /// <summary>0 = без ограничений.</summary>
+    public int TasksLimit
+    {
+        get => _tasksLimit;
+        set
+        {
+            Set(ref _tasksLimit, value);
+            OnPropertyChanged(nameof(TasksLimitLabel));
+            OnPropertyChanged(nameof(IsLimitActive));
+            RebuildDisplayedTasks();
+        }
+    }
+
+    public string TasksLimitLabel => _tasksLimit == 0 ? "Все" : _tasksLimit.ToString();
+    public bool IsLimitActive => _tasksLimit > 0;
 
     public string StatusMessage
     {
         get => _statusMessage;
-        private set => SetField(ref _statusMessage, value);
+        private set => Set(ref _statusMessage, value);
     }
 
     public ICommand RefreshCommand { get; }
@@ -64,6 +104,8 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand CompleteCommand { get; }
     public ICommand ChangeStatusCommand { get; }
     public ICommand OpenSettingsCommand { get; }
+    public ICommand ToggleCompletedCommand { get; }
+    public ICommand SetTasksLimitCommand { get; }
 
     public Window? OwnerWindow { get; set; }
 
@@ -76,14 +118,33 @@ public class MainViewModel : INotifyPropertyChanged
         CompleteCommand = new RelayCommand<ProductionTaskData>(task => _ = CompleteTaskAsync(task));
         ChangeStatusCommand = new RelayCommand<ProductionTaskData>(task => _ = ChangeStatusAsync(task));
         OpenSettingsCommand = new RelayCommand(OpenSettings);
+        ToggleCompletedCommand = new RelayCommand(() => ShowCompletedTasks = !ShowCompletedTasks);
+        SetTasksLimitCommand = new RelayCommand<int>(limit => TasksLimit = limit);
 
-        Tasks.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsTasksEmpty));
-        CompletedTasks.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasCompletedTasks));
+        Tasks.CollectionChanged += (_, _) =>
+        {
+            RebuildDisplayedTasks();
+            OnPropertyChanged(nameof(IsTasksEmpty));
+        };
+        CompletedTasks.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasCompletedTasks));
+            OnPropertyChanged(nameof(CompletedSectionVisible));
+        };
 
-        _timer = new DispatcherTimer { Interval = TimerInterval };
+        _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _timer.Tick += async (_, _) => await RefreshAsync();
 
         ApplyConfig();
+    }
+
+    private void RebuildDisplayedTasks()
+    {
+        DisplayedTasks.Clear();
+        var source = _tasksLimit > 0 ? Tasks.Take(_tasksLimit) : Tasks;
+        foreach (var t in source)
+            DisplayedTasks.Add(t);
+        OnPropertyChanged(nameof(IsTasksEmpty));
     }
 
     private void ApplyConfig()
@@ -120,8 +181,6 @@ public class MainViewModel : INotifyPropertyChanged
         return null;
     }
 
-    // ── Загрузка ──────────────────────────────────────────────────────────
-
     public async Task RefreshAsync()
     {
         if (!IsConfigured || _googleSheet is null) return;
@@ -153,8 +212,6 @@ public class MainViewModel : INotifyPropertyChanged
                         Tasks.Add(task);
                 }
             }
-
-            // Восстанавливаем DB-ID для позиций "В работе" после перезапуска
             await RestoreActiveDbIdsAsync();
 
             StatusMessage = $"Обновлено: {DateTime.Now:HH:mm:ss}  •  интервал: {TimerInterval.TotalSeconds} сек.";
@@ -167,7 +224,8 @@ public class MainViewModel : INotifyPropertyChanged
         {
             IsLoading = false;
             _timer.Start();
-            OnPropertyChanged(nameof(IsTasksEmpty));
+            RebuildDisplayedTasks();
+            OnPropertyChanged(nameof(RefreshCommand.CanExecute));
         }
     }
 
@@ -188,10 +246,11 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>Нажата кнопка "В работу" — отправляем статус в таблицу и пишем в БД.</summary>
+    /// <summary>Запуск задачи.</summary>
     private async Task StartWorkAsync(ProductionTaskData? task)
     {
         if (task is null || !IsConfigured) return;
+
         _timer.Stop();
 
         var staleId = await _db.FindActiveInspectionAsync(task.PartName, task.Order);
@@ -200,10 +259,15 @@ public class MainViewModel : INotifyPropertyChanged
 
         task.EngeneersComment = "В работе";
         int idx = Tasks.IndexOf(task);
-        if (idx >= 0) { Tasks.RemoveAt(idx); Tasks.Insert(idx, task); }
+        if (idx >= 0)
+        {
+            Tasks.RemoveAt(idx);
+            Tasks.Insert(idx, task);
+        }
 
-        await WriteStatusAsync(task, "В работе");
+        await WriteStatusAsync(task);
 
+        // Пишем в БД
         var dbId = await _db.StartInspectionAsync(task.PartName, task.Order, task.PartsCount);
         if (dbId.HasValue)
             _activeDbIds[(task.PartName, task.Order)] = dbId.Value;
@@ -211,41 +275,44 @@ public class MainViewModel : INotifyPropertyChanged
         _timer.Start();
     }
 
-    /// <summary>Нажата кнопка "Завершить" — показываем диалог и фиксируем итог.</summary>
+    /// <summary>Завершение задачи.</summary>
     private async Task CompleteTaskAsync(ProductionTaskData? task)
     {
         if (task is null || !IsConfigured) return;
 
         _timer.Stop();
 
-        var result = ConfirmDialog.Show(
+        var (Confirmed, Text) = InputConfirmDialog.Show(
             OwnerWindow,
             title: "Результат проверки",
             message: task.PartName,
             detail: string.IsNullOrWhiteSpace(task.Order) ? null : $"М/Л: {task.Order}",
             yesText: "Принято",
             noText: "Отклонено",
-            cancelText: "Отмена");
+            cancelText: "Отмена", 
+            disallowNoOnEmpty: true);
 
-        if (result is null)
+        if (Confirmed is null)
         {
             _timer.Start();
             return;
         }
 
-        bool accepted = result.Value;
+        bool accepted = Confirmed.Value;
         task.EngeneersComment = accepted ? "Принято" : "Отклонено";
+        task.QcComment = Text;
 
         Tasks.Remove(task);
         if (!CompletedTasks.Contains(task))
             CompletedTasks.Add(task);
 
-        await WriteStatusAsync(task, task.EngeneersComment);
+        await WriteStatusAsync(task);
+
 
         var key = (task.PartName, task.Order);
         if (_activeDbIds.TryGetValue(key, out int dbId))
         {
-            await _db.CompleteInspectionAsync(dbId, accepted);
+            await _db.CompleteInspectionAsync(dbId, accepted, task);
             _activeDbIds.Remove(key);
         }
 
@@ -257,18 +324,20 @@ public class MainViewModel : INotifyPropertyChanged
     {
         if (task is null || !IsConfigured) return;
 
-        var result = ConfirmDialog.Show(
+        var (Confirmed, Text) = InputConfirmDialog.Show(
             OwnerWindow,
             title: "Изменить статус",
             message: task.PartName,
             detail: string.IsNullOrWhiteSpace(task.Order) ? null : $"М/Л: {task.Order}",
             yesText: "Принято",
-            noText: "Отклонено");
+            noText: "Отклонено", 
+            defaultValue: task.QcComment, 
+            disallowNoOnEmpty: true);
 
-        if (result is null) return;
+        if (Confirmed is null) return;
 
-        bool accepted = result.Value;
-
+        bool accepted = Confirmed.Value;
+        task.QcComment = Text;
         int idx = CompletedTasks.IndexOf(task);
         if (idx >= 0)
         {
@@ -277,18 +346,32 @@ public class MainViewModel : INotifyPropertyChanged
             CompletedTasks.Insert(idx, task);
         }
 
-        await WriteStatusAsync(task, task.EngeneersComment);
-
+        await WriteStatusAsync(task);
         await _db.UpdateInspectionAsync(task);
     }
 
-    private async Task WriteStatusAsync(ProductionTaskData task, string status)
+    private async Task WriteStatusAsync(ProductionTaskData task)
     {
         if (_googleSheet is null) return;
-        await _googleSheet.UpdateCellValue(task.CellAddress, status);
-    }
 
-    // ── Настройки ─────────────────────────────────────────────────────────
+        var freshAddress = await _googleSheet.FindTaskCellAddressAsync(
+            machine: "ОТК",
+            machines: new[] { "ОТК" },
+            partName: task.PartName,
+            order: task.Order,
+            cancellationToken: _cts.Token);
+
+        if (freshAddress is null)
+        {
+            Console.Error.WriteLine(
+                $"[WriteStatusAsync] Строка не найдена: {task.PartName} / {task.Order}");
+            return;
+        }
+
+        task.CellAddress = freshAddress;
+
+        await _googleSheet.UpdateCellValues(freshAddress, new string[] {task.EngeneersComment, task.QcComment});
+    }
 
     private void OpenSettings()
     {
@@ -308,12 +391,10 @@ public class MainViewModel : INotifyPropertyChanged
         if (IsConfigured) _timer.Start();
     }
 
-    // ── INotifyPropertyChanged ─────────────────────────────────────────────
-
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-    private bool SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
+    private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
         if (EqualityComparer<T>.Default.Equals(field, value)) return false;
         field = value;

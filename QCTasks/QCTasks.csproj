@@ -1,12 +1,23 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+	<AssemblyTitle>Контроль ОТК</AssemblyTitle>
+	<AssemblyDescription>Приложение со списком задач для контроля ОТК</AssemblyDescription>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net6.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Resources\qc.ico</ApplicationIcon>
+    <Title>Контроль ОТК</Title>
+    <Company>dece1ver</Company>
+    <Description>Приложение со списком задач для контроля ОТК</Description>
+    <Copyright>dece1ver</Copyright>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Resources\qc.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.72" />

@@ -6,10 +6,11 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        mc:Ignorable="d"
+        xmlns:lib="clr-namespace:libeLog;assembly=libeLog"
+        mc:Ignorable="d" AllowsTransparency="True"
         d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}"
         Title="Настройки" Width="560" SizeToContent="Height"
-        FontFamily="Segoe UI" Background="#F0F2F5">
+        FontFamily="Segoe UI" Background="Transparent">
 
     <local:DialogBase.Resources>
         <ResourceDictionary>
@@ -20,21 +21,20 @@
         </ResourceDictionary>
     </local:DialogBase.Resources>
 
-    <Border Background="#F0F2F5">
+    <Border Background="#F0F2F5" CornerRadius="6"
+            BorderBrush="{x:Static lib:Constants+Colors.AreopagBlue}" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
-                <!-- Шапка -->
                 <RowDefinition Height="*"/>
-                <!-- Контент -->
             </Grid.RowDefinitions>
 
-            <!-- Шапка -->
-            <Border Grid.Row="0" Background="#1A237E"
+            <Border Grid.Row="0" Background="{x:Static lib:Constants+Colors.AreopagBlue}" 
+                    CornerRadius="6 6 0 0" Margin="-1"
                     MouseLeftButtonDown="Header_MouseLeftButtonDown">
                 <Grid>
                     <StackPanel Orientation="Horizontal"
-                                VerticalAlignment="Center" Margin="20,14">
+                                VerticalAlignment="Center" Margin="20 14">
                         <TextBlock Text="Настройки"
                                    Foreground="White"
                                    FontSize="17" FontWeight="Bold"/>
@@ -46,10 +46,7 @@
                 </Grid>
             </Border>
 
-            <!-- Форма -->
             <StackPanel Grid.Row="1" Margin="28,24,28,28">
-
-                <!-- Google Credentials -->
                 <TextBlock Text="Файл учётных данных Google (JSON)"
                            Style="{StaticResource FieldLabel}"/>
                 <Grid Margin="0,0,0,18">
@@ -71,14 +68,12 @@
                             Command="{Binding BrowseCredentialsCommand}"/>
                 </Grid>
 
-                <!-- Sheet ID -->
                 <TextBlock Text="ID таблицы Google Sheets"
                            Style="{StaticResource FieldLabel}"/>
                 <TextBox Style="{StaticResource DialogTextBox}"
                          Text="{Binding SheetId, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,0,0,18"/>
 
-                <!-- SQL Connection String -->
                 <TextBlock Text="Строка подключения SQL Server"
                            Style="{StaticResource FieldLabel}"/>
                 <TextBox Style="{StaticResource DialogTextBox}"
@@ -88,7 +83,6 @@
                 <TextBlock Text="Пример: Server=SRV\SQLEXPRESS;Database=Production;Integrated Security=True"
                            FontSize="11" Foreground="#9E9E9E" Margin="0,0,0,24"/>
 
-                <!-- Ошибка -->
                 <Border Background="#FFEBEE" CornerRadius="6" Padding="14,10"
                         Margin="0,0,0,18"
                         Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}">
@@ -97,7 +91,6 @@
                                TextWrapping="Wrap"/>
                 </Border>
 
-                <!-- Кнопки -->
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>

@@ -21,7 +21,6 @@ public class DialogBase : Window
         Background = System.Windows.Media.Brushes.Transparent;
         AllowsTransparency = false;
 
-        // Тень от родительского окна через Chrome
         var chrome = new System.Windows.Shell.WindowChrome
         {
             CaptionHeight = 0,

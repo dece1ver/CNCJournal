@@ -138,10 +138,11 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("part_name", 255, false)
                 .AddStringColumn("order_number", 100, false)
                 .AddStringColumn("parts_count", 50)
-                .AddSmallDateTimeColumn("started_at")
-                .AddSmallDateTimeColumn("completed_at")
+                .AddDateTimeColumn("started_at")
+                .AddDateTimeColumn("completed_at")
                 .AddStringColumn("result", 20)
                 .AddStringColumn("operator", 100, false, "SUSER_SNAME()")
+                .AddStringColumn("comment", -1, true)
                 .AddIndex(
                     columns: new[] { "part_name", "order_number" },
                     filter:  "completed_at IS NULL",

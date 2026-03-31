@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Windows.Media;
 
 namespace libeLog
 {
@@ -100,6 +101,25 @@ namespace libeLog
         public static class Dates
         {
             public static List<DateTime> Holidays { get; set; } = new();
+        }
+
+        public static class Colors 
+        {
+            public static readonly SolidColorBrush AreopagBlue = new(Color.FromRgb(0, 0x24, 0x3D));
+            public static readonly SolidColorBrush AreopagBlue90 = new(Color.FromRgb(0x30, 0x3c, 0x60));
+            public static readonly SolidColorBrush AreopagBlue80 = new(Color.FromRgb(0x47, 0x51, 0x72));
+            public static readonly SolidColorBrush AreopagBlue70 = new(Color.FromRgb(0x5e, 0x67, 0x84));
+            public static readonly SolidColorBrush AreopagBlue60 = new(Color.FromRgb(0x75, 0x7C, 0x95));
+            public static readonly SolidColorBrush AreopagBlue30 = new(Color.FromRgb(0xBA, 0xBE, 0xCA));
+            public static readonly SolidColorBrush AreopagBlue20 = new(Color.FromRgb(0xD1, 0xD4, 0xDC));
+            public static readonly SolidColorBrush AreopagGreen = new(Color.FromRgb(0x00, 0xAD, 0x68));
+            public static readonly SolidColorBrush AreopagGreen90 = new(Color.FromRgb(0x1A, 0xB5, 0x77));
+            public static readonly SolidColorBrush AreopagGreen20 = new(Color.FromRgb(0xCD, 0xEE, 0xE1));
+            public static readonly SolidColorBrush AreopagRed = new(Color.FromRgb(0xE6, 0x3C, 0x2F));
+            public static readonly SolidColorBrush AreopagRed90 = new(Color.FromRgb(0xE8, 0x4F, 0x44));
+            public static readonly SolidColorBrush AreopagRed80 = new(Color.FromRgb(0xEB, 0x63, 0x58));
+            public static readonly SolidColorBrush AreopagRed20 = new(Color.FromRgb(0xFA, 0xD8, 0xD6));
+            public static readonly SolidColorBrush Gray = new(Color.FromRgb(0x9E, 0x9E, 0x9E));
         }
     }
 }

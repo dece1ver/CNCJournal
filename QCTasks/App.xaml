@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:QCTasks"
              xmlns:cnv="clr-namespace:QCTasks.Converters"
+             xmlns:lib="clr-namespace:libeLog;assembly=libeLog"
              StartupUri="Views/MainWindow.xaml">
     <Application.Resources>
         <ResourceDictionary>

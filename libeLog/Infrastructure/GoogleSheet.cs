@@ -153,6 +153,31 @@ namespace libeLog.Infrastructure
             await Task.Delay(1000);
         }
 
+        public async Task UpdateCellValues(string range, string[] values, IProgress<(int, string)>? progress = null)
+        {
+            progress?.Report((0, "Запись статуса"));
+            await Task.Delay(1000);
+            Credential = GetCredentialsFromFile(_credentialFile);
+            SheetsService = new SheetsService(new BaseClientService.Initializer()
+            {
+                HttpClientInitializer = Credential,
+            });
+            var valuesRange = new ValueRange
+            {
+                Values = new List<IList<object>>
+                {
+                    values.Cast<object>().ToList()
+                }
+            };
+
+            var updateRequest = SheetsService.Spreadsheets.Values.Update(valuesRange, _sheetId, range);
+            updateRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.RAW;
+
+            await updateRequest.ExecuteAsync();
+            progress?.Report((1, "Записано"));
+            await Task.Delay(1000);
+        }
+
         public async Task<HashSet<string>> GetAssignedPartsData(string machine, IProgress<string> progress, CancellationToken cancellationToken)
         {
             Credential = GetCredentialsFromFile(_credentialFile);
@@ -186,10 +211,10 @@ namespace libeLog.Infrastructure
         }
 
         public async Task<IReadOnlyList<ProductionTaskData>> GetProductionTasksData(
-    string machine,
-    IEnumerable<string> machines,
-    IProgress<string> progress,
-    CancellationToken cancellationToken)
+            string machine,
+            IEnumerable<string> machines,
+            IProgress<string> progress,
+            CancellationToken cancellationToken)
         {
             List<ProductionTaskData> data = new List<ProductionTaskData>();
 
@@ -248,6 +273,7 @@ namespace libeLog.Infrastructure
                         var priority = SafeGet(row, 6);
                         var engineerComment = SafeGet(row, 7);
                         var setup_technician = SafeGet(row, 8);
+                        var qcComment = SafeGet(row, 8);
                         var laborInput = SafeGet(row, 9);
                         var pdComment = SafeGet(row, 10);
                         var ncProgramHref = SafeGet(row, 11);
@@ -266,6 +292,7 @@ namespace libeLog.Infrastructure
                                 engineerComment.IfEmpty("-"),
                                 setup_technician.IfEmpty("-"),
                                 pdComment.IfEmpty("-"),
+                                qcComment.IfEmpty(""),
                                 ncProgramHref.IfEmpty("-"), cellAddress));
                         }
                     }
@@ -304,6 +331,92 @@ namespace libeLog.Infrastructure
         public static string SafeGet(IList<object> list, int index)
         {
             return (list.Count > index && list[index] != null) ? list[index].ToString()! : "";
+        }
+
+        /// <summary>
+        /// Находит актуальный адрес ячейки статуса для задачи непосредственно перед записью.
+        /// Повторяет логику GetProductionTasksData: ищет секцию станка, затем строку по имени
+        /// детали и номеру маршрутного листа.
+        /// </summary>
+        /// <param name="machine">Имя станка / секции (например "ОТК").</param>
+        /// <param name="machines">Все имена станков — нужны чтобы понять границу секции.</param>
+        /// <param name="partName">Имя детали.</param>
+        /// <param name="order">Номер М/Л.</param>
+        /// <param name="cancellationToken">Токен отмены.</param>
+        /// <returns>
+        /// Адрес ячейки статуса вида "H42", или <c>null</c> если строка не найдена.
+        /// </returns>
+        public async Task<string?> FindTaskCellAddressAsync(
+            string machine,
+            IEnumerable<string> machines,
+            string partName,
+            string order,
+            CancellationToken cancellationToken = default)
+        {
+            Credential = GetCredentialsFromFile(_credentialFile);
+            SheetsService = new SheetsService(new BaseClientService.Initializer
+            {
+                HttpClientInitializer = Credential,
+            });
+
+            var request = SheetsService.Spreadsheets.Values.Get(_sheetId, "Загрузка станков!A1:L200");
+            var response = await request.ExecuteAsync(cancellationToken);
+            var values = response.Values;
+
+            if (values is null || values.Count == 0)
+                return null;
+
+            // Нормализуем order для сравнения так же, как при загрузке:
+            // order.IfEmpty("Без М/Л", o => o.ToUpper())
+            var normalizedOrder = string.IsNullOrEmpty(order)
+                ? "Без М/Л"
+                : order.ToUpper();
+
+            bool machineFound = false;
+            int skipCnt = 0;
+
+            for (int rowIndex = 0; rowIndex < values.Count; rowIndex++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var row = values[rowIndex];
+                if (row == null || row.Count == 0) continue;
+
+                if (skipCnt > 0) { skipCnt--; continue; }
+
+                if (row[0] is string currentMachine
+                    && currentMachine.Contains('|')
+                    && machine.Contains(currentMachine.Split('|')[0].Trim()))
+                {
+                    machineFound = true;
+                    skipCnt = 2;
+                    continue;
+                }
+
+                if (machineFound
+                    && row[0] is string otherMachine
+                    && (otherMachine.ToLower() == "маркировка"
+                        || otherMachine.Contains('|')
+                           && machines.Any(n => n.Contains(otherMachine.Split('|')[0].Trim()))))
+                {
+                    break;
+                }
+
+                if (!machineFound || row.Count <= 1) continue;
+
+                var rowPartName = SafeGet(row, 1);
+                var rowOrder = string.IsNullOrEmpty(SafeGet(row, 2))
+                    ? "Без М/Л"
+                    : SafeGet(row, 2).ToUpper();
+
+                if (string.Equals(rowPartName, partName, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(rowOrder, normalizedOrder, StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"H{rowIndex + 1}";
+                }
+            }
+
+            return null;
         }
 
         public static string CreateGoogleSheetsRange((int startRow, int startColumn, int endRow, int endColumn) coordinates)

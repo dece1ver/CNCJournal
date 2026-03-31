@@ -31,7 +31,11 @@ namespace remeLog.ViewModels
         public bool IsBusy
         {
             get => _isBusy;
-            set => Set(ref _isBusy, value);
+            set 
+            {
+                Set(ref _isBusy, value);
+                CommandManager.InvalidateRequerySuggested();
+            }
         }
 
         public string Status

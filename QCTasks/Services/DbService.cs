@@ -37,7 +37,7 @@ public class DbService
 
         const string sql = @"
 INSERT INTO qc_inspections (part_name, order_number, parts_count, started_at, operator)
-VALUES (@PartName, @OrderNumber, @PartsCount, @StartedAt, SUSER_SNAME());
+VALUES (@PartName, @OrderNumber, @PartsCount, @StartedAt, @UserName);
 SELECT CAST(SCOPE_IDENTITY() AS INT);
 ";
 
@@ -49,7 +49,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);
                 PartName = partName,
                 OrderNumber = orderNumber,
                 PartsCount = partsCount,
-                StartedAt = DateTime.Now
+                StartedAt = DateTime.Now,
+                Environment.UserName,
             });
         }
         catch (Exception ex)
@@ -62,14 +63,15 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);
     /// <summary>
     /// Обновляет запись — фиксирует итог и время завершения.
     /// </summary>
-    public async Task CompleteInspectionAsync(int id, bool accepted)
+    public async Task CompleteInspectionAsync(int id, bool accepted, ProductionTaskData inspection)
     {
         if (!IsAvailable) return;
 
         const string sql = @"
 UPDATE qc_inspections
 SET completed_at = @CompletedAt,
-    result = @Result
+    result = @Result,
+    comment = @Comment 
 WHERE id = @Id;
 ";
 
@@ -80,7 +82,8 @@ WHERE id = @Id;
             {
                 CompletedAt = DateTime.Now,
                 Result = accepted ? "Принято" : "Отклонено",
-                Id = id
+                Id = id,
+                Comment = inspection.QcComment
             });
         }
         catch (Exception ex)
@@ -134,11 +137,10 @@ ORDER BY started_at DESC;
         const string sql = @"
 UPDATE qc_inspections
 SET completed_at = @CompletedAt,
-    result       = 'Отменено'
+    result = 'Отменено'
 WHERE id = @Id
     AND completed_at IS NULL;
 ";
-
         try
         {
             await using var conn = new SqlConnection(_connectionString);
@@ -157,7 +159,8 @@ WHERE id = @Id
         const string sql = @"
 UPDATE qc_inspections
 SET completed_at = @CompletedAt,
-    result = @Result
+    result = @Result,
+    comment = @Comment
 WHERE id = (
     SELECT TOP (1) id
     FROM qc_inspections
@@ -175,7 +178,8 @@ WHERE id = (
                 CompletedAt = DateTime.Now,
                 Name = inspection.PartName,
                 OrderNumber = inspection.Order,
-                Result = inspection.EngeneersComment
+                Result = inspection.EngeneersComment,
+                Comment = inspection.QcComment
             });
         }
         catch (Exception ex) { LogError("UpdateInspectionAsync", ex); }

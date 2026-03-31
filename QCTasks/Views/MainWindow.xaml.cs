@@ -1,6 +1,7 @@
 ﻿using QCTasks.ViewModels;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -14,7 +15,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        DataContext = new MainViewModel();
+        var vm = new MainViewModel { OwnerWindow = this };
+        DataContext = vm;
 
         StateChanged += (_, _) =>
         {
@@ -34,24 +36,18 @@ public partial class MainWindow : Window
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         const int WM_GETMINMAXINFO = 0x0024;
-
         if (msg == WM_GETMINMAXINFO)
         {
             var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
             var workArea = SystemParameters.WorkArea;
             var dpi = VisualTreeHelper.GetDpi(this);
-            var scaling = dpi.PixelsPerDip;
+            var s = dpi.PixelsPerDip;
+            var bp = (int)(ResizeBorder * s);
 
-            mmi.ptMaxPosition.x = (int)(workArea.Left * scaling);
-            mmi.ptMaxPosition.y = (int)(workArea.Top * scaling);
-            mmi.ptMaxSize.x = (int)(workArea.Width * scaling);
-            mmi.ptMaxSize.y = (int)(workArea.Height * scaling);
-
-            var borderPx = (int)(ResizeBorder * scaling);
-            mmi.ptMaxSize.x += borderPx * 2;
-            mmi.ptMaxSize.y += borderPx * 2;
-            mmi.ptMaxPosition.x -= borderPx;
-            mmi.ptMaxPosition.y -= borderPx;
+            mmi.ptMaxSize.x = (int)(workArea.Width * s) + bp * 2;
+            mmi.ptMaxSize.y = (int)(workArea.Height * s) + bp * 2;
+            mmi.ptMaxPosition.x = (int)(workArea.Left * s) - bp;
+            mmi.ptMaxPosition.y = (int)(workArea.Top * s) - bp;
 
             Marshal.StructureToPtr(mmi, lParam, true);
             handled = true;
@@ -62,26 +58,16 @@ public partial class MainWindow : Window
     [StructLayout(LayoutKind.Sequential)]
     private struct MINMAXINFO
     {
-        public POINT ptReserved;
-        public POINT ptMaxSize;
-        public POINT ptMaxPosition;
-        public POINT ptMinTrackSize;
-        public POINT ptMaxTrackSize;
+        public POINT ptReserved, ptMaxSize, ptMaxPosition, ptMinTrackSize, ptMaxTrackSize;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct POINT
-    {
-        public int x;
-        public int y;
-    }
+    private struct POINT { public int x, y; }
 
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount == 2)
-            ToggleMaximize();
-        else
-            DragMove();
+        if (e.ClickCount == 2) ToggleMaximize();
+        else DragMove();
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) =>
@@ -93,11 +79,22 @@ public partial class MainWindow : Window
     private void CloseButton_Click(object sender, RoutedEventArgs e) =>
         Close();
 
-    private void ToggleMaximize()
-    {
+    private void ToggleMaximize() =>
         WindowState = WindowState == WindowState.Maximized
             ? WindowState.Normal
             : WindowState.Maximized;
+
+    private void LimitButton_Click(object sender, RoutedEventArgs e) =>
+        LimitPopup.IsOpen = !LimitPopup.IsOpen;
+
+    private void LimitPreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn &&
+            int.TryParse(btn.Tag?.ToString(), out int limit) &&
+            DataContext is MainViewModel vm)
+        {
+            vm.TasksLimit = limit;
+        }
+        LimitPopup.IsOpen = false;
     }
-    
 }
