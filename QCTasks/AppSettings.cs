@@ -1,11 +1,11 @@
 ﻿using Newtonsoft.Json;
+using System.Collections.Generic;
 using System.IO;
 
 namespace QCTasks;
 
 public sealed class AppSettings
 {
-    // ── Singleton ──────────────────────────────────────────────────────────
     private static AppSettings? _instance;
     private static readonly object _lock = new();
 
@@ -20,26 +20,39 @@ public sealed class AppSettings
         }
     }
 
-    // ── Пути ──────────────────────────────────────────────────────────────
     public const string BasePath = @"C:\ProgramData\dece1ver\QCTasks";
     public static readonly string ConfigFilePath = Path.Combine(BasePath, "config.json");
 
-    // ── Поля конфига ──────────────────────────────────────────────────────
     public string CredentialsFile { get; set; } = "";
     public string SheetId { get; set; } = "";
+
     public string SqlConnectionString { get; set; } = "";
 
-    // ── Валидация ─────────────────────────────────────────────────────────
-    /// <summary>Все обязательные поля заполнены.</summary>
+    public string SmtpAddress { get; set; } = "";
+    public int SmtpPort { get; set; } = 25;
+    public string SmtpUsername { get; set; } = "";
+
+    /// <summary>
+    /// Имя переменной окружения пользователя, хранящей SMTP-пароль.
+    /// Пароль не пишется в конфиг — только имя переменной.
+    /// </summary>
+    public string SmtpPasswordEnvVar { get; set; } = "NOTIFY_SMTP_PWD";
+
+    /// <summary>Адреса, которым уходит письмо при отклонении детали.</summary>
+    public List<string> RejectionNotifyRecipients { get; set; } = new();
+
     [JsonIgnore]
     public bool IsValid =>
         !string.IsNullOrWhiteSpace(CredentialsFile) &&
         !string.IsNullOrWhiteSpace(SheetId);
 
-    // ── Конструктор приватный ─────────────────────────────────────────────
+    [JsonIgnore]
+    public bool IsSmtpConfigured =>
+        !string.IsNullOrWhiteSpace(SmtpAddress) &&
+        !string.IsNullOrWhiteSpace(SmtpUsername);
+
     private AppSettings() { }
 
-    // ── Загрузка ──────────────────────────────────────────────────────────
     private static AppSettings LoadInternal()
     {
         try
@@ -56,10 +69,7 @@ public sealed class AppSettings
         }
     }
 
-    /// <summary>
-    /// Перечитывает конфиг с диска и обновляет текущий Singleton.
-    /// Вызывать после сохранения из окна настроек.
-    /// </summary>
+    /// <summary>Перечитывает конфиг с диска. Вызывать после сохранения настроек.</summary>
     public static AppSettings Reload()
     {
         lock (_lock)
@@ -71,7 +81,7 @@ public sealed class AppSettings
 
     private static readonly JsonSerializerSettings _jsonSettings = new()
     {
-        Formatting = Formatting.Indented
+        Formatting = Formatting.Indented,
     };
 
     /// <summary>Атомарное сохранение через tmp-файл.</summary>

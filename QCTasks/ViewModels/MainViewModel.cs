@@ -20,6 +20,7 @@ public class MainViewModel : INotifyPropertyChanged
     private DbService _db;
     private readonly DispatcherTimer _timer;
     private readonly CancellationTokenSource _cts = new();
+    private QcNotificationService _notify;
 
     // Карта: (PartName, Order) -> ID строки в qc_inspections
     // Заполняется при "В работу" и при восстановлении после рестарта
@@ -151,7 +152,6 @@ public class MainViewModel : INotifyPropertyChanged
     {
         var cfg = AppSettings.Instance;
         var problem = Validate(cfg);
-
         if (problem is not null)
         {
             IsConfigured = false;
@@ -161,6 +161,7 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         IsConfigured = true;
+        _notify = new QcNotificationService(cfg);
         _googleSheet = new GoogleSheet(cfg.CredentialsFile, cfg.SheetId);
         _db = new DbService(cfg.SqlConnectionString);
         StatusMessage = "Загрузка...";
@@ -305,7 +306,26 @@ public class MainViewModel : INotifyPropertyChanged
         Tasks.Remove(task);
         if (!CompletedTasks.Contains(task))
             CompletedTasks.Add(task);
-
+        if (!accepted && _notify.IsAvailable)
+        {
+            var recipients = AppSettings.Instance.RejectionNotifyRecipients;
+            if (recipients.Count > 0)
+            {
+                // fire-and-forget: уведомление не должно задерживать UI
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        _notify.SendRejectionNotice(task, task.QcComment ?? "", recipients);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Логируем, но не падаем — отправка письма не критична
+                        Console.Error.WriteLine($"[Notify] {ex.Message}");
+                    }
+                });
+            }
+        }
         await WriteStatusAsync(task);
 
 

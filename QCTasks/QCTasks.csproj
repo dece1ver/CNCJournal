@@ -16,6 +16,21 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Resources\Fonts\IBMPlexMono-Bold.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexMono-BoldItalic.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexMono-Italic.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexMono-Medium.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexMono-MediumItalic.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexMono-Regular.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexMono-SemiBold.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexMono-SemiBoldItalic.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexMono-Thin.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexMono-ThinItalic.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexSans-Italic-VariableFont_wdth,wght.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexSans-VariableFont_wdth,wght.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="Resources\qc.ico" />
   </ItemGroup>
 
@@ -25,6 +40,21 @@
 
   <ItemGroup>
     <ProjectReference Include="..\libeLog\libeLog.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\Fonts\IBMPlexMono-Bold.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexMono-BoldItalic.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexMono-Italic.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexMono-Medium.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexMono-MediumItalic.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexMono-Regular.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexMono-SemiBold.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexMono-SemiBoldItalic.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexMono-Thin.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexMono-ThinItalic.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexSans-Italic-VariableFont_wdth,wght.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexSans-VariableFont_wdth,wght.ttf" />
   </ItemGroup>
 
 </Project>

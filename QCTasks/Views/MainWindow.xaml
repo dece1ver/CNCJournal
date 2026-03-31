@@ -13,7 +13,7 @@
         Title="Контроль ОТК" Height="800" Width="1200"
         MinWidth="860" MinHeight="520"
         Background="#F0F2F5"
-        FontFamily="Segoe UI"
+        FontFamily="/Resources/Fonts/#IBM Plex Sans" 
         WindowStyle="None" AllowsTransparency="True"
         ResizeMode="CanResizeWithGrip">
 
@@ -94,8 +94,7 @@
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontFamily" Value="Segoe UI"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontFamily" Value="/Resources/Fonts/#IBM Plex Mono"/>
             <Setter Property="Template" Value="{StaticResource PillButtonTemplate}"/>
         </Style>
 
@@ -121,6 +120,7 @@
             <Setter Property="Background" Value="{x:Static lib:Constants+Colors.AreopagBlue90}"/>
             <Setter Property="Padding"    Value="18,9"/>
             <Setter Property="FontSize"   Value="14"/>
+            <Setter Property="FontFamily"   Value="/Resources/Fonts/#IBM Plex Mono"/>
         </Style>
 
         <Style x:Key="LimitPreset" TargetType="Button">
@@ -165,7 +165,7 @@
                 <!-- Заголовок + статус -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal"
                             VerticalAlignment="Center" Margin="0 14 16 14">
-                    <TextBlock Text="Контроль ОТК" FontFamily="Segoe UI Light"
+                    <TextBlock Text="Контроль ОТК" 
                                Foreground="White" FontSize="20" VerticalAlignment="Center"/>
                     <TextBlock Text="  •  Обновление..."
                                Foreground="{x:Static lib:Constants+Colors.AreopagBlue70}" FontSize="12"
@@ -234,13 +234,13 @@
 
                 <Button Grid.Column="4" Content="↻" FontWeight="ExtraLight"
                         Style="{StaticResource BtnHeader}"
-                        Command="{Binding RefreshCommand}"
+                        Command="{Binding RefreshCommand}" FontFamily="Segoe UI Emoji"
                         Margin="0 10 6 10" Width="50" Padding="0 0 0 2"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True" Cursor="Hand"/>
                 <Rectangle Grid.Column="5" Width="1"
                            Fill="{x:Static lib:Constants+Colors.AreopagBlue90}" Margin="0 8 6 8"/>
 
-                <Button Grid.Column="6" Width="60" Height="60" Content="__"
+                <Button Grid.Column="6" Width="60" Height="60" Content="_"
                         FontSize="18" Foreground="{x:Static lib:Constants+Colors.AreopagBlue70}"
                         Background="Transparent" BorderThickness="0" Cursor="Hand"
                         Click="MinimizeButton_Click"
@@ -371,37 +371,37 @@
                                                                FontWeight="Bold" FontSize="12"/>
                                                 </Border>
                                                 <TextBlock Text="{Binding PartName}"
-                                                           FontSize="17" FontWeight="Bold"
+                                                           FontSize="17" FontWeight="SemiBold"
                                                            Foreground="{x:Static lib:Constants+Colors.AreopagBlue}"
                                                            TextWrapping="Wrap" Margin="0,0,0,8"/>
                                             </StackPanel>
 
                                             <WrapPanel Margin="0,0,0,6">
                                                 <Border Background="{x:Static lib:Constants+Colors.AreopagBlue20}" CornerRadius="5"
-                                                        Width="150" Height="24" Margin="0,0,8,0"
+                                                        Width="180" Height="24" Margin="0,0,8,0"
                                                         Visibility="{Binding Order, Converter={StaticResource StringToVisibilityConverter}}">
                                                     <TextBlock FontSize="13" Foreground="{x:Static lib:Constants+Colors.AreopagBlue90}"
                                                                TextAlignment="Center" VerticalAlignment="Center">
-                                                        <Run Text="М/Л: " FontWeight="SemiBold"/>
-                                                        <Run Text="{Binding Order}"/>
+                                                        <Run Text="М/Л:" FontWeight="SemiBold"/>
+                                                        <Run Text="{Binding Order}" FontFamily="/Resources/Fonts/#IBM Plex Mono"/>
                                                     </TextBlock>
                                                 </Border>
                                                 <Border Background="{x:Static lib:Constants+Colors.AreopagBlue20}" CornerRadius="5"
-                                                        Width="150" Height="24" Margin="0,0,8,0"
+                                                        Width="180" Height="24" Margin="0,0,8,0"
                                                         Visibility="{Binding PartsCount, Converter={StaticResource StringToVisibilityConverter}}">
                                                     <TextBlock FontSize="13" Foreground="{x:Static lib:Constants+Colors.AreopagBlue90}"
                                                                TextAlignment="Center" VerticalAlignment="Center">
-                                                        <Run Text="Количество: " FontWeight="SemiBold"/>
-                                                        <Run Text="{Binding PartsCount}"/>
+                                                        <Run Text="Количество:" FontWeight="SemiBold"/>
+                                                        <Run Text="{Binding PartsCount}" FontFamily="/Resources/Fonts/#IBM Plex Mono"/>
                                                     </TextBlock>
                                                 </Border>
                                                 <Border Background="{x:Static lib:Constants+Colors.AreopagBlue20}" CornerRadius="5"
-                                                        Width="150" Height="24"
+                                                        Width="180" Height="24"
                                                         Visibility="{Binding Date, Converter={StaticResource StringToVisibilityConverter}}">
                                                     <TextBlock FontSize="13" Foreground="{x:Static lib:Constants+Colors.AreopagBlue90}"
                                                                TextAlignment="Center" VerticalAlignment="Center">
-                                                        <Run Text="Дата: " FontWeight="SemiBold"/>
-                                                        <Run Text="{Binding Date}"/>
+                                                        <Run Text="Дата:" FontWeight="SemiBold"/>
+                                                        <Run Text="{Binding Date}" FontFamily="/Resources/Fonts/#IBM Plex Mono"/>
                                                     </TextBlock>
                                                 </Border>
                                             </WrapPanel>

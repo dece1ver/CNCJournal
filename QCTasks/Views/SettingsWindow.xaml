@@ -9,7 +9,7 @@
         xmlns:lib="clr-namespace:libeLog;assembly=libeLog"
         mc:Ignorable="d" AllowsTransparency="True"
         d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}"
-        Title="Настройки" Width="560" SizeToContent="Height"
+        Title="Настройки" Width="580" SizeToContent="Height"
         FontFamily="Segoe UI" Background="Transparent">
 
     <local:DialogBase.Resources>
@@ -29,16 +29,14 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
-            <Border Grid.Row="0" Background="{x:Static lib:Constants+Colors.AreopagBlue}" 
+            <!-- Шапка -->
+            <Border Grid.Row="0" Background="{x:Static lib:Constants+Colors.AreopagBlue}"
                     CornerRadius="6 6 0 0" Margin="-1"
                     MouseLeftButtonDown="Header_MouseLeftButtonDown">
                 <Grid>
-                    <StackPanel Orientation="Horizontal"
-                                VerticalAlignment="Center" Margin="20 14">
-                        <TextBlock Text="Настройки"
-                                   Foreground="White"
-                                   FontSize="17" FontWeight="Bold"/>
-                    </StackPanel>
+                    <TextBlock Text="Настройки" FontFamily="/Resources/Fonts/#IBM Plex Mono"
+                               Foreground="White" FontSize="17"
+                               VerticalAlignment="Center" Margin="20 14"/>
                     <Button Style="{StaticResource DialogCloseButton}"
                             HorizontalAlignment="Right"
                             Command="{Binding CancelCommand}"
@@ -46,72 +44,201 @@
                 </Grid>
             </Border>
 
-            <StackPanel Grid.Row="1" Margin="28,24,28,28">
-                <TextBlock Text="Файл учётных данных Google (JSON)"
-                           Style="{StaticResource FieldLabel}"/>
-                <Grid Margin="0,0,0,18">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox Grid.Column="0"
-                             Style="{StaticResource DialogTextBox}"
-                             Text="{Binding CredentialsFile, UpdateSourceTrigger=PropertyChanged}"
-                             IsReadOnly="True"/>
-                    <Button Grid.Column="1"
-                            Content="Обзор..."
-                            Style="{StaticResource SecondaryButton}"
-                            Padding="18,0"
-                            Height="{Binding ActualHeight,
-                                    RelativeSource={RelativeSource PreviousData}}"
-                            Margin="8,0,0,0"
-                            Command="{Binding BrowseCredentialsCommand}"/>
-                </Grid>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Disabled" MaxHeight="780">
+                <StackPanel Margin="12">
+                    <TextBlock Text="GOOGLE SHEETS" Style="{StaticResource SectionLabel}"/>
+                    <TextBlock Text="Файл учётных данных (JSON)"
+                               Style="{StaticResource FieldLabel}"/>
+                    <Grid Margin="0 0 0 10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 Style="{StaticResource DialogTextBox}"
+                                 Text="{Binding CredentialsFile, UpdateSourceTrigger=PropertyChanged}"
+                                 IsReadOnly="True"/>
+                        <Button Grid.Column="1" Content="Обзор..."
+                                Style="{StaticResource SecondaryButton}"
+                                Padding="20 0" Margin="8 0 0 0"
+                                Command="{Binding BrowseCredentialsCommand}"/>
+                    </Grid>
 
-                <TextBlock Text="ID таблицы Google Sheets"
-                           Style="{StaticResource FieldLabel}"/>
-                <TextBox Style="{StaticResource DialogTextBox}"
-                         Text="{Binding SheetId, UpdateSourceTrigger=PropertyChanged}"
-                         Margin="0,0,0,18"/>
+                    <TextBlock Text="ID таблицы Google Sheets"
+                               Style="{StaticResource FieldLabel}"/>
+                    <TextBox Style="{StaticResource DialogTextBox}"
+                             Text="{Binding SheetId, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0 0 0 20"/>
 
-                <TextBlock Text="Строка подключения SQL Server"
-                           Style="{StaticResource FieldLabel}"/>
-                <TextBox Style="{StaticResource DialogTextBox}"
-                         Text="{Binding SqlConnectionString, UpdateSourceTrigger=PropertyChanged}"
-                         Margin="0,0,0,6"
-                         AcceptsReturn="False"/>
-                <TextBlock Text="Пример: Server=SRV\SQLEXPRESS;Database=Production;Integrated Security=True"
-                           FontSize="11" Foreground="#9E9E9E" Margin="0,0,0,24"/>
+                    <TextBlock Text="SQL SERVER" Style="{StaticResource SectionLabel}"/>
 
-                <Border Background="#FFEBEE" CornerRadius="6" Padding="14,10"
-                        Margin="0,0,0,18"
-                        Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="{Binding ErrorMessage}"
-                               Foreground="#C62828" FontSize="13"
-                               TextWrapping="Wrap"/>
-                </Border>
+                    <TextBlock Text="Строка подключения" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Style="{StaticResource DialogTextBox}"
+                             Text="{Binding SqlConnectionString, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0 0 0 4"/>
+                    <TextBlock Text="Пример: Server=SRV\SQLEXPRESS;Database=Production;Integrated Security=True"
+                               FontSize="11" Foreground="#9E9E9E" Margin="0 -4 0 20"/>
 
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="12"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" VerticalAlignment="Center"
-                               FontSize="11" Foreground="#BDBDBD"
-                               Text="{Binding ConfigPath,
-                                      StringFormat='Конфиг: {0}'}"/>
-                    <Button Grid.Column="1"
-                            Content="Отмена"
-                            Style="{StaticResource SecondaryButton}"
-                            Command="{Binding CancelCommand}"/>
-                    <Button Grid.Column="3"
-                            Content="Сохранить"
-                            Style="{StaticResource PrimaryButton}"
-                            Command="{Binding SaveCommand}"/>
-                </Grid>
-            </StackPanel>
+                    <TextBlock Text="ПОЧТА (SMTP)" Style="{StaticResource SectionLabel}"/>
+
+                    <Grid Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="90"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Сервер" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Style="{StaticResource DialogTextBox}"
+                                     Text="{Binding SmtpAddress, UpdateSourceTrigger=PropertyChanged}"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Порт" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Style="{StaticResource DialogTextBox}"
+                                     Text="{Binding SmtpPortText, UpdateSourceTrigger=PropertyChanged}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="Имя пользователя (e-mail отправителя)"
+                               Style="{StaticResource FieldLabel}"/>
+                    <TextBox Style="{StaticResource DialogTextBox}"
+                             Text="{Binding SmtpUsername, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,14"/>
+
+                    <TextBlock Text="Переменная окружения с паролем"
+                               Style="{StaticResource FieldLabel}"/>
+                    <TextBox Style="{StaticResource DialogTextBox}"
+                             Text="{Binding SmtpPasswordEnvVar, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,4"/>
+                    <TextBlock Text="{Binding PasswordHint}" d:Text="✓  Пароль найден в переменной окружения"
+                               FontSize="12" Margin="0 -4 0 4">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#4CAF50"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PasswordHint[0]}" Value="✗">
+                                        <Setter Property="Foreground" Value="#E65100"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding PasswordHint[0]}" Value="У">
+                                        <Setter Property="Foreground" Value="#9E9E9E"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock FontSize="11" Foreground="#9E9E9E" Margin="0 0 0 20"
+                               Text="Пароль не хранится в конфиге. Установите его в переменную с названием указанным выше."/>
+
+                    <TextBlock Text="УВЕДОМЛЕНИЯ ОБ ОТКЛОНЕНИИ" Style="{StaticResource SectionLabel}"/>
+
+                    <TextBlock Text="Получатели письма при отклонении детали"
+                               Style="{StaticResource FieldLabel}"/>
+
+                    <Grid Margin="0 0 0 8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 Style="{StaticResource DialogTextBox}"
+                                 Text="{Binding NewRecipient, UpdateSourceTrigger=PropertyChanged}"
+                                 x:Name="RecipientInput"/>
+                        <Button Grid.Column="2" Content="Добавить"
+                                Style="{StaticResource PrimaryButton}"
+                                Padding="20 0"
+                                Command="{Binding AddRecipientCommand}"/>
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding Recipients}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="White" CornerRadius="6"
+                                        Padding="20 8" Margin="0 0 0 4">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding}"
+                                                   FontSize="13" VerticalAlignment="Center"
+                                                   Foreground="#424242"/>
+                                        <Button Grid.Column="1"
+                                                Content="✕"
+                                                FontSize="13"
+                                                Foreground="#9E9E9E"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Cursor="Hand"
+                                                Padding="8,0,0,0"
+                                                Command="{Binding DataContext.RemoveRecipientCommand,
+                                                          RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="Bd" Background="Transparent"
+                                                            Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Foreground" Value="#C62828"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="Список пуст — уведомления отправляться не будут"
+                               FontSize="12" Foreground="#BDBDBD"
+                               Margin="0 -8 0 0"
+                               HorizontalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Recipients.Count, Mode=OneWay}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <Border Height="20"/>
+
+                    <Border Background="#FFEBEE" CornerRadius="6" Padding="10"
+                            Margin="0 0 0 10"
+                            Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding ErrorMessage}"
+                                   Foreground="#C62828" FontSize="13" TextWrapping="Wrap"/>
+                    </Border>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center"
+                                   FontSize="11" Foreground="#BDBDBD"
+                                   Text="{Binding ConfigPath, StringFormat='Конфиг: {0}'}"/>
+                        <Button Grid.Column="1" Content="Отмена"
+                                Style="{StaticResource SecondaryButton}"
+                                Command="{Binding CancelCommand}"/>
+                        <Button Grid.Column="3" Content="Сохранить"
+                                Style="{StaticResource PrimaryButton}"
+                                Command="{Binding SaveCommand}"/>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
     </Border>
 </local:DialogBase>

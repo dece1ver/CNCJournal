@@ -29,7 +29,8 @@ namespace eLog.Infrastructure
 
         [JsonIgnore] private static AppSettings? _Instance;
         [JsonIgnore] public static AppSettings Instance => _Instance ??= new AppSettings();
-
+        /// <summary> Имя переменной окружения пользователя, хранящей SMTP-пароль. </summary>
+        [JsonIgnore] public const string SmtpPasswordEnvVar = "NOTIFY_SMTP_PWD";
         /// <summary> Директория для хранения всякого </summary>
         [JsonIgnore] public const string BasePath = "C:\\ProgramData\\dece1ver\\eLog";
 
