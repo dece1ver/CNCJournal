@@ -131,7 +131,7 @@
 
                     <TextBlock Text="УВЕДОМЛЕНИЯ ОБ ОТКЛОНЕНИИ" Style="{StaticResource SectionLabel}"/>
 
-                    <TextBlock Text="Получатели письма при отклонении детали"
+                    <TextBlock Text="Файл со списком получателей уведомления при отклонении"
                                Style="{StaticResource FieldLabel}"/>
 
                     <Grid Margin="0 0 0 8">
@@ -142,58 +142,13 @@
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="0"
                                  Style="{StaticResource DialogTextBox}"
-                                 Text="{Binding NewRecipient, UpdateSourceTrigger=PropertyChanged}"
-                                 x:Name="RecipientInput"/>
-                        <Button Grid.Column="2" Content="Добавить"
-                                Style="{StaticResource PrimaryButton}"
-                                Padding="20 0"
-                                Command="{Binding AddRecipientCommand}"/>
+                                 Text="{Binding RecipientsFile, UpdateSourceTrigger=PropertyChanged}"
+                                 x:Name="RecipientInput" ToolTip="{Binding RecipientsHint}" Cursor=""/>
+                        <Button Grid.Column="2" Content="Обзор..."
+                            Style="{StaticResource SecondaryButton}"
+                            Padding="20 0" Margin="8 0 0 0"
+                            Command="{Binding BrowseRecipientsCommand}"/>
                     </Grid>
-
-                    <ItemsControl ItemsSource="{Binding Recipients}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="White" CornerRadius="6"
-                                        Padding="20 8" Margin="0 0 0 4">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0"
-                                                   Text="{Binding}"
-                                                   FontSize="13" VerticalAlignment="Center"
-                                                   Foreground="#424242"/>
-                                        <Button Grid.Column="1"
-                                                Content="✕"
-                                                FontSize="13"
-                                                Foreground="#9E9E9E"
-                                                Background="Transparent"
-                                                BorderThickness="0"
-                                                Cursor="Hand"
-                                                Padding="8,0,0,0"
-                                                Command="{Binding DataContext.RemoveRecipientCommand,
-                                                          RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}">
-                                            <Button.Template>
-                                                <ControlTemplate TargetType="Button">
-                                                    <Border x:Name="Bd" Background="Transparent"
-                                                            Padding="{TemplateBinding Padding}">
-                                                        <ContentPresenter/>
-                                                    </Border>
-                                                    <ControlTemplate.Triggers>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter Property="Foreground" Value="#C62828"/>
-                                                        </Trigger>
-                                                    </ControlTemplate.Triggers>
-                                                </ControlTemplate>
-                                            </Button.Template>
-                                        </Button>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
 
                     <TextBlock Text="Список пуст — уведомления отправляться не будут"
                                FontSize="12" Foreground="#BDBDBD"

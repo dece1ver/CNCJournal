@@ -11,7 +11,7 @@ namespace QCTasks.Services;
 /// <summary>
 /// Почтовые уведомления, специфичные для QCTasks.
 /// Знает о шаблонах ОТК и о том, откуда брать настройки SMTP.
-/// Не содержит SMTP-механики — делегирует в <see cref="SmtpSender"/>.
+/// Не содержит SMTP-механики - делегирует в <see cref="SmtpSender"/>.
 /// </summary>
 public class QcNotificationService
 {
@@ -22,8 +22,6 @@ public class QcNotificationService
         _settings = settings;
     }
 
-    // ── IsAvailable ───────────────────────────────────────────────────────
-
     /// <summary>
     /// true — SMTP настроен и пароль присутствует в переменной окружения.
     /// Можно проверить перед отправкой, чтобы не показывать ошибку зря.
@@ -32,8 +30,6 @@ public class QcNotificationService
         !string.IsNullOrWhiteSpace(_settings.SmtpAddress) &&
         !string.IsNullOrWhiteSpace(_settings.SmtpUsername) &&
         SmtpSender.GetPasswordFromEnv(_settings.SmtpPasswordEnvVar) is { Length: > 0 };
-
-    // ── Публичные методы ──────────────────────────────────────────────────
 
     /// <summary>
     /// Отправляет уведомление об отклонении детали.
@@ -74,7 +70,6 @@ public class QcNotificationService
         sb.Append(SmtpSender.Field("М/Л", task.Order));
         sb.Append(SmtpSender.Field("Количество", task.PartsCount));
         AppendDateIfPresent(sb, task.Date);
-        sb.Append(SmtpSender.Hr);
         sb.Append(SmtpSender.Field("Комментарий ОТК", comment));
         sb.Append(SmtpSender.Field("Время", DateTime.Now.ToString("HH:mm  dd.MM.yyyy")));
         return SmtpSender.BuildHtml(sb.ToString());
@@ -91,7 +86,6 @@ public class QcNotificationService
         AppendDateIfPresent(sb, task.Date);
         if (!string.IsNullOrWhiteSpace(comment))
         {
-            sb.Append(SmtpSender.Hr);
             sb.Append(SmtpSender.Field("Комментарий ОТК", comment));
         }
         sb.Append(SmtpSender.Field("Время", DateTime.Now.ToString("HH:mm  dd.MM.yyyy")));
@@ -103,8 +97,6 @@ public class QcNotificationService
         if (!string.IsNullOrWhiteSpace(date) && date != "-")
             sb.Append(SmtpSender.Field("Дата задачи", date));
     }
-
-    // ── Отправка ──────────────────────────────────────────────────────────
 
     private void SendViaSmtp(string subject, string html, IReadOnlyList<string> recipients)
     {

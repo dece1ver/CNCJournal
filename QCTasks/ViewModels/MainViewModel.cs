@@ -311,7 +311,6 @@ public class MainViewModel : INotifyPropertyChanged
             var recipients = AppSettings.Instance.RejectionNotifyRecipients;
             if (recipients.Count > 0)
             {
-                // fire-and-forget: уведомление не должно задерживать UI
                 _ = Task.Run(() =>
                 {
                     try
@@ -320,7 +319,6 @@ public class MainViewModel : INotifyPropertyChanged
                     }
                     catch (Exception ex)
                     {
-                        // Логируем, но не падаем — отправка письма не критична
                         Console.Error.WriteLine($"[Notify] {ex.Message}");
                     }
                 });

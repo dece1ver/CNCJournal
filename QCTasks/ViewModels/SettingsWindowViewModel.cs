@@ -1,4 +1,6 @@
-﻿using libeLog.Infrastructure;
+﻿using libeLog.Extensions;
+using libeLog.Infrastructure;
+using libeLog.Infrastructure.Enums;
 using Microsoft.Win32;
 using QCTasks.Commands;
 using System;
@@ -13,6 +15,8 @@ namespace QCTasks.ViewModels;
 
 public class SettingsViewModel : INotifyPropertyChanged
 {
+    private ObservableCollection<string> _recipients;
+    private string _recipientsFile;
     private string _credentialsFile;
     private string _sheetId;
     private string _sqlConnectionString;
@@ -20,7 +24,6 @@ public class SettingsViewModel : INotifyPropertyChanged
     private string _smtpPortText;
     private string _smtpUsername;
     private string _smtpPasswordEnvVar;
-    private string _newRecipient = "";
     private string? _errorMessage;
     private bool _saved;
 
@@ -66,16 +69,15 @@ public class SettingsViewModel : INotifyPropertyChanged
         set => Set(ref _smtpPasswordEnvVar, value);
     }
 
-    public ObservableCollection<string> Recipients { get; } = new();
-
-    public string NewRecipient
+    public string RecipientsFile
     {
-        get => _newRecipient;
-        set
-        {
-            Set(ref _newRecipient, value);
-            CommandManager.InvalidateRequerySuggested();
-        }
+        get => _recipientsFile;
+        set { Set(ref _recipientsFile, value); ClearError(); }
+    }
+    public ObservableCollection<string> Recipients
+    {
+        get => _recipients;
+        set { Set(ref _recipients, value); ClearError(); }
     }
 
     public string? ErrorMessage
@@ -86,7 +88,7 @@ public class SettingsViewModel : INotifyPropertyChanged
 
     public bool HasError => !string.IsNullOrEmpty(ErrorMessage);
     public bool Saved { get => _saved; private set => Set(ref _saved, value); }
-    public string ConfigPath => AppSettings.ConfigFilePath;
+    public static string ConfigPath => AppSettings.ConfigFilePath;
 
     /// <summary>Живая подсказка: найден ли пароль в переменной окружения.</summary>
     public string PasswordHint =>
@@ -96,9 +98,25 @@ public class SettingsViewModel : INotifyPropertyChanged
                 ? "✓  Пароль найден в переменной окружения"
                 : "✗  Переменная окружения не задана или пуста";
 
+    /// <summary>Найдены ли получатели в указанном файле.</summary>
+    public string RecipientsHint
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(RecipientsFile)) return "Путь к файлу не указан";
+            if (!File.Exists(RecipientsFile)) return "Путь к файлу не существует";
+            if (Recipients.Count == 0)
+            {
+                return "В указанном файле получатели не найдены";
+            } else
+            {
+                return $"Найдено получателей: {Recipients.Count}\n{string.Join('\n', Recipients)}";
+            }
+        }
+    }
+
     public ICommand BrowseCredentialsCommand { get; }
-    public ICommand AddRecipientCommand { get; }
-    public ICommand RemoveRecipientCommand { get; }
+    public ICommand BrowseRecipientsCommand { get; }
     public ICommand SaveCommand { get; }
     public ICommand CancelCommand { get; }
 
@@ -108,6 +126,8 @@ public class SettingsViewModel : INotifyPropertyChanged
     {
         var cfg = AppSettings.Instance;
 
+        _recipients = cfg.RejectionNotifyRecipients.ToObservableCollection();
+        _recipientsFile = cfg.PathToRecipients;
         _credentialsFile = cfg.CredentialsFile;
         _sheetId = cfg.SheetId;
         _sqlConnectionString = cfg.SqlConnectionString;
@@ -115,16 +135,13 @@ public class SettingsViewModel : INotifyPropertyChanged
         _smtpPortText = cfg.SmtpPort.ToString();
         _smtpUsername = cfg.SmtpUsername;
         _smtpPasswordEnvVar = cfg.SmtpPasswordEnvVar;
-
-        foreach (var r in cfg.RejectionNotifyRecipients)
-            Recipients.Add(r);
-
+        RecipientsFile = cfg.PathToRecipients;
         BrowseCredentialsCommand = new RelayCommand(BrowseCredentials);
-        AddRecipientCommand = new RelayCommand(AddRecipient,
-            () => IsValidEmail(NewRecipient) && !Recipients.Contains(NewRecipient.Trim()));
-        RemoveRecipientCommand = new RelayCommand<string>(r => Recipients.Remove(r ?? ""));
+        BrowseRecipientsCommand = new RelayCommand(BrowseRecipients,
+            () => true);
         SaveCommand = new RelayCommand(Save);
         CancelCommand = new RelayCommand(() => CloseAction?.Invoke());
+        OnPropertyChanged(nameof(RecipientsHint));
     }
 
     private void BrowseCredentials()
@@ -141,12 +158,23 @@ public class SettingsViewModel : INotifyPropertyChanged
             CredentialsFile = dlg.FileName;
     }
 
-    private void AddRecipient()
+    private void BrowseRecipients()
     {
-        var email = NewRecipient.Trim();
-        if (!IsValidEmail(email) || Recipients.Contains(email)) return;
-        Recipients.Add(email);
-        NewRecipient = "";
+        var dlg = new OpenFileDialog
+        {
+            Title = "Файл с получателями",
+            Filter = "Все файлы (*.*)|*.*",
+        };
+        if (!string.IsNullOrWhiteSpace(RecipientsFile) && File.Exists(RecipientsFile))
+            dlg.InitialDirectory = Path.GetDirectoryName(RecipientsFile);
+
+        if (dlg.ShowDialog() == true)
+            RecipientsFile = dlg.FileName;
+
+        Recipients = Utils.ReadReceiversFromFile(ReceiversType.ProductionSupervisors, RecipientsFile)
+                .Union(Utils.ReadReceiversFromFile(ReceiversType.ProcessEngineeringDepartment, RecipientsFile))
+                .ToObservableCollection();
+        OnPropertyChanged(nameof(RecipientsHint));
     }
 
     private void Save()
@@ -184,6 +212,7 @@ public class SettingsViewModel : INotifyPropertyChanged
             cfg.SmtpUsername = SmtpUsername.Trim();
             cfg.SmtpPasswordEnvVar = SmtpPasswordEnvVar.Trim();
             cfg.RejectionNotifyRecipients = Recipients.ToList();
+            cfg.PathToRecipients = RecipientsFile;
             cfg.Save();
 
             AppSettings.Reload();

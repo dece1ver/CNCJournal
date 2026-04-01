@@ -31,6 +31,7 @@ public sealed class AppSettings
     public string SmtpAddress { get; set; } = "";
     public int SmtpPort { get; set; } = 25;
     public string SmtpUsername { get; set; } = "";
+    public string PathToRecipients { get; set; } = "";
 
     /// <summary>
     /// Имя переменной окружения пользователя, хранящей SMTP-пароль.
@@ -50,6 +51,10 @@ public sealed class AppSettings
     public bool IsSmtpConfigured =>
         !string.IsNullOrWhiteSpace(SmtpAddress) &&
         !string.IsNullOrWhiteSpace(SmtpUsername);
+
+    /// <summary> Путь к локальному списку получателей уведомлений </summary>
+    [JsonIgnore] public static readonly string LocalMailRecieversFile = Path.Combine(BasePath, "recievers");
+
 
     private AppSettings() { }
 
