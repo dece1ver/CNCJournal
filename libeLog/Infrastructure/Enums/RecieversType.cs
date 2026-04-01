@@ -9,5 +9,6 @@ public enum ReceiversType
     ToolSearch,
     ProcessEngineeringDepartment,
     ProductionSupervisors,
-    ToolStorage
+    ToolStorage,
+    QualityControl
 }

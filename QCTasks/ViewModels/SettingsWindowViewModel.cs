@@ -83,7 +83,11 @@ public class SettingsViewModel : INotifyPropertyChanged
     public string? ErrorMessage
     {
         get => _errorMessage;
-        private set { Set(ref _errorMessage, value); OnPropertyChanged(nameof(HasError)); }
+        private set 
+        { 
+            Set(ref _errorMessage, value); 
+            OnPropertyChanged(nameof(HasError)); 
+        }
     }
 
     public bool HasError => !string.IsNullOrEmpty(ErrorMessage);
@@ -95,8 +99,8 @@ public class SettingsViewModel : INotifyPropertyChanged
         string.IsNullOrWhiteSpace(SmtpPasswordEnvVar)
             ? "Укажите имя переменной окружения"
             : SmtpSender.GetPasswordFromEnv(SmtpPasswordEnvVar) is { Length: > 0 }
-                ? "✓  Пароль найден в переменной окружения"
-                : "✗  Переменная окружения не задана или пуста";
+                ? " ✓  Пароль найден в переменной окружения"
+                : " ✗  Переменная окружения не задана или пуста";
 
     /// <summary>Найдены ли получатели в указанном файле.</summary>
     public string RecipientsHint
@@ -171,9 +175,15 @@ public class SettingsViewModel : INotifyPropertyChanged
         if (dlg.ShowDialog() == true)
             RecipientsFile = dlg.FileName;
 
-        Recipients = Utils.ReadReceiversFromFile(ReceiversType.ProductionSupervisors, RecipientsFile)
-                .Union(Utils.ReadReceiversFromFile(ReceiversType.ProcessEngineeringDepartment, RecipientsFile))
-                .ToObservableCollection();
+        var types = new[]
+        {
+            ReceiversType.ProductionSupervisors,
+            ReceiversType.ProcessEngineeringDepartment,
+            ReceiversType.QualityControl
+        };
+        Recipients = types.SelectMany(t => Utils.ReadReceiversFromFile(t, RecipientsFile))
+            .Distinct()
+            .ToObservableCollection();
         OnPropertyChanged(nameof(RecipientsHint));
     }
 
@@ -226,14 +236,6 @@ public class SettingsViewModel : INotifyPropertyChanged
     }
 
     private void ClearError() => ErrorMessage = null;
-
-    private static bool IsValidEmail(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return false;
-        var s = value.Trim();
-        var at = s.IndexOf('@');
-        return at > 0 && at < s.Length - 2 && s.IndexOf('.', at) > at + 1;
-    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>

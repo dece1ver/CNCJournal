@@ -59,8 +59,6 @@ public class QcNotificationService
         SendViaSmtp("Контроль ОТК: деталь принята", html, recipients);
     }
 
-    // ── Шаблоны ───────────────────────────────────────────────────────────
-
     private static string BuildRejectionHtml(ProductionTaskData task, string comment)
     {
         var sb = new StringBuilder();

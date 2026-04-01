@@ -140,13 +140,13 @@
                             <ColumnDefinition Width="8"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBox Grid.Column="0"
+                        <TextBox Grid.Column="0" IsReadOnly="True"
                                  Style="{StaticResource DialogTextBox}"
                                  Text="{Binding RecipientsFile, UpdateSourceTrigger=PropertyChanged}"
                                  x:Name="RecipientInput" ToolTip="{Binding RecipientsHint}" Cursor=""/>
                         <Button Grid.Column="2" Content="Обзор..."
                             Style="{StaticResource SecondaryButton}"
-                            Padding="20 0" Margin="8 0 0 0"
+                            Padding="20 0" Margin="0 0 0 0"
                             Command="{Binding BrowseRecipientsCommand}"/>
                     </Grid>
 
