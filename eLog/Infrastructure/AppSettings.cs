@@ -1,5 +1,6 @@
 ﻿using eLog.Infrastructure.Extensions;
 using eLog.Models;
+using libeLog.Infrastructure.Enums;
 using libeLog.Models;
 using Newtonsoft.Json;
 using System;
@@ -352,8 +353,8 @@ namespace eLog.Infrastructure
 
                 JsonConvert.PopulateObject(json, Instance, settings);
 
-                LongSetupsMailRecievers = Util.GetMailReceivers(Util.ReceiversType.LongSetup);
-                ToolSearchMailRecievers = Util.GetMailReceivers(Util.ReceiversType.ToolSearch);
+                LongSetupsMailRecievers = Util.GetMailReceivers(ReceiversType.LongSetup);
+                ToolSearchMailRecievers = Util.GetMailReceivers(ReceiversType.ToolSearch);
 
                 GoogleCredentialsPath ??= "";
                 GsId ??= "";

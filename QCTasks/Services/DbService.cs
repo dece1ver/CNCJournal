@@ -150,39 +150,38 @@ WHERE id = @Id
     }
 
     /// <summary>
-    /// Обновляет статус последней совпадающей по названию и заказу записи.
+    /// Пишет новую строку с изменением статуса.
     /// </summary>
-    public async Task UpdateInspectionAsync(ProductionTaskData inspection)
+    public async Task UpdateInspectionAsync(ProductionTaskData inspection, string statusChange)
     {
         if (!IsAvailable) return;
 
         const string sql = @"
-UPDATE qc_inspections
-SET completed_at = @CompletedAt,
-    result = @Result,
-    comment = @Comment
-WHERE id = (
-    SELECT TOP (1) id
-    FROM qc_inspections
-    WHERE part_name = @Name 
-      AND order_number = @OrderNumber
-    ORDER BY started_at DESC
-);
+INSERT INTO qc_inspections (part_name, order_number, parts_count, started_at, completed_at, result, operator, comment)
+VALUES (@PartName, @OrderNumber, @PartsCount, @StartedAt, @CompletedAt, @Result, @UserName, @Comment);
+SELECT CAST(SCOPE_IDENTITY() AS INT);
 ";
+
         try
         {
             await using var conn = new SqlConnection(_connectionString);
-
-            await conn.ExecuteAsync(sql, new
+            var changeDate = DateTime.Now;
+            await conn.ExecuteScalarAsync<int>(sql, new
             {
-                CompletedAt = DateTime.Now,
-                Name = inspection.PartName,
+                PartName = inspection.PartName,
                 OrderNumber = inspection.Order,
-                Result = inspection.EngeneersComment,
-                Comment = inspection.QcComment
+                PartsCount = inspection.PartsCount,
+                StartedAt = changeDate,
+                CompletedAt = changeDate,
+                Result = statusChange,
+                Environment.UserName,
+                Comment = inspection.QcComment,
             });
         }
-        catch (Exception ex) { LogError("UpdateInspectionAsync", ex); }
+        catch (Exception ex)
+        {
+            LogError("StartInspectionAsync", ex);
+        }
     }
 
     private static void LogError(string method, Exception ex) =>

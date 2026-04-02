@@ -1,4 +1,5 @@
 ﻿using libeLog.Infrastructure;
+using libeLog.Infrastructure.Enums;
 using libeLog.Models;
 using QCTasks.Commands;
 using QCTasks.Services;
@@ -6,6 +7,7 @@ using QCTasks.Views;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
@@ -20,7 +22,7 @@ public class MainViewModel : INotifyPropertyChanged
     private DbService _db;
     private readonly DispatcherTimer _timer;
     private readonly CancellationTokenSource _cts = new();
-    private QcNotificationService _notify;
+    private QcNotificationService? _notify;
 
     // Карта: (PartName, Order) -> ID строки в qc_inspections
     // Заполняется при "В работу" и при восстановлении после рестарта
@@ -173,7 +175,7 @@ public class MainViewModel : INotifyPropertyChanged
         if (string.IsNullOrWhiteSpace(cfg.CredentialsFile))
             return "Не указан файл учётных данных Google.";
 
-        if (!System.IO.File.Exists(cfg.CredentialsFile))
+        if (!File.Exists(cfg.CredentialsFile))
             return $"Файл учётных данных не найден: {cfg.CredentialsFile}";
 
         if (string.IsNullOrWhiteSpace(cfg.SheetId))
@@ -189,6 +191,19 @@ public class MainViewModel : INotifyPropertyChanged
         IsLoading = true;
         StatusMessage = "Обновление данных...";
         _timer.Stop();
+
+        if (!string.IsNullOrEmpty(AppSettings.Instance.PathToRecipients) && File.Exists(AppSettings.Instance.PathToRecipients))
+        {
+            var recipientTypes = new[] {
+                ReceiversType.ProcessEngineeringDepartment,
+                ReceiversType.ProductionSupervisors,
+                ReceiversType.QualityControl,
+            };
+            var recipients = recipientTypes.SelectMany(r => Utils.ReadReceiversFromFile(r, AppSettings.Instance.PathToRecipients))
+                .Distinct()
+                .ToList();
+            if (recipients.Count > 0) AppSettings.Instance.RejectionNotifyRecipients = recipients;
+        }
 
         try
         {
@@ -306,7 +321,7 @@ public class MainViewModel : INotifyPropertyChanged
         Tasks.Remove(task);
         if (!CompletedTasks.Contains(task))
             CompletedTasks.Add(task);
-        if (!accepted && _notify.IsAvailable)
+        if (!accepted && _notify is { } notify && notify.IsAvailable)
         {
             var recipients = AppSettings.Instance.RejectionNotifyRecipients;
             if (recipients.Count > 0)
@@ -315,7 +330,7 @@ public class MainViewModel : INotifyPropertyChanged
                 {
                     try
                     {
-                        _notify.SendRejectionNotice(task, task.QcComment ?? "", recipients);
+                        notify.SendRejectionNotice(task, task.QcComment ?? "", recipients);
                     }
                     catch (Exception ex)
                     {
@@ -353,8 +368,11 @@ public class MainViewModel : INotifyPropertyChanged
             disallowNoOnEmpty: true);
 
         if (Confirmed is null) return;
-
         bool accepted = Confirmed.Value;
+        var newStatus = accepted ? "Принято" : "Отклонено";
+        var currentStatus = task.EngeneersComment;
+        if (newStatus == currentStatus && Text == task.QcComment) return; // ничего не поменялось
+        var statusChange = $"{currentStatus} → {newStatus}";
         task.QcComment = Text;
         int idx = CompletedTasks.IndexOf(task);
         if (idx >= 0)
@@ -365,7 +383,7 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         await WriteStatusAsync(task);
-        await _db.UpdateInspectionAsync(task);
+        await _db.UpdateInspectionAsync(task, statusChange);
     }
 
     private async Task WriteStatusAsync(ProductionTaskData task)
