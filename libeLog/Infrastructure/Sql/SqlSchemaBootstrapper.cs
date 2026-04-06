@@ -149,6 +149,16 @@ namespace libeLog.Infrastructure.Sql
                     name:    "IX_qc_inspections_active")
                 .Build(),
 
+            new TableBuilder("qc_users")
+                .AddIdColumn()
+                .AddStringColumn("Code_1c", 255, false)
+                .AddCompositeUnique("Code_1c")
+                .AddStringColumn("FirstName", 50, false)
+                .AddStringColumn("LastName", 50, false)
+                .AddStringColumn("Patronymic", 50)
+                .AddBoolColumn("IsAdministrator", false, false)
+                .Build(),
+
             new TableBuilder("cnc_deviation_reasons")
                 .AddIdColumn()
                 .AddStringColumn("Reason", -1, false)

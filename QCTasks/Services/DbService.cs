@@ -1,6 +1,7 @@
 ﻿using Dapper;
 using libeLog.Models;
 using Microsoft.Data.SqlClient;
+using QCTasks.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -50,7 +51,7 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);
                 OrderNumber = orderNumber,
                 PartsCount = partsCount,
                 StartedAt = DateTime.Now,
-                Environment.UserName,
+                UserName = AppSettings.CurrentUser is null ? Environment.UserName : AppSettings.CurrentUser.DisplayName,
             });
         }
         catch (Exception ex)
@@ -174,13 +175,30 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);
                 StartedAt = changeDate,
                 CompletedAt = changeDate,
                 Result = statusChange,
-                Environment.UserName,
+                UserName = AppSettings.CurrentUser is null ? Environment.UserName : AppSettings.CurrentUser.DisplayName,
                 Comment = inspection.QcComment,
             });
         }
         catch (Exception ex)
         {
             LogError("StartInspectionAsync", ex);
+        }
+    }
+
+    public async Task<QcUser?> GetQcUserByCodeAsync(string code)
+    {
+        if (!IsAvailable) return null;
+
+        const string sql = @"SELECT Id, Code1C, FirstName, LastName, Patronymic, IsAdministrator FROM qc_users WHERE Code1C = @Code;";
+        try
+        {
+            await using var conn = new SqlConnection(_connectionString);
+            return await conn.QuerySingleOrDefaultAsync<QcUser>(sql, new { Code = code });
+        }
+        catch (Exception ex)
+        {
+            LogError("GetQcUserByCodeAsync", ex);
+            return null;
         }
     }
 

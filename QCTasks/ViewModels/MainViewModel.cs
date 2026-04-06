@@ -2,11 +2,11 @@
 using libeLog.Infrastructure.Enums;
 using libeLog.Models;
 using QCTasks.Commands;
+using QCTasks.Models;
 using QCTasks.Services;
 using QCTasks.Views;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -23,6 +23,7 @@ public class MainViewModel : INotifyPropertyChanged
     private readonly DispatcherTimer _timer;
     private readonly CancellationTokenSource _cts = new();
     private QcNotificationService? _notify;
+    private QcUser? _user;
 
     // Карта: (PartName, Order) -> ID строки в qc_inspections
     // Заполняется при "В работу" и при восстановлении после рестарта
@@ -31,7 +32,7 @@ public class MainViewModel : INotifyPropertyChanged
     private bool _isLoading;
     private bool _isConfigured;
     private bool _showCompletedTasks = true;
-    private int _tasksLimit = 0;           // 0 = все
+    private int _tasksLimit = 0;
     private string _statusMessage = "";
 
     public ObservableCollection<ProductionTaskData> Tasks { get; } = new();
@@ -102,10 +103,17 @@ public class MainViewModel : INotifyPropertyChanged
         private set => Set(ref _statusMessage, value);
     }
 
+    public QcUser? User
+    {
+        get => _user;
+        private set => Set(ref _user, value);
+    }
+
     public ICommand RefreshCommand { get; }
     public ICommand StartWorkCommand { get; }
     public ICommand CompleteCommand { get; }
     public ICommand ChangeStatusCommand { get; }
+    public ICommand ChangeUserCommand { get; }
     public ICommand OpenSettingsCommand { get; }
     public ICommand ToggleCompletedCommand { get; }
     public ICommand SetTasksLimitCommand { get; }
@@ -120,6 +128,7 @@ public class MainViewModel : INotifyPropertyChanged
         StartWorkCommand = new RelayCommand<ProductionTaskData>(task => _ = StartWorkAsync(task));
         CompleteCommand = new RelayCommand<ProductionTaskData>(task => _ = CompleteTaskAsync(task));
         ChangeStatusCommand = new RelayCommand<ProductionTaskData>(task => _ = ChangeStatusAsync(task));
+        ChangeUserCommand = new RelayCommand(() => _ = ChangeUserAsync(), () => _db.IsAvailable);
         OpenSettingsCommand = new RelayCommand(OpenSettings);
         ToggleCompletedCommand = new RelayCommand(() => ShowCompletedTasks = !ShowCompletedTasks);
         SetTasksLimitCommand = new RelayCommand<int>(limit => TasksLimit = limit);
@@ -139,6 +148,24 @@ public class MainViewModel : INotifyPropertyChanged
         _timer.Tick += async (_, _) => await RefreshAsync();
 
         ApplyConfig();
+
+        _ = ChangeUserAsync();
+    }
+
+    private async Task ChangeUserAsync()
+    {
+        if (!_db.IsAvailable) return;
+        while (OwnerWindow is not { IsLoaded: true })
+            await Task.Delay(100);
+
+        string? code;
+        do
+        {
+            code = InputDialog.Show(OwnerWindow, "Авторизация", "Отсканируйте штрихкод", showInput: false);
+            if (!string.IsNullOrWhiteSpace(code)) User = await _db.GetQcUserByCodeAsync(code);
+            AppSettings.CurrentUser = User;
+        }
+        while (_db.IsAvailable && User == null);
     }
 
     private void RebuildDisplayedTasks()

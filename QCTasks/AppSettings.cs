@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using QCTasks.Models;
 using System.Collections.Generic;
 using System.IO;
 
@@ -55,6 +56,8 @@ public sealed class AppSettings
     /// <summary> Путь к локальному списку получателей уведомлений </summary>
     [JsonIgnore] public static readonly string LocalMailRecieversFile = Path.Combine(BasePath, "recievers");
 
+    /// <summary> Текущий пользователь </summary>
+    [JsonIgnore] public static QcUser? CurrentUser { get; set; }
 
     private AppSettings() { }
 

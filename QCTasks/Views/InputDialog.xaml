@@ -8,8 +8,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         mc:Ignorable="d" AllowsTransparency="True"
         SizeToContent="WidthAndHeight"
-        MinWidth="400"
-        MaxWidth="520"
+        MinWidth="420"
+        MaxWidth="420"
         FontFamily="Segoe UI">
 
     <local:DialogBase.Resources>
@@ -75,7 +75,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="12"/>
-                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="CancelButton"

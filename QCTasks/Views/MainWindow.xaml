@@ -165,8 +165,16 @@
                 <!-- Заголовок + статус -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal"
                             VerticalAlignment="Center" Margin="0 14 16 14">
-                    <TextBlock Text="Контроль ОТК" 
-                               Foreground="White" FontSize="20" VerticalAlignment="Center"/>
+                    <TextBlock Text="ОТК" 
+                               Foreground="White" FontSize="18" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding User.DisplayName, StringFormat={}  •  {0}}"
+                               d:Text="  •  Фамилия И.О."
+                               Foreground="White" FontSize="18" VerticalAlignment="Center">
+                        <TextBlock.InputBindings>
+                            <MouseBinding MouseAction="LeftDoubleClick"
+                      Command="{Binding ChangeUserCommand}"/>
+                        </TextBlock.InputBindings>
+                    </TextBlock>
                     <TextBlock Text="  •  Обновление..."
                                Foreground="{x:Static lib:Constants+Colors.AreopagBlue70}" FontSize="12"
                                VerticalAlignment="Center"
@@ -341,7 +349,7 @@
                     </StackPanel>
                 </Border>
 
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden"
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" IsEnabled="{Binding User}"
                               Visibility="{Binding IsTasksEmpty, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                     <ItemsControl ItemsSource="{Binding DisplayedTasks}">
                         <ItemsControl.ItemTemplate>

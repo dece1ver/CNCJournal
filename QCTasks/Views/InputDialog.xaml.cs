@@ -27,7 +27,8 @@ public partial class InputDialog : DialogBase
         string? defaultValue = null,
         string okText = "OK",
         string cancelText = "Отмена",
-        string? detail = null)
+        string? detail = null,
+        bool showInput = true)
     {
         var dlg = new InputDialog
         {
@@ -50,10 +51,28 @@ public partial class InputDialog : DialogBase
             dlg.InputTextBox.Text = defaultValue;
         }
 
+        if (!showInput)
+        {
+            dlg.InputTextBox.Height = 0;
+            dlg.InputTextBox.Margin = new Thickness(0);
+        }
+        else if (defaultValue is not null)
+        {
+            dlg.InputTextBox.Text = defaultValue;
+        }
+
         dlg.Loaded += (_, _) =>
         {
             dlg.InputTextBox.Focus();
-            dlg.InputTextBox.SelectAll();
+            if (showInput) dlg.InputTextBox.SelectAll();
+        };
+
+        dlg.InputTextBox.LostFocus += (_, _) =>
+        {
+            if (!dlg.IsActive || !dlg.IsLoaded) return;
+            dlg.Dispatcher.BeginInvoke(
+                () => dlg.InputTextBox.Focus(),
+                System.Windows.Threading.DispatcherPriority.Input);
         };
 
         dlg.ShowDialog();
