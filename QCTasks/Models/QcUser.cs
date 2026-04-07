@@ -29,20 +29,20 @@ namespace QCTasks.Models
             IsAdministrator = isAdministrator;
         }
 
-        public string DisplayName
-        {
-            get
-            {
-                if (string.IsNullOrEmpty(Patronymic))
-                {
-                    return $"{LastName} {GetInitial(FirstName)}.";
-                }
-                else
-                {
-                    return $"{LastName} {GetInitial(FirstName)}. {GetInitial(Patronymic)}.";
-                }
-            }
-        }
+        /// <summary>
+        /// В формате Фамилия И.О. или Фамилия И. (при отсутствии отчёства)
+        /// </summary>
+        public string DisplayName => string.IsNullOrEmpty(Patronymic)
+            ? $"{LastName} {GetInitial(FirstName)}."
+            : $"{LastName} {GetInitial(FirstName)}. {GetInitial(Patronymic)}.";
+
+
+        /// <summary>
+        /// Фамилия Имя Отчёство (при наличии) полностью
+        /// </summary>
+        public string FullName => string.IsNullOrEmpty(Patronymic)
+            ? $"{LastName} {FirstName}"
+            : $"{LastName} {FirstName} {Patronymic}";
 
         private static string GetInitial(string? value)
         {

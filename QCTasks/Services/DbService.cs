@@ -51,7 +51,7 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);
                 OrderNumber = orderNumber,
                 PartsCount = partsCount,
                 StartedAt = DateTime.Now,
-                UserName = AppSettings.CurrentUser is null ? Environment.UserName : AppSettings.CurrentUser.DisplayName,
+                UserName = AppSettings.CurrentUser is null ? Environment.UserName : AppSettings.CurrentUser.FullName,
             });
         }
         catch (Exception ex)
@@ -169,13 +169,13 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);
             var changeDate = DateTime.Now;
             await conn.ExecuteScalarAsync<int>(sql, new
             {
-                PartName = inspection.PartName,
+                inspection.PartName,
                 OrderNumber = inspection.Order,
-                PartsCount = inspection.PartsCount,
+                inspection.PartsCount,
                 StartedAt = changeDate,
                 CompletedAt = changeDate,
                 Result = statusChange,
-                UserName = AppSettings.CurrentUser is null ? Environment.UserName : AppSettings.CurrentUser.DisplayName,
+                UserName = AppSettings.CurrentUser is null ? Environment.UserName : AppSettings.CurrentUser.FullName,
                 Comment = inspection.QcComment,
             });
         }

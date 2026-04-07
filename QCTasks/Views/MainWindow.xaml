@@ -168,11 +168,11 @@
                     <TextBlock Text="ОТК" 
                                Foreground="White" FontSize="18" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding User.DisplayName, StringFormat={}  •  {0}}"
-                               d:Text="  •  Фамилия И.О."
+                               d:Text="  •  Фамилия И.О." ToolTip="{Binding User.FullName}"
                                Foreground="White" FontSize="18" VerticalAlignment="Center">
                         <TextBlock.InputBindings>
                             <MouseBinding MouseAction="LeftDoubleClick"
-                      Command="{Binding ChangeUserCommand}"/>
+                                          Command="{Binding ChangeUserCommand}"/>
                         </TextBlock.InputBindings>
                     </TextBlock>
                     <TextBlock Text="  •  Обновление..."
