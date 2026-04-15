@@ -96,7 +96,7 @@ namespace remeLog.Infrastructure.Winnum
             if (count.HasValue)
                 parameters.Add("count", count.Value.ToString());
             var result = await _client.ExecuteRequestAsync(parameters);
-            progress?.Report($"Получены значенаия сигнала: {signal}");
+            progress?.Report($"Получены значения сигнала: {signal}");
             return result;
         }
 

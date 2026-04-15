@@ -241,13 +241,16 @@ namespace libeLog.Infrastructure
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var row = values[rowIndex];
-                    if (row == null || row.Count == 0) continue;
 
                     if (skipCnt > 0)
                     {
                         skipCnt--;
                         continue;
                     }
+
+                    if (row == null || row.Count == 0) continue;
+
+                    
 
                     if (row[0] is string currentMachine
                         && currentMachine.Contains('|')

@@ -63,6 +63,7 @@ namespace remeLog.Infrastructure.Winnum
             var fetched = await Task.WhenAll(fetchTasks);
 
             progress?.Report("Разбор XML...");
+            await Task.Delay(10);
 
             var events = new List<TimelineEvent>();
 
@@ -161,6 +162,9 @@ namespace remeLog.Infrastructure.Winnum
             }
         }
 
+        private static string SanitizeColumnName(string name) =>
+            name.Replace(".", "_").Replace("/", "_").Replace("[", "_").Replace("]", "_");
+
         private static DataTable BuildTable(
             List<TimelineSource> sources,
             List<TimelineEvent> events)
@@ -174,7 +178,7 @@ namespace remeLog.Infrastructure.Winnum
                 .ToList();
 
             foreach (var s in signals)
-                table.Columns.Add(s, typeof(string));
+                table.Columns.Add(SanitizeColumnName(s), typeof(string));
 
             if (events.Count == 0)
                 return table;
@@ -213,7 +217,7 @@ namespace remeLog.Infrastructure.Winnum
                 row["Время"] = t.ToString("HH:mm:ss");
 
                 foreach (var s in signals)
-                    row[s] = state[s];
+                    row[SanitizeColumnName(s)] = state[s];
 
                 table.Rows.Add(row);
             }

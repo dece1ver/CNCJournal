@@ -2,11 +2,11 @@
 using eLog.Models;
 using libeLog.Extensions;
 using libeLog.Infrastructure;
+using libeLog.Infrastructure.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using static eLog.Infrastructure.Extensions.Util;
 
 namespace eLog.Infrastructure;
 
@@ -107,7 +107,6 @@ public static class Email
         sb.Append(SmtpSender.Field("Станок", AppSettings.Instance.Machine?.Name));
         sb.Append(SmtpSender.Field("Оператор", part.Operator.FullName));
         sb.Append(SmtpSender.Field("Деталь", part.FullName.TrimLen(70)));
-        sb.Append(SmtpSender.Hr);
         sb.Append(SmtpSender.Field("Что нужно", comment));
         return SmtpSender.BuildHtml(sb.ToString());
     }
@@ -122,7 +121,6 @@ public static class Email
         sb.Append(SmtpSender.Field("Деталь", part.FullName.TrimLen(70)));
         sb.Append(SmtpSender.Field("Установка", part.Setup.ToString()));
         sb.Append(SmtpSender.Field("М/Л", part.Order));
-        sb.Append(SmtpSender.Hr);
         sb.Append(SmtpSender.Field("Сообщение", message));
         return SmtpSender.BuildHtml(sb.ToString());
     }

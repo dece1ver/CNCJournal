@@ -759,7 +759,6 @@
             <MenuItem Header="Добавить к фильтру" Click="OnAddMultiFilterValueClick"/>
         </ContextMenu>
         <!--#endregion-->
-
     </Window.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
@@ -768,8 +767,11 @@
         </Grid.ColumnDefinitions>
         <DockPanel Grid.ColumnSpan="2">
             <StatusBar DockPanel.Dock="Bottom">
-                <StatusBarItem>
+                <StatusBarItem HorizontalAlignment="Stretch">
                     <TextBlock Text="{Binding Status}" FontSize="16" Margin="0 -1"/>
+                </StatusBarItem>
+                <StatusBarItem HorizontalAlignment="Right" VerticalContentAlignment="Stretch">
+                    <ProgressBar Width="199" IsIndeterminate="True" Visibility="{Binding BackgroundWorking, Converter={StaticResource VisibilityConverter}}"/>
                 </StatusBarItem>
             </StatusBar>
             <ProgressBar DockPanel.Dock="Bottom" IsIndeterminate="True"

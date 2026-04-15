@@ -222,6 +222,15 @@
                             </TextBlock>
                         </Button.Content>
                     </Button>
+                    <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Margin="12 0"
+                                Visibility="{Binding IsSingleShift, Converter={StaticResource VisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontSize="14" Text="{Binding ReportsSummary}" FontFamily="Consolas" Foreground="#303030"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontSize="14" Text="{Binding CheckedSummary}" FontFamily="Consolas" Foreground="#303030"/>
+                        </StackPanel>
+                    </StackPanel>
                 </DockPanel>
                 <ListView ItemsSource="{Binding Parts, UpdateSourceTrigger=PropertyChanged}" IsManipulationEnabled="True" FontSize="14" DockPanel.Dock="Top" Focusable="False" 
                           BorderBrush="Transparent" Margin="-4 2 -2 0" ItemContainerStyle="{StaticResource ListViewItemsStyle}"
@@ -243,7 +252,7 @@
                                             </Grid>
                                             <TextBlock FontSize="16" Text="{Binding Machine}" FontWeight="SemiBold" Margin="2 -2 0 0"/>
                                             <TextBlock FontSize="16" Text="+" Margin="0 -3 0 0"
-                                                       FontWeight="SemiBold" Visibility="{Binding IsReportChecked, Converter={StaticResource VisibilityConverter}}"/>
+                                                           FontWeight="SemiBold" Visibility="{Binding IsReportChecked, Converter={StaticResource VisibilityConverter}}"/>
                                         </StackPanel>
                                     </GroupBox.Header>
                                     <Grid>

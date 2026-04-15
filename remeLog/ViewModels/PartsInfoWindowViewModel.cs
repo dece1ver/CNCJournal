@@ -423,6 +423,13 @@ namespace remeLog.ViewModels
             set => Set(ref _InProgress, value);
         }
 
+        private bool _BackgroundInProgress;
+        /// <summary> Загрузка информации в фоне </summary>
+        public bool BackgroundWorking
+        {
+            get => _BackgroundInProgress;
+            set => Set(ref _BackgroundInProgress, value);
+        }
 
         private bool _WncSearchInProgress;
         /// <summary> Поиск по Windchill в процессе </summary>
@@ -826,6 +833,7 @@ namespace remeLog.ViewModels
                 IProgress<string> progress = new Progress<string>(m => Status = m);
                 try
                 {
+                    BackgroundWorking = true;
                     if (SelectedPart == null || string.IsNullOrEmpty(AppSettings.Instance.ConnectionString)) return;
                     progress.Report("Получение данных о станках");
                     var machines = await Database.GetMachinesAsync(progress);
@@ -943,10 +951,10 @@ namespace remeLog.ViewModels
                         filterStart: start,
                         filterEnd: end);
                     timelineSources.Add(tagsTimelineSource);
-                    timelineSources.AddRange(BuildMachineTimelineSources(signal, machine, start, end));
+                    timelineSources.AddRange(BuildMachineTimelineSources(signal, machine, start, end, progress));
 
                     var timeline = await TimelineBuilder.BuildAsync(timelineSources, TimeSpan.FromSeconds(5), progress);
-
+                    progress.Report("");
                     var win = new WinnumInfoWindow($"" +
                         $"Локальное время:      {DateTime.Now:g} │ М/В Вар.1:   {(double.IsFinite(m1) ? $"{TimeSpan.FromMinutes(m1):hh\\:mm\\:ss}" : "00:00:00")} │\n" +
                         $"Время на платформе:   {platformDateTime:g} │ М/В Вар.2:   {(double.IsFinite(m2) ? $"{TimeSpan.FromMinutes(m2):hh\\:mm\\:ss}" : "00:00:00")} │\n" +
@@ -965,6 +973,10 @@ namespace remeLog.ViewModels
                     Util.WriteLog(ex);
                     progress.Report(ex.Message);
                     await Task.Delay(3000);
+                }
+                finally
+                {
+                    BackgroundWorking = false;
                 }
             }
         }
@@ -2141,14 +2153,14 @@ namespace remeLog.ViewModels
             return $"%{input}%";
         }
 
-        private static IEnumerable<TimelineSource> BuildMachineTimelineSources(Signal signal, Machine machine, DateTime start, DateTime end)
+        private static IEnumerable<TimelineSource> BuildMachineTimelineSources(Signal signal, Machine machine, DateTime start, DateTime end, IProgress<string>? progress = null)
         {
             TimelineSource? FromSignal(string displayName, string signalId, Func<string, string>? mapper = null)
             {
                 if (string.IsNullOrEmpty(signalId)) return null;
                 return TimelineSource.FromSignal(
                     displayName,
-                    () => signal.GetSignalAsync(signalId, SignalType.ByTime, Ordering.Asc, start, end), valueMapper: mapper);
+                    () => signal.GetSignalAsync(signalId, SignalType.ByTime, Ordering.Asc, start, end, progress: progress), valueMapper: mapper);
             }
 
             var sources = new (string DisplayName, string SignalId, Func<string, string>? Mapper)[]

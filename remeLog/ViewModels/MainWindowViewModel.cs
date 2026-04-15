@@ -125,7 +125,17 @@ namespace remeLog.ViewModels
         public ObservableCollection<CombinedParts> Parts
         {
             get => _Parts;
-            set => Set(ref _Parts, value);
+            set
+            {
+                if (Set(ref _Parts, value))
+                {
+                    OnPropertyChanged(nameof(TotalMachinesCount));
+                    OnPropertyChanged(nameof(ReportsExistCount));
+                    OnPropertyChanged(nameof(CheckedReportsCount));
+                    OnPropertyChanged(nameof(ReportsSummary));
+                    OnPropertyChanged(nameof(CheckedSummary));
+                }
+            }
         }
 
 
@@ -147,7 +157,14 @@ namespace remeLog.ViewModels
         }
 
 
-        private bool IsSingleShift => FromDate == ToDate;
+        public bool IsSingleShift => FromDate == ToDate;
+
+        public int TotalMachinesCount => Parts.Count;
+        public int ReportsExistCount => Parts.Count(p => p.IsReportExist != ReportState.NotExist);
+        public int CheckedReportsCount => Parts.Count(p => p.IsReportChecked);
+
+        public string ReportsSummary => $"МЦ: {ReportsExistCount:00}/{TotalMachinesCount:00}";
+        public string CheckedSummary => $"ТО: {CheckedReportsCount:00}/{TotalMachinesCount:00}";
 
 
         #region Команды

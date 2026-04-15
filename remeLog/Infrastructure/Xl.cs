@@ -1357,7 +1357,7 @@ namespace remeLog.Infrastructure
                     .Count();
                 ws.Cell(row, ci[CM.WorkedShifts]).SetValue(workedShifts);
 
-                (TimeSpan totalTime, TimeSpan includedOperationsTime) = parts
+                (TimeSpan totalTime, TimeSpan includedOperationsTime) = filteredParts
                 .Where(p => p.Operator == partGroup.Key.Operator && p.Machine == partGroup.Key.Machine)
                 .Aggregate(
                     (Total: TimeSpan.Zero, Excluded: TimeSpan.Zero),
