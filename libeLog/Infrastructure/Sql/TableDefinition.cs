@@ -13,5 +13,6 @@ namespace libeLog.Infrastructure.Sql
         public List<ForeignKeyDefinition> ForeignKeys { get; set; } = new();
         public List<string> CompositePrimaryKey { get; set; } = new();
         public List<List<string>> CompositeUniques { get; set; } = new();
+        public List<IndexDefinition> Indexes { get; set; } = new();
     }
 }

@@ -1,5 +1,4 @@
-﻿using libeLog;
-using libeLog.Base;
+﻿using libeLog.Base;
 using libeLog.Extensions;
 using remeLog.Infrastructure;
 using System;
@@ -21,6 +20,7 @@ namespace remeLog.Models
             string order,
             int setup,
             double finishedCount,
+            int defectiveCount,
             int totalCount,
             DateTime startSetupTime,
             DateTime startMachiningTime,
@@ -29,7 +29,8 @@ namespace remeLog.Models
             double setupTimePlan,
             double setupTimePlanForReport,
             double singleProductionTimePlan,
-            double productionTimeFact, TimeSpan machiningTime,
+            double productionTimeFact, 
+            TimeSpan machiningTime,
             double setupDowntimes,
             double machiningDowntimes,
             double partialSetupTime,
@@ -41,6 +42,7 @@ namespace remeLog.Models
             double contactingDepartmentsTime,
             double fixtureMakingTime,
             double hardwareFailureTime,
+            double specialDowntimeTime,
             string operatorComment,
             string masterSetupComment = "",
             string masterMachiningComment = "",
@@ -67,6 +69,7 @@ namespace remeLog.Models
             _Order = order;
             _Setup = setup;
             _FinishedCount = finishedCount;
+            _DefectiveCount = defectiveCount;
             _TotalCount = totalCount;
             _StartSetupTime = startSetupTime;
             _StartMachiningTime = startMachiningTime;
@@ -86,6 +89,7 @@ namespace remeLog.Models
             _ContactingDepartmentsTime = contactingDepartmentsTime;
             _FixtureMakingTime = fixtureMakingTime;
             _HardwareFailureTime = hardwareFailureTime;
+            _SpecialDowntimeTime = specialDowntimeTime;
             _OperatorComment = operatorComment;
             _MasterSetupComment = masterSetupComment;
             _MasterMachiningComment = masterMachiningComment;
@@ -115,6 +119,7 @@ namespace remeLog.Models
             _Order = part.Order;
             _Setup = part.Setup;
             _FinishedCount = part.FinishedCount;
+            _DefectiveCount = part.DefectiveCount;
             _TotalCount = part.TotalCount;
             _StartSetupTime = part.StartSetupTime;
             _StartMachiningTime = part.StartMachiningTime;
@@ -134,6 +139,7 @@ namespace remeLog.Models
             _ContactingDepartmentsTime = part.ContactingDepartmentsTime;
             _FixtureMakingTime = part.FixtureMakingTime;
             _HardwareFailureTime = part.HardwareFailureTime;
+            _SpecialDowntimeTime = part.SpecialDowntimeTime;
             _OperatorComment = part.OperatorComment;
             _MasterSetupComment = part.MasterSetupComment;
             _MasterMachiningComment = part.MasterMachiningComment;
@@ -225,7 +231,6 @@ namespace remeLog.Models
             }
         }
 
-
         private string _PartName;
         /// <summary> Название детали </summary>
         public string PartName
@@ -241,7 +246,6 @@ namespace remeLog.Models
             }
         }
 
-
         private string _Order;
         /// <summary> Номер маршрутного листа </summary>
         public string Order
@@ -255,7 +259,6 @@ namespace remeLog.Models
                 }
             }
         }
-
 
         private int _Setup;
         /// <summary> Номер установки </summary>
@@ -294,6 +297,21 @@ namespace remeLog.Models
             }
         }
 
+        private int _DefectiveCount;
+        /// <summary> Количество брака </summary>
+        public int DefectiveCount
+        {
+            get => _DefectiveCount;
+            set
+            {
+                if (Set(ref _DefectiveCount, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
         private int _TotalCount;
         /// <summary> Всего партия </summary>
         public int TotalCount
@@ -313,6 +331,7 @@ namespace remeLog.Models
         {
             get
             {
+                // делать ли вхождение имен вместо полного совпадения?
                 return AppSettings.SerialParts.Contains(PartName.NormalizedPartNameWithoutComments());
             }
         }
@@ -335,10 +354,6 @@ namespace remeLog.Models
                 }
             }
         }
-
-
-        public string Problems => "Тут будут проблемы из списка.\n• Проблема №1\n• Проблема №2\n...";
-
 
         private DateTime _StartSetupTime;
         /// <summary> Начало наладки </summary>
@@ -513,7 +528,6 @@ namespace remeLog.Models
             }
         }
 
-
         private double _SetupDowntimes;
         /// <summary> Время простоев в наладке </summary>
         public double SetupDowntimes
@@ -538,6 +552,19 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
+            }
+        }
+
+        /// <summary>
+        /// Простои в наладке с добавленным превышением норматива частичной наладкой
+        /// </summary>
+        public double SetupDowntimesWithPartialExcess
+        {
+            get
+            {
+                double partialExcess = 0;
+                if (PartialSetupTime > SetupTimePlanForReport) partialExcess = PartialSetupTime - SetupTimePlanForReport;
+                return SetupDowntimes + partialExcess;
             }
         }
 
@@ -801,6 +828,34 @@ namespace remeLog.Models
             get => _HardwareFailureTime;
             set {
                 if (Set(ref _HardwareFailureTime, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(SetupTimeFact));
+                    OnPropertyChanged(nameof(ProductionTimeFact));
+                    OnPropertyChanged(nameof(SetupRatio));
+                    OnPropertyChanged(nameof(SetupRatioTitle));
+                    OnPropertyChanged(nameof(ProductionRatio));
+                    OnPropertyChanged(nameof(ProductionRatioTitle));
+                    OnPropertyChanged(nameof(SingleProductionTime));
+                    OnPropertyChanged(nameof(SpecifiedDowntimesRatio));
+                    OnPropertyChanged(nameof(SpecifiedDowntimesComment));
+                    OnPropertyChanged(nameof(MasterSetupComment));
+                    OnPropertyChanged(nameof(MasterMachiningComment));
+                    OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(Error));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
+        private double _SpecialDowntimeTime;
+        /// <summary> Время простев специально исключённых из расчётов </summary>
+        public double SpecialDowntimeTime
+        {
+            get => _SpecialDowntimeTime;
+            set
+            {
+                if (Set(ref _SpecialDowntimeTime, value))
                 {
                     NeedUpdate = true;
                     OnPropertyChanged(nameof(SetupTimeFact));
@@ -1152,9 +1207,21 @@ namespace remeLog.Models
                 var partsCount = StartSetupTime != StartMachiningTime && FinishedCount > 1 ? FinishedCount - 1 : FinishedCount;
                 return ProductionTimeFact / partsCount;
             } }
+
+        //public double SetupRatio => PartialSetupTime == 0 
+        //    ? SetupTimePlanForCalc / SetupTimeFact 
+        //    : SetupTimePlanForCalc * AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue) < PartialSetupTime
+        //        ? SetupTimePlanForCalc / PartialSetupTime 
+        //        : 0;
+
         public double SetupRatio => SetupTimePlanForCalc / SetupTimeFact;
+
         public double SetupRatioIncludeDowntimes => SetupTimeFact > 0 ? SetupTimePlanForCalc / (SetupTimeFact + SetupDowntimes) : 0;
-        public string SetupRatioTitle => SetupRatio is double.NaN or double.PositiveInfinity ? "б/н" : SetupRatio > AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue) ? $"{SetupRatio:0%}\n({AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue):0%})" : $"{SetupRatio:0%}";
+        public string SetupRatioTitle => SetupRatio is double.NaN or double.PositiveInfinity 
+            ? "б/н" 
+            : SetupRatio > AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue) 
+                ? $"{SetupRatio:0%}\n({AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue):0%})" 
+                : $"{SetupRatio:0%}";
         public double ProductionRatio => FinishedCountFact * ProductionTimePlanForCalc / ProductionTimeFact;
         public string ProductionRatioTitle => ProductionRatio is double.NaN or double.PositiveInfinity or double.NegativeInfinity ? "б/и" : $"{ProductionRatio:0%}";
         public double SpecifiedDowntimesRatio => (SetupDowntimes + MachiningDowntimes) / (EndMachiningTime - StartSetupTime).TotalMinutes;
@@ -1212,27 +1279,18 @@ namespace remeLog.Models
         {
             get
             {
-                switch (columnName)
+                return columnName switch
                 {
-                    case nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && SetupRatio == 0 && SetupTimeFact > 0:
-                        return "Необходимо указать причину отсутствия номатива наладки.";
-                    case nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0:
-                        return "Необходимо указать причину невыполнения номатива наладки.";
-
-                    case nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio == 0:
-                        return "Необходимо указать причину отсутствия номатива изготовления.";
-                    case nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2:
-                        return "Необходимо указать причину невыполнения номатива изготовления.";
-
-                    case nameof(MasterComment) when string.IsNullOrWhiteSpace(MasterComment) &&
-                    (RequiresComment(MasterSetupComment, SetupReasonsRequireComment) ||
-                     RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment)):
-                        return "Требуется указать дополнительный комментарий для выбранной причины.";
-                    case nameof(SpecifiedDowntimesComment) when string.IsNullOrWhiteSpace(SpecifiedDowntimesComment) && SpecifiedDowntimesRatio > 0.5:
-                        return "Необходимо дать комментарий т.к. простой более 50%.";
-                    default:
-                        return null!;
-                }
+                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && SetupRatio == 0 && SetupTimeFact > 0 => "Необходимо указать причину отсутствия номатива наладки.",
+                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0 => "Необходимо указать причину невыполнения номатива наладки.",
+                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio == 0 => "Необходимо указать причину отсутствия номатива изготовления.",
+                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2 => "Необходимо указать причину невыполнения номатива изготовления.",
+                    nameof(MasterComment) when string.IsNullOrWhiteSpace(MasterComment) &&
+                                        (RequiresComment(MasterSetupComment, SetupReasonsRequireComment) ||
+                                         RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment)) => "Требуется указать дополнительный комментарий для выбранной причины.",
+                    nameof(SpecifiedDowntimesComment) when string.IsNullOrWhiteSpace(SpecifiedDowntimesComment) && SpecifiedDowntimesRatio > 0.5 => "Необходимо дать комментарий т.к. простой более 50%.",
+                    _ => null!,
+                };
             }
         }
     }

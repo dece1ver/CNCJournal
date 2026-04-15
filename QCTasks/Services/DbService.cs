@@ -1,0 +1,207 @@
+﻿using Dapper;
+using libeLog.Models;
+using Microsoft.Data.SqlClient;
+using QCTasks.Models;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace QCTasks.Services;
+
+/// <summary>
+/// Сервис записи статистики в SQL Server.
+/// Все методы безопасны при пустом ConnectionString — просто возвращают дефолт и не падают.
+/// </summary>
+public class DbService
+{
+    private readonly string? _connectionString;
+
+    public bool IsAvailable => !string.IsNullOrWhiteSpace(_connectionString);
+
+    public DbService(string? connectionString)
+    {
+        _connectionString = string.IsNullOrWhiteSpace(connectionString)
+            ? null
+            : connectionString;
+    }
+
+    /// <summary>
+    /// Вставляет запись о начале проверки.
+    /// </summary>
+    /// <returns>ID вставленной строки, или null если БД недоступна.</returns>
+    public async Task<int?> StartInspectionAsync(
+        string partName, string orderNumber, string? partsCount)
+    {
+        if (!IsAvailable) return null;
+
+        const string sql = @"
+INSERT INTO qc_inspections (part_name, order_number, parts_count, started_at, operator)
+VALUES (@PartName, @OrderNumber, @PartsCount, @StartedAt, @UserName);
+SELECT CAST(SCOPE_IDENTITY() AS INT);
+";
+
+        try
+        {
+            await using var conn = new SqlConnection(_connectionString);
+            return await conn.ExecuteScalarAsync<int>(sql, new
+            {
+                PartName = partName,
+                OrderNumber = orderNumber,
+                PartsCount = partsCount,
+                StartedAt = DateTime.Now,
+                UserName = AppSettings.CurrentUser is null ? Environment.UserName : AppSettings.CurrentUser.FullName,
+            });
+        }
+        catch (Exception ex)
+        {
+            LogError("StartInspectionAsync", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Обновляет запись — фиксирует итог и время завершения.
+    /// </summary>
+    public async Task CompleteInspectionAsync(int id, bool accepted, ProductionTaskData inspection)
+    {
+        if (!IsAvailable) return;
+
+        const string sql = @"
+UPDATE qc_inspections
+SET completed_at = @CompletedAt,
+    result = @Result,
+    comment = @Comment 
+WHERE id = @Id;
+";
+
+        try
+        {
+            await using var conn = new SqlConnection(_connectionString);
+            await conn.ExecuteAsync(sql, new
+            {
+                CompletedAt = DateTime.Now,
+                Result = accepted ? "Принято" : "Отклонено",
+                Id = id,
+                Comment = inspection.QcComment
+            });
+        }
+        catch (Exception ex)
+        {
+            LogError("CompleteInspectionAsync", ex);
+        }
+    }
+
+    /// <summary>
+    /// Ищет незакрытую запись после перезапуска приложения.
+    /// Возвращает ID или null если не найдено.
+    /// </summary>
+    public async Task<int?> FindActiveInspectionAsync(string partName, string orderNumber)
+    {
+        if (!IsAvailable) return null;
+
+        const string sql = @"
+SELECT TOP 1 id FROM qc_inspections
+WHERE part_name = @PartName
+    AND order_number = @OrderNumber
+    AND completed_at IS NULL
+ORDER BY started_at DESC;
+";
+
+        try
+        {
+            await using var conn = new SqlConnection(_connectionString);
+            var id = await conn.ExecuteScalarAsync<int?>(sql, new
+            {
+                PartName = partName,
+                OrderNumber = orderNumber
+            });
+            return id;
+        }
+        catch (Exception ex)
+        {
+            LogError("FindActiveInspectionAsync", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Закрывает зависшую строку без результата — статус "Отменено".
+    /// Вызывается когда оператор убрал "В работе" вручную в таблице,
+    /// а потом снова нажал "В работу".
+    /// </summary>
+    public async Task CancelInspectionAsync(int id)
+    {
+        if (!IsAvailable) return;
+
+        const string sql = @"
+UPDATE qc_inspections
+SET completed_at = @CompletedAt,
+    result = 'Отменено'
+WHERE id = @Id
+    AND completed_at IS NULL;
+";
+        try
+        {
+            await using var conn = new SqlConnection(_connectionString);
+            await conn.ExecuteAsync(sql, new { CompletedAt = DateTime.Now, Id = id });
+        }
+        catch (Exception ex) { LogError("CancelInspectionAsync", ex); }
+    }
+
+    /// <summary>
+    /// Пишет новую строку с изменением статуса.
+    /// </summary>
+    public async Task UpdateInspectionAsync(ProductionTaskData inspection, string statusChange)
+    {
+        if (!IsAvailable) return;
+
+        const string sql = @"
+INSERT INTO qc_inspections (part_name, order_number, parts_count, started_at, completed_at, result, operator, comment)
+VALUES (@PartName, @OrderNumber, @PartsCount, @StartedAt, @CompletedAt, @Result, @UserName, @Comment);
+SELECT CAST(SCOPE_IDENTITY() AS INT);
+";
+
+        try
+        {
+            await using var conn = new SqlConnection(_connectionString);
+            var changeDate = DateTime.Now;
+            await conn.ExecuteScalarAsync<int>(sql, new
+            {
+                inspection.PartName,
+                OrderNumber = inspection.Order,
+                inspection.PartsCount,
+                StartedAt = changeDate,
+                CompletedAt = changeDate,
+                Result = statusChange,
+                UserName = AppSettings.CurrentUser is null ? Environment.UserName : AppSettings.CurrentUser.FullName,
+                Comment = inspection.QcComment,
+            });
+        }
+        catch (Exception ex)
+        {
+            LogError("StartInspectionAsync", ex);
+        }
+    }
+
+    public async Task<QcUser?> GetQcUserByCodeAsync(string code)
+    {
+        if (!IsAvailable) return null;
+
+        const string sql = @"SELECT Id, Code1C, FirstName, LastName, Patronymic, IsAdministrator FROM qc_users WHERE Code1C = @Code;";
+        try
+        {
+            await using var conn = new SqlConnection(_connectionString);
+            return await conn.QuerySingleOrDefaultAsync<QcUser>(sql, new { Code = code });
+        }
+        catch (Exception ex)
+        {
+            LogError("GetQcUserByCodeAsync", ex);
+            return null;
+        }
+    }
+
+    private static void LogError(string method, Exception ex) =>
+        Console.Error.WriteLine($"[DbService.{method}] {ex.Message}");
+}

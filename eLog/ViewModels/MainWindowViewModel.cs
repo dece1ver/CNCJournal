@@ -1,4 +1,5 @@
-﻿using eLog.Infrastructure;
+﻿using DocumentFormat.OpenXml.Office2010.PowerPoint;
+using eLog.Infrastructure;
 using eLog.Infrastructure.Extensions;
 using eLog.Models;
 using eLog.Services;
@@ -7,6 +8,7 @@ using libeLog;
 using libeLog.Base;
 using libeLog.Extensions;
 using libeLog.Infrastructure;
+using libeLog.Infrastructure.Enums;
 using libeLog.Interfaces;
 using libeLog.Models;
 using System;
@@ -518,8 +520,10 @@ namespace eLog.ViewModels
                     return;
                 }
 
-                var recipients = await Task.Run(() =>
-                    receiverTypes.SelectMany(GetMailReceivers).Distinct().ToList());
+                List<string> recipients = await Task.Run(() =>
+                    receiverTypes.SelectMany(r => GetMailReceivers(r))
+                    .Distinct()
+                    .ToList());
 
                 if (!recipients.Any())
                 {

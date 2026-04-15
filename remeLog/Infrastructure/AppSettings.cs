@@ -73,6 +73,8 @@ namespace remeLog.Infrastructure
         public static string[] Users { get; set; } = Array.Empty<string>();
         [JsonIgnore]
         public static string[] CncOperations { get; set; } = Array.Empty<string>();
+        [JsonIgnore]
+        public static string? PcaReportPath { get; set; }
 
         /// <summary> Режим отладки </summary>
         public bool DebugMode { get; set; }

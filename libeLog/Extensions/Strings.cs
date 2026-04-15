@@ -394,5 +394,41 @@ namespace libeLog.Extensions
                 return FileCheckResult.GeneralError;
             }
         }
+
+        /// <summary>
+        /// Преобразует строку полного ФИО в формат "Фамилия И.О.".
+        /// Ожидается строка из трёх слов: Имя Отчество Фамилия.
+        /// </summary>
+        /// <param name="fullName">Строка с полным ФИО.</param>
+        /// <returns>
+        /// ФИО в формате "Фамилия И.О.".
+        /// Если строка некорректна — возвращается исходная строка.
+        /// </returns>
+        public static string ToShortFio(this string fullName)
+        {
+            if (string.IsNullOrWhiteSpace(fullName))
+                return fullName;
+
+            var parts = fullName
+                .Trim()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            if (parts.Length != 3)
+                return fullName;
+
+            string firstName = parts[1];
+            string patronymic = parts[2];
+            string lastName = parts[0];
+
+            if (firstName.Length == 0 || patronymic.Length == 0 || lastName.Length == 0)
+                return fullName;
+
+            if (!char.IsLetter(firstName[0]) ||
+                !char.IsLetter(patronymic[0]) ||
+                !char.IsLetter(lastName[0]))
+                return fullName;
+
+            return $"{lastName} {firstName[0]}.{patronymic[0]}.";
+        }
     }
 }

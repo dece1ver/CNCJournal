@@ -1,10 +1,10 @@
 ﻿using DocumentFormat.OpenXml.Bibliography;
+using DocumentFormat.OpenXml.Office2019.Excel.RichData2;
 using libeLog;
 using libeLog.Base;
 using libeLog.Extensions;
 using libeLog.Infrastructure;
 using libeLog.Models;
-using Microsoft.IdentityModel.Tokens;
 using remeLog.Infrastructure;
 using remeLog.Infrastructure.Extensions;
 using remeLog.Infrastructure.Types;
@@ -18,7 +18,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -39,6 +38,7 @@ namespace remeLog.ViewModels
         private static readonly SemaphoreSlim semaphoreSlim = new(1, 1);
         private CancellationTokenSource _cancellationTokenSource = new();
         private CancellationTokenSource _wncCancellationTokenSource = new();
+        private Dictionary<string, MultiValueEditorWindow> _editors = new();
         private static bool lockUpdate;
 
         public PartsInfoWindowViewModel(CombinedParts parts)
@@ -70,6 +70,7 @@ namespace remeLog.ViewModels
             InvertMachinesCommand = new LambdaCommand(OnInvertMachinesCommandExecuted, CanInvertMachinesCommandExecute);
             NormsAndWorkloadAnalysisCommand = new LambdaCommand(OnNormsAndWorkloadAnalysisCommandExecuted, CanNormsAndWorkloadAnalysisCommandExecute);
             OpenDailyReportWindowCommand = new LambdaCommand(OnOpenDailyReportWindowCommandExecuted, CanOpenDailyReportWindowCommandExecute);
+            FillProcessComplianceAuditCommand = new LambdaCommand(OnFillProcessComplianceAuditCommandExecuted, CanFillProcessComplianceAuditCommandExecute);
             OperatorReportToExcelCommand = new LambdaCommand(OnOperatorReportToExcelCommandExecuted, CanOperatorReportToExcelCommandExecute);
             OperatorsShiftsReportToExcelCommand = new LambdaCommand(OnOperatorsShiftsReportToExcelCommandExecuted, CanOperatorsShiftsReportToExcelCommandExecute);
             RefreshPartsCommand = new LambdaCommand(OnRefreshPartsCommandExecuted, CanRefreshPartsCommandExecute);
@@ -88,6 +89,7 @@ namespace remeLog.ViewModels
             ShowArchiveTableCommand = new LambdaCommand(OnShowArchiveTableCommandExecuted, CanShowArchiveTableCommandExecute);
             ShowInfoCommand = new LambdaCommand(OnShowInfoCommandExecuted, CanShowInfoCommandExecute);
             UnlockSerialPartNormativesCommand = new LambdaCommand(OnUnlockSerialPartNormativesCommandExecuted, CanUnlockSerialPartNormativesCommandExecute);
+            OpenMultiValueEditorCommand = new LambdaCommand(OnOpenMultiValueEditorCommandExecuted, CanOpenMultiValueEditorCommandExecute);
             UpdatePartsCommand = new LambdaCommand(OnUpdatePartsCommandExecutedAsync, CanUpdatePartsCommandExecute);
 
             CalcFixed = Part.CalcFixed;
@@ -421,6 +423,13 @@ namespace remeLog.ViewModels
             set => Set(ref _InProgress, value);
         }
 
+        private bool _BackgroundInProgress;
+        /// <summary> Загрузка информации в фоне </summary>
+        public bool BackgroundWorking
+        {
+            get => _BackgroundInProgress;
+            set => Set(ref _BackgroundInProgress, value);
+        }
 
         private bool _WncSearchInProgress;
         /// <summary> Поиск по Windchill в процессе </summary>
@@ -824,6 +833,7 @@ namespace remeLog.ViewModels
                 IProgress<string> progress = new Progress<string>(m => Status = m);
                 try
                 {
+                    BackgroundWorking = true;
                     if (SelectedPart == null || string.IsNullOrEmpty(AppSettings.Instance.ConnectionString)) return;
                     progress.Report("Получение данных о станках");
                     var machines = await Database.GetMachinesAsync(progress);
@@ -850,9 +860,9 @@ namespace remeLog.ViewModels
                     var simpleTagIntervalCalculationTask = operation.GetSimpleTagIntervalCalculationAsync(AppId.CNC_MONITORING, TagId.NC_PROGRAM_RUN, startTime, SelectedPart.EndMachiningTime, progress);
                     var operationsSummaryTask = operation.GetOperationSummaryAsync(AppId.CNC_MONITORING, startTime, SelectedPart.EndMachiningTime, progress);
                     var completedQtyTask = operation.GetCompletedQtyAsync(AppId.CNC_MONITORING, startTime, SelectedPart.EndMachiningTime, progress);
-                    var startCountTask = signal.GetSignalAsync(machine.WnCounterSignal, SignalType.ByTime, Ordering.Asc, progress, startTime.AddMinutes(-5), SelectedPart.EndMachiningTime.AddMinutes(5));
-                    var endCountTask = signal.GetSignalAsync(machine.WnCounterSignal, SignalType.ByTime, Ordering.Asc, progress, startTime.AddMinutes(-5), SelectedPart.EndMachiningTime.AddMinutes(5));
-                    var programNamesTask = signal.GetUniqSignalsAsync(machine.WnNcProgramNameSignal, Ordering.Asc, startTime.AddMinutes(-5), SelectedPart.EndMachiningTime.AddMinutes(5), progress);
+                    var startCountTask = signal.GetSignalAsync(machine.WnCounterSignal, SignalType.ByTime, Ordering.Asc, startTime.AddMinutes(-5), SelectedPart.EndMachiningTime.AddMinutes(5), progress: progress) ;
+                    var endCountTask = signal.GetSignalAsync(machine.WnCounterSignal, SignalType.ByTime, Ordering.Asc, startTime.AddMinutes(-5), SelectedPart.EndMachiningTime.AddMinutes(5), progress: progress);
+                    var programNamesTask = signal.GetUniqSignalsAsync(machine.WnNcProgramNameSignal, Ordering.Asc, startTime.AddMinutes(-5), SelectedPart.EndMachiningTime.AddMinutes(5), progress: progress);
                     var machineInfoTask = operation.GetMachineInfo(AppId.CNC_MONITORING, progress);
 
                     await Task.WhenAll(
@@ -867,6 +877,8 @@ namespace remeLog.ViewModels
                         endCountTask, 
                         machineInfoTask);
 
+                    progress.Report("Разбор полученных данных и вычисления");
+
                     var platformDateTime = await platformDateTimeTask;
                     var cloudDateTime = await cloudDateTimeTask;
                     var priorityTagDuration = await priorityTagDurationTask;
@@ -879,6 +891,7 @@ namespace remeLog.ViewModels
                     var programNamesRaw = await programNamesTask;
                     var machineInfoRaw = await machineInfoTask;
 
+                    
                     var tagIntervalCalculations = Parser.ParseTimeIntervals(Parser.ParseXmlItems(tagIntervalCalculation), true);
                     var orderedTagIntervalCalculations = tagIntervalCalculations.OrderBy(x => x.Start);
                     var priorityTagDurations = Parser.ParsePriorityTagDurations(priorityTagDuration, startTime, SelectedPart.EndMachiningTime);
@@ -903,42 +916,10 @@ namespace remeLog.ViewModels
                     var intervals = orderedTagIntervalCalculations.Select(interval => new TimeInterval(interval.Start, interval.End)).ToList();
                     var sb = new StringBuilder();
 
-                    var end = SelectedPart.EndMachiningTime.AddMinutes(5);
                     var start = startTime.AddMinutes(-5);
+                    var end = SelectedPart.EndMachiningTime.AddMinutes(5);
                     var signalNames = Enumerable.Range(0, 2000).Select(i => $"A{i}").ToList();
                     var signals = new ConcurrentDictionary<string, ConcurrentBag<string>>();
-
-                    #region Шляпа
-                    // шляпа чтобы посмотреть все сигналы
-                    //await Parallel.ForEachAsync(signalNames, new ParallelOptions { MaxDegreeOfParallelism = 100 },
-                    //    async (signalName, _) =>
-                    //    {
-                    //        try
-                    //        {
-                    //            var raw = await signal.GetUniqSignalsAsync(signalName, Ordering.Asc, start, end, progress);
-                    //            var parsedItems = Parser.ParseXmlItems(raw);
-
-                    //            var signalValues = signals.GetOrAdd(signalName, _ => new ConcurrentBag<string>());
-
-                    //            foreach (var item in parsedItems)
-                    //            {
-                    //                if (item.ContainsKey("value"))
-                    //                {
-                    //                    signalValues.Add(item["value"]);
-                    //                }
-                    //            }
-                    //        }
-                    //        catch (InvalidOperationException ex)
-                    //        {
-                    //        }
-                    //        catch (Exception ex)
-                    //        {
-                    //            MessageBox.Show(ex.Message);
-                    //        }
-                    //    });
-
-                    //var signalsFinal = signals.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToList());
-                    #endregion 
 
                     if (Parser.TryParseXmlItems(completedQty, out var cqty))
                     {
@@ -955,8 +936,25 @@ namespace remeLog.ViewModels
                         }
                     }
                     
+                    progress.Report("Подготовка окна");
                     sb.AppendLine($"Файлы УП: {string.Join(", ", programNames)}");
                     var completedInfo = sb.ToString();
+
+                    progress.Report("Построение сводной таблицы");
+
+                    var timelineSources = new List<TimelineSource>();
+                    var tagsTimelineSource = TimelineSource.FromPriorityTag(
+                        displayName: "Тэг",
+                        fetchAsync: () => operation.GetPriorityTagDurationAsync(
+                            AppId.CNC_MONITORING_WITH_STOPS_AND_MANUAL,
+                            start, end),
+                        filterStart: start,
+                        filterEnd: end);
+                    timelineSources.Add(tagsTimelineSource);
+                    timelineSources.AddRange(BuildMachineTimelineSources(signal, machine, start, end, progress));
+
+                    var timeline = await TimelineBuilder.BuildAsync(timelineSources, TimeSpan.FromSeconds(5), progress);
+                    progress.Report("");
                     var win = new WinnumInfoWindow($"" +
                         $"Локальное время:      {DateTime.Now:g} │ М/В Вар.1:   {(double.IsFinite(m1) ? $"{TimeSpan.FromMinutes(m1):hh\\:mm\\:ss}" : "00:00:00")} │\n" +
                         $"Время на платформе:   {platformDateTime:g} │ М/В Вар.2:   {(double.IsFinite(m2) ? $"{TimeSpan.FromMinutes(m2):hh\\:mm\\:ss}" : "00:00:00")} │\n" +
@@ -967,14 +965,18 @@ namespace remeLog.ViewModels
                         $"{new DateTime(startTime.Year, startTime.Month, startTime.Day):d} - " +
                         $"{new DateTime(SelectedPart.EndMachiningTime.Year, SelectedPart.EndMachiningTime.Month, SelectedPart.EndMachiningTime.Day):d}\n" +
                         $"{completedInfo}" +
-                        $"", Path.Combine(winnumConfig.NcProgramFolder, serialNumber), priorityTagDurations, intervals);
-                    win.ShowDialog();
+                        $"", Path.Combine(winnumConfig.NcProgramFolder, serialNumber), priorityTagDurations, intervals, timeline);
+                    win.Show();
                 }
                 catch (Exception ex)
                 {
                     Util.WriteLog(ex);
                     progress.Report(ex.Message);
                     await Task.Delay(3000);
+                }
+                finally
+                {
+                    BackgroundWorking = false;
                 }
             }
         }
@@ -1014,12 +1016,9 @@ namespace remeLog.ViewModels
                     if (dlg.DataContext is ExportOperatorDailogWindowViewModel dx)
                     {
                         var serialParts = dx.OnlySerialParts ? (await libeLog.Infrastructure.Database.GetSerialPartsAsync(AppSettings.Instance.ConnectionString!)).PartNamesHashSet(EnumerableExtensions.PartNameNormalizeOption.NormalizeAndRemoveParentheses) : null;
-                        await Task.Run(() =>
-                        {
-
-                            InProgress = true;
-                            Status = Xl.ExportOperatorReport(Parts, FromDate, ToDate, path, dx.Type.ToLowerInvariant() == "до" ? 1 : dx.Count, dx.Type.ToLowerInvariant() == "до" ? dx.Count : int.MaxValue, serialParts);
-                        });
+                        var includeExcludedParts = dx.IncludeExcludedlParts;
+                        InProgress = true;
+                        Status = await Xl.ExportOperatorReportAsync(Parts, FromDate, ToDate, path, dx.Type.ToLowerInvariant() == "до" ? 1 : dx.Count, dx.Type.ToLowerInvariant() == "до" ? dx.Count : int.MaxValue, serialParts, includeExcludedParts);
                     }
                 }
             }
@@ -1778,6 +1777,40 @@ namespace remeLog.ViewModels
         private static bool CanChangeCalcFixedCommandExecute(object p) => true;
         #endregion
 
+        #region FillProcessComplianceAudit
+        public ICommand FillProcessComplianceAuditCommand { get; }
+
+        private async void OnFillProcessComplianceAuditCommandExecuted(object p)
+        {
+            if (p is not Part part) return;
+            try
+            {
+
+                var path = Util.GetXlsxPath();
+                if (string.IsNullOrEmpty(path))
+                {
+                    Status = "Выбор файла отменён";
+                    return;
+                }
+                await Task.Run(() =>
+                {
+                    InProgress = true;
+                    Status = Xl.FillPcaReport(part, path);
+                });
+
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+            finally { InProgress = false; }
+            using (Overlay = new())
+            {
+                
+            }
+        }
+        private bool CanFillProcessComplianceAuditCommandExecute(object p) => SelectedPart is { };
+        #endregion
         #region OpenDailyReportWindow
         public ICommand OpenDailyReportWindowCommand { get; }
 
@@ -1862,6 +1895,62 @@ namespace remeLog.ViewModels
         private static bool CanOpenDailyReportWindowCommandExecute(object p) => true;
         #endregion
 
+        #region OpenMultiValueEditorCommand
+        public ICommand OpenMultiValueEditorCommand { get; }
+
+        private void OnOpenMultiValueEditorCommandExecuted(object p)
+        {
+            if (p is not string fieldName) return;
+
+            string currentValue = fieldName switch
+            {
+                "Operator" => OperatorFilter,
+                "Order" => OrderFilter,
+                _ => ""
+            };
+
+            var editor = new MultiValueEditorWindow(fieldName, currentValue)
+            {
+                Owner = Application.Current.Windows.OfType<PartsInfoWindow>().FirstOrDefault(),
+                ShowInTaskbar = false,
+                Topmost = true 
+            };
+
+            editor.Closed += (s, args) =>
+            {
+                _editors.Remove(fieldName);
+                if (editor.Resilt)
+                {
+                    switch (fieldName)
+                    {
+                        case "Operator":
+                            OperatorFilter = editor.ResultString;
+                            break;
+                        case "Order":
+                            OrderFilter = editor.ResultString;
+                            break;
+                    }
+                }
+            };
+            _editors[fieldName] = editor;
+            editor.Show();
+        }
+
+        private static bool CanOpenMultiValueEditorCommandExecute(object p) => p is string;
+        #endregion
+
+        public void PushValueToEditor(string type, string value)
+        {
+            if (!_editors.ContainsKey(type)) 
+            {
+                OpenMultiValueEditorCommand.Execute(type);
+            }
+            if (!_editors[type].Values.Any(v => string.Equals(v.Value, value, StringComparison.OrdinalIgnoreCase)))
+            {
+                _editors[type].Values.Add(new() { Value = value });
+            }
+        }
+
         private async Task<bool> LoadPartsAsync(bool first = false)
         {
             if (lockUpdate) return false;
@@ -1941,9 +2030,12 @@ namespace remeLog.ViewModels
                 sb.AppendFormat("AND Shift = '{0}' ", ShiftFilter.FilterText);
             }
 
-            AppendCondition(sb, "Operator", OperatorFilter);
+            AppendMultiValueCondition(sb, "Operator", OperatorFilter);
+
             AppendCondition(sb, "PartName", PartNameFilter);
-            AppendCondition(sb, "[Order]", OrderFilter);
+
+            AppendMultiValueCondition(sb, "[Order]", OrderFilter);
+
             AppendCondition(sb, "EngineerComment", EngineerCommentFilter);
 
             if (Util.TryParseComparison(FinishedCountFilter, out var finishedCountOperator, out var finishedCountValue))
@@ -1958,14 +2050,54 @@ namespace remeLog.ViewModels
             if (OnlySerialPartsFilter)
             {
                 var serialNamesNormalized = string.Join(", ", SerialParts.Select(sp => $"'{sp.PartName.NormalizedPartNameWithoutComments()}'"));
-
                 sb.AppendFormat("AND NormalizedPartName IN ({0}) ", serialNamesNormalized);
             }
-                
+
             var machines = string.Join(", ", MachineFilters.Where(mf => mf.Filter).Select(m => $"'{m.Machine}'").Distinct());
             sb.AppendFormat("AND Machine IN ({0}) ", machines);
 
             return sb.ToString();
+        }
+
+        private void AppendMultiValueCondition(StringBuilder sb, string column, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+
+            // Проверяем, есть ли множественные значения (через ;)
+            if (value.Contains(';'))
+            {
+                var values = value.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                                  .Select(v => v.Trim())
+                                  .Where(v => !string.IsNullOrWhiteSpace(v))
+                                  .ToList();
+
+                if (values.Count > 0)
+                {
+                    var patterns = values.Select(v => new SearchPattern(v)).ToList();
+
+                    // Если все паттерны без LIKE
+                    if (patterns.All(p => p.IsExactMatch))
+                    {
+                        var quotedValues = string.Join(", ", values.Select(v => $"'{v}'"));
+                        sb.AppendFormat("AND {0} IN ({1}) ", column, quotedValues);
+                    }
+                    else
+                    {
+                        // Если есть LIKE паттерны, то OR
+                        sb.Append("AND (");
+                        for (int i = 0; i < patterns.Count; i++)
+                        {
+                            if (i > 0) sb.Append(" OR ");
+                            sb.AppendFormat("{0} {1}", column, patterns[i]);
+                        }
+                        sb.Append(") ");
+                    }
+                }
+            }
+            else
+            {
+                AppendCondition(sb, column, value);
+            }
         }
 
         /// <summary>
@@ -1989,7 +2121,7 @@ namespace remeLog.ViewModels
         /// <param name="sb">StringBuilder в котором формируется строка запроса</param>
         /// <param name="column">Столбец в который будем писать</param>
         /// <param name="value">Значение</param>
-        private void AppendCondition(StringBuilder sb, string column, string value)
+        private static void AppendCondition(StringBuilder sb, string column, string value)
         {
             if (!string.IsNullOrEmpty(value))
             {
@@ -2011,9 +2143,6 @@ namespace remeLog.ViewModels
             return true;
         }
 
-        
-
-
         public static string FormatSearchInput(string input)
         {
             if (string.IsNullOrEmpty(input)) return input;
@@ -2022,6 +2151,107 @@ namespace remeLog.ViewModels
             if (input.StartsWith('*')) return $"%{input[1..]}";
             if (input.EndsWith('*')) return $"{input[..^1]}%";
             return $"%{input}%";
+        }
+
+        private static IEnumerable<TimelineSource> BuildMachineTimelineSources(Signal signal, Machine machine, DateTime start, DateTime end, IProgress<string>? progress = null)
+        {
+            TimelineSource? FromSignal(string displayName, string signalId, Func<string, string>? mapper = null)
+            {
+                if (string.IsNullOrEmpty(signalId)) return null;
+                return TimelineSource.FromSignal(
+                    displayName,
+                    () => signal.GetSignalAsync(signalId, SignalType.ByTime, Ordering.Asc, start, end, progress: progress), valueMapper: mapper);
+            }
+
+            var sources = new (string DisplayName, string SignalId, Func<string, string>? Mapper)[]
+            {
+                // Общие
+                ("№ УП",                machine.WnNcProgramNameSignal,           null),
+                ("Имя УП",              machine.WnNcPartNameSignal,              null),
+                ("Счётчик",             machine.WnCounterSignal,                 null),
+                ("Режим ЧПУ",           machine.WnNcModeSignal,                  machine.Name.Contains("XH6300") ? SignalMappers.NcModeSiemens : SignalMappers.NcModeFanuc),
+                ("УП выполняется",      machine.WnProgramRunningSignal,          SignalMappers.Bool),
+                ("Останов по M0",       machine.WnStopSignal,                    SignalMappers.Bool),
+                ("Останов по М1",       machine.WnOpStopSignal,                  SignalMappers.Bool),
+                ("М-код",               machine.WnMcodeSignal,                   null),
+                ("Движение",            machine.WnGMoveSignal,                   null),
+                ("Цикл",                machine.WnGCycleSignal,                  null),
+                ("G-код",               machine.WnGcodeSignal,                   null),
+                ("Feed Hold",           machine.WnFeedHoldSignal,                SignalMappers.Bool),
+                ("Single Block",        machine.WnSBKSignal,                     SignalMappers.Bool),
+                ("Dry Run",             machine.WnDryRunSignal,                  SignalMappers.Bool),
+                ("MSTLK",               machine.WnMSTLKSignal,                   SignalMappers.Bool),
+                ("MLK",                 machine.WnMLKSignal,                     SignalMappers.Bool),
+                ("N",                   machine.WnCurrentBlockNumberSignal,      null),
+                ("Текст кадра",         machine.WnCurrentBlockTextSignal,        null),
+                ("СК",                  machine.WnCurrentCSSignal,               null),
+                ("Плоскость",           machine.WnCurrentPlaneSignal,            null),
+                // Коррекции                                                     
+                ("Корр. подачи",        machine.WnFeedMultiplierSignal,          null),
+                ("Корр. ускор. хода",   machine.WnRapidMultiplierSignal,         null),
+                ("Корр. шпинделя 1",    machine.WnSpindleSpeed1MultiplierSignal, null),
+                ("Корр. шпинделя 2",    machine.WnSpindleSpeed2MultiplierSignal, null),
+                // Актуальные значения                                           
+                ("Обор. 1 шпинделя",    machine.WnActSpindle1SpeedSignal,        null),
+                ("Обор. 2 шпинделя",    machine.WnActSpindle2SpeedSignal,        null),
+                ("Скорость резания",    machine.WnActCutSpeedSignal,             null),
+                ("Подача мм/мин",       machine.WnActFeedPerMinSignal,           null),
+                ("Подача мм/об",        machine.WnActFeedPerRevSignal,           null),
+                // Инструмент                                                    
+                ("Инструмент",          machine.WnToolSignal,                    null),
+                ("Корр. H",             machine.WnToolHSignal,                   null),
+                ("Корр. D",             machine.WnToolDSignal,                   null),
+                ("Вектор инстр.",       machine.WnToolVectorSignal,              null),
+                ("Геом. R",             machine.WnToolGeomRSignal,               null),
+                ("Геом. X",             machine.WnToolGeomXSignal,               null),
+                ("Геом. Y",             machine.WnToolGeomYSignal,               null),
+                ("Геом. Z",             machine.WnToolGeomZSignal,               null),
+                ("Износ R",             machine.WnToolWearRSignal,               null),
+                ("Износ X",             machine.WnToolWearXSignal,               null),
+                ("Износ Y",             machine.WnToolWearYSignal,               null),
+                ("Износ Z",             machine.WnToolWearZSignal,               null),
+                // Абсолютные координаты                                         
+                ("Abs X",               machine.WnAbsXSignal,                    null),
+                ("Abs Y",               machine.WnAbsYSignal,                    null),
+                ("Abs Z",               machine.WnAbsZSignal,                    null),
+                ("Abs ZA",              machine.WnAbsZASignal,                   null),
+                ("Abs B",               machine.WnAbsBSignal,                    null),
+                ("Abs C",               machine.WnAbsCSignal,                    null),
+                ("Abs W",               machine.WnAbsWSignal,                    null),
+                // Относительные координаты                                      
+                ("Rel X",               machine.WnRelXSignal,                    null),
+                ("Rel Y",               machine.WnRelYSignal,                    null),
+                ("Rel Z",               machine.WnRelZSignal,                    null),
+                ("Rel ZA",              machine.WnRelZASignal,                   null),
+                ("Rel B",               machine.WnRelBSignal,                    null),
+                ("Rel C",               machine.WnRelCSignal,                    null),
+                ("Rel W",               machine.WnRelWSignal,                    null),
+                // Машинные координаты                                           
+                ("Mach X",              machine.WnMachXSignal,                   null),
+                ("Mach Y",              machine.WnMachYSignal,                   null),
+                ("Mach Z",              machine.WnMachZSignal,                   null),
+                ("Mach ZA",             machine.WnMachZASignal,                  null),
+                ("Mach B",              machine.WnMachBSignal,                   null),
+                ("Mach C",              machine.WnMachCSignal,                   null),
+                ("Mach W",              machine.WnMachWSignal,                   null),
+                // Аварии и нагрузки                                             
+                ("Авария",              machine.WnAlarmMessageSignal,            null),
+                ("Нагрузка X",          machine.WnLoadXSignal,                   null),
+                ("Нагрузка Y",          machine.WnLoadYSignal,                   null),
+                ("Нагрузка Z",          machine.WnLoadZSignal,                   null),
+                ("Нагрузка C",          machine.WnLoadCSignal,                   null),
+                ("Нагрузка B",          machine.WnLoadBSignal,                   null),
+                ("Нагрузка W",          machine.WnLoadWSignal,                   null),
+                ("Нагрузка 1 шпинд.",   machine.WnLoadSpindle1Signal,            null),
+                ("Нагрузка 2 шпинд.",   machine.WnLoadSpindle2Signal,            null),
+            };
+
+            foreach (var (displayName, signalId, mapper) in sources)
+            {
+                var source = FromSignal(displayName, signalId, mapper);
+                if (source != null)
+                    yield return source;
+            }
         }
 
         private void LockUpdate() => lockUpdate = true;

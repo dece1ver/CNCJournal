@@ -14,6 +14,9 @@
         WindowStartupLocation="CenterOwner" 
         WindowState="Maximized" 
         PreviewKeyDown="PartsInfoWindow_PreviewKeyDown">
+    <Window.InputBindings>
+        <KeyBinding Modifiers="Ctrl" Key="S" Command="{Binding UpdatePartsCommand}"/>
+    </Window.InputBindings>
     <Window.Resources>
         <Style TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -72,7 +75,8 @@
                 <AdornedElementPlaceholder/>
             </Border>
         </ControlTemplate>
-        <!--#region Columns -->
+        
+        <!--#region Столбцы -->
         <DataGridTextColumn x:Key="MachineColumn" Header="Станок" Binding="{Binding Machine}" 
                             Width="85" IsReadOnly="True" 
                             Visibility="{Binding DataContext.MachineVisibility, 
@@ -156,6 +160,18 @@
         </DataGridTextColumn>
 
         <DataGridTextColumn x:Key="FinishedCountColumn" Header="Выполнено" Binding="{Binding FinishedCount, Converter={StaticResource ExpressionToDoubleConverter}}" Width="30">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="DefectiveCountColumn" Header="Брак" Binding="{Binding DefectiveCount, Converter={StaticResource ExpressionToIntConverter}}" Width="30"
+                            Visibility="{Binding DataContext.ViewMode, 
+                                        Source={x:Reference partsInfoWindow}, 
+                                        Converter={StaticResource UserRoleVisibilityConverter}, ConverterParameter='Viewer, Master, Developer'}">
             <DataGridTextColumn.ElementStyle>
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
             </DataGridTextColumn.ElementStyle>
@@ -443,6 +459,19 @@
             </DataGridTextColumn.EditingElementStyle>
         </DataGridTextColumn>
 
+        <DataGridTextColumn x:Key="SpecialDowntimeTimeColumn" Header="Специальный" Binding="{Binding SpecialDowntimeTime, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+            Visibility="{Binding DataContext.ViewMode, 
+            Source={x:Reference partsInfoWindow}, 
+            Converter={StaticResource UserRoleVisibilityConverter}, 
+            ConverterParameter='Viewer, Developer'}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
         <DataGridTextColumn x:Key="SpecifiedDowntimesRatioColumn" Header="Отмеченные простои" Binding="{Binding SpecifiedDowntimesRatio, UpdateSourceTrigger=PropertyChanged, StringFormat=0%}" 
                             Width="33" IsReadOnly="True"
                             Visibility="{Binding DataContext.ViewMode, 
@@ -645,6 +674,7 @@
         </DataGridCheckBoxColumn>
         <!--#endregion-->
 
+        <!--#region Контекстные меню -->
         <ContextMenu x:Key="MasterCommentCellContextMenu">
             <MenuItem Header="Другая операция">
                 <MenuItem Header="Заложена универсальная операция" Click="OnVariantClick"/>
@@ -686,12 +716,14 @@
             <MenuItem Header="Исправлено ранее" Click="OnVariantClick"/>
             <MenuItem Header="Корректировка не требуется" Click="OnVariantClick"/>
             <MenuItem Header="Ожидание">
+                <MenuItem Header="Ожидание следующего  изготовления" Click="OnVariantClick"/>
                 <MenuItem Header="Ожидание полного изготовления" Click="OnVariantClick"/>
                 <MenuItem Header="Ожидание решения технолога" Click="OnVariantClick"/>
                 <MenuItem Header="Ожидание решения производства" Click="OnVariantClick"/>
             </MenuItem>
             <MenuItem Header="Временные нормативы" Click="OnVariantClick"/>
             <MenuItem Header="Изменение технологии" Click="OnVariantClick"/>
+            <MenuItem Header="Создание альтернативного техпроцесса" Click="OnVariantClick"/>
             <Separator/>
             <MenuItem Header="Очистить" Click="OnClearVariantClick" Icon="{StaticResource CleanData}"/>
         </ContextMenu>
@@ -703,10 +735,10 @@
             <MenuItem Header="Выделить все" Command="ApplicationCommands.SelectAll" />
             <Separator/>
             <MenuItem Header="Вставка спецсимволов">
-                <MenuItem Header="Градус (°)" Tag="°" Click="OnInsertSymbolClick"/>
-                <MenuItem Header="Плюс-минус (±)" Tag="±" Click="OnInsertSymbolClick"/>
-                <MenuItem Header="Диаметр (Ø)" Tag="Ø" Click="OnInsertSymbolClick"/>
-                <MenuItem Header="Микрон (µ)" Tag="µ" Click="OnInsertSymbolClick"/>
+                <MenuItem Header="Градус (°)" Tag="°" Click="OnInsertValueClick"/>
+                <MenuItem Header="Плюс-минус (±)" Tag="±" Click="OnInsertValueClick"/>
+                <MenuItem Header="Диаметр (Ø)" Tag="Ø" Click="OnInsertValueClick"/>
+                <MenuItem Header="Микрон (µ)" Tag="µ" Click="OnInsertValueClick"/>
             </MenuItem>
         </ContextMenu>
 
@@ -716,6 +748,17 @@
             <MenuItem Header="Очистить" Tag="0" Click="OnSetValueClick"/>
         </ContextMenu>
 
+        <ContextMenu x:Key="TimeContextMenu">
+            <MenuItem Header="07:00" Click="OnInsertValueClick"/>
+            <MenuItem Header="08:00" Click="OnInsertValueClick"/>
+            <MenuItem Header="19:00" Click="OnInsertValueClick"/>
+            <MenuItem Header="20:00" Click="OnInsertValueClick"/>
+        </ContextMenu>
+
+        <ContextMenu x:Key="MultiFilterValueContextMenu">
+            <MenuItem Header="Добавить к фильтру" Click="OnAddMultiFilterValueClick"/>
+        </ContextMenu>
+        <!--#endregion-->
     </Window.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
@@ -724,8 +767,11 @@
         </Grid.ColumnDefinitions>
         <DockPanel Grid.ColumnSpan="2">
             <StatusBar DockPanel.Dock="Bottom">
-                <StatusBarItem>
+                <StatusBarItem HorizontalAlignment="Stretch">
                     <TextBlock Text="{Binding Status}" FontSize="16" Margin="0 -1"/>
+                </StatusBarItem>
+                <StatusBarItem HorizontalAlignment="Right" VerticalContentAlignment="Stretch">
+                    <ProgressBar Width="199" IsIndeterminate="True" Visibility="{Binding BackgroundWorking, Converter={StaticResource VisibilityConverter}}"/>
                 </StatusBarItem>
             </StatusBar>
             <ProgressBar DockPanel.Dock="Bottom" IsIndeterminate="True"
@@ -831,10 +877,10 @@
                     <Grid Margin="0 -2 0 0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="60"/>
-                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="120"/>
                             <ColumnDefinition Width="100"/>
                             <ColumnDefinition Width="75"/>
-                            <ColumnDefinition Width="320"/>
+                            <ColumnDefinition Width="340"/>
                             <ColumnDefinition Width="auto"/>
                             <ColumnDefinition Width="auto"/>
                             <ColumnDefinition Width="*"/>
@@ -855,9 +901,20 @@
                         <Border Grid.Row="1" Grid.Column="4" Grid.ColumnSpan="1" Margin="0 0 19 0" Background="DarkGray"/>
                         <Border Grid.Row="1" Grid.Column="9" Margin="0 0 4 0" Grid.ColumnSpan="1" Background="Gray"/>
                         <Border Grid.Row="1" Grid.Column="10" Grid.ColumnSpan="3" Background="Gray"/>
-                        <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" 
-                                 Text="{Binding OperatorFilter, UpdateSourceTrigger=PropertyChanged, Delay=500}" Style="{StaticResource ClearableTextBox}"
-                                 BorderThickness="1 1 1 0" Margin="0 0 0 0"/>
+                        <DockPanel Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2">
+                            <Button DockPanel.Dock="Right" Width="22" Margin="0 0 0 -1"
+                                    Command="{Binding OpenMultiValueEditorCommand}" 
+                                    CommandParameter="Operator"
+                                    ToolTip="Выбрать несколько операторов">
+                                <Button.Content>
+                                    <TextBlock Text="…" FontSize="14"/>
+                                </Button.Content>
+                            </Button>
+                            <TextBox Text="{Binding OperatorFilter, UpdateSourceTrigger=PropertyChanged, Delay=500}" Style="{StaticResource ClearableTextBox}"
+                                     BorderThickness="1 1 0 0" Margin="0 0 0 0"/>
+                            
+                        </DockPanel>
+                        
                         <TextBlock Grid.Row="2" Grid.Column="0" Text="Смена"/>
                         <ComboBox Grid.Row="2" Grid.Column="1" Text="Оператор" BorderThickness="1 0 1 1"
                                   ItemsSource="{Binding ShiftFilterItems}" DisplayMemberPath="Name" SelectedItem="{Binding ShiftFilter}"/>
@@ -937,8 +994,18 @@
                                 <RowDefinition/>
                                 <RowDefinition/>
                             </Grid.RowDefinitions>
-                            <TextBox Grid.Column="0" Grid.Row="0" Grid.RowSpan="2" Text="{Binding OrderFilter, UpdateSourceTrigger=PropertyChanged, Delay=500}" 
-                                     Style="{StaticResource ClearableTextBox}" BorderThickness="1 0 1 1"/>
+                            <DockPanel Grid.Column="0" Grid.Row="0" Grid.RowSpan="2">
+                                <Button DockPanel.Dock="Right" Width="22" Margin="0 -1 0 0"
+                                        Command="{Binding OpenMultiValueEditorCommand}" 
+                                        CommandParameter="Order"
+                                        ToolTip="Выбрать несколько М/Л">
+                                    <Button.Content>
+                                        <TextBlock Text="…" FontSize="14"/>
+                                    </Button.Content>
+                                </Button>
+                                <TextBox Text="{Binding OrderFilter, UpdateSourceTrigger=PropertyChanged, Delay=500}" 
+                                         Style="{StaticResource ClearableTextBox}" BorderThickness="1 0 0 1"/>
+                            </DockPanel>
                             <TextBlock Grid.Column="1" Grid.Row="0" Grid.RowSpan="2" Text="Шт." Margin="0 0 5 0" HorizontalAlignment="Right" ToolTip="Количество деталей по М/Л"/>
                             <TextBox Grid.Column="2" Grid.Row="0" Grid.RowSpan="2" Text="{Binding TotalCountFilter, UpdateSourceTrigger=PropertyChanged, Delay=500, TargetNullValue={x:Static sys:String.Empty}}"
                                      Style="{StaticResource ClearableTextBox}" ToolTip="Количество деталей по М/Л" BorderThickness="1 0 1 1"/>
@@ -1052,6 +1119,13 @@
                           ToolTip="Посмотреть в Winnum">
                     <MenuItem.Header>
                         <TextBlock Text="Ⓦ" FontSize="20" Margin="0 -7 0 -4" TextAlignment="Center" Width="21"/>
+                    </MenuItem.Header>
+                </MenuItem>
+                <MenuItem Command="{Binding FillProcessComplianceAuditCommand}" 
+                          CommandParameter="{Binding SelectedPart}" 
+                          ToolTip="Заполнить КТД">
+                    <MenuItem.Header>
+                        <TextBlock Text="КТД" Margin="0 -7 0 -4" TextAlignment="Center" Width="21"/>
                     </MenuItem.Header>
                 </MenuItem>
                 <MenuItem Header="|" Margin="0" Padding="0 -4 0 0" IsEnabled="False"/>
@@ -1315,6 +1389,7 @@
                         <StaticResource ResourceKey="OrderColumn"/>
                         <StaticResource ResourceKey="TotalCountColumn"/>
                         <StaticResource ResourceKey="FinishedCountColumn"/>
+                        <StaticResource ResourceKey="DefectiveCountColumn"/>
                         <StaticResource ResourceKey="SetupColumn"/>
                         <StaticResource ResourceKey="StartSetupTimeColumn"/>
                         <StaticResource ResourceKey="StartMachiningTimeColumn"/>
@@ -1340,6 +1415,7 @@
                         <StaticResource ResourceKey="ContactingDepartmentsTimeColumn"/>
                         <StaticResource ResourceKey="FixtureMakingTimeColumn"/>
                         <StaticResource ResourceKey="HardwareFailureTimeColumn"/>
+                        <StaticResource ResourceKey="SpecialDowntimeTimeColumn"/>
                         <StaticResource ResourceKey="SpecifiedDowntimesRatioColumn"/>
                         <StaticResource ResourceKey="SpecifiedDowntimesCommentColumn"/>
                         <StaticResource ResourceKey="SetupRatioTitleColumn"/>

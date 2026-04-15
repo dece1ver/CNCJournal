@@ -43,6 +43,14 @@ namespace remeLog.ViewModels
             set => Set(ref _OnlySerialParts, value);
         }
 
+        private bool _IncludeExcludedlParts;
+        /// <summary> Включить исключённые записи </summary>
+        public bool IncludeExcludedlParts
+        {
+            get => _IncludeExcludedlParts;
+            set => Set(ref _IncludeExcludedlParts, value);
+        }
+
 
         #region ExportCommand
         public ICommand ExportCommand { get; }

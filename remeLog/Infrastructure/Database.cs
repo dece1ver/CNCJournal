@@ -4,6 +4,7 @@ using libeLog.Models;
 using Microsoft.Data.SqlClient;
 using remeLog.Infrastructure.Extensions;
 using remeLog.Models;
+using remeLog.Models.Reports;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -79,13 +80,13 @@ namespace remeLog.Infrastructure
             return operators;
         }
 
-        public async static Task<List<OperatorInfo>> GetOperatorsAsync(IProgress<string> progress)
+        public async static Task<List<OperatorInfo>> GetOperatorsAsync(IProgress<string>? progress = null)
         {
             List<OperatorInfo> operators = new();
 
             await Task.Run(async () =>
             {
-                progress.Report("Подключение к БД...");
+                progress?.Report("Подключение к БД...");
                 using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
                 {
                     await connection.OpenAsync();
@@ -94,7 +95,7 @@ namespace remeLog.Infrastructure
                     {
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
                         {
-                            progress.Report("Чтение данных из БД...");
+                            progress?.Report("Чтение данных из БД...");
                             while (await reader.ReadAsync())
                             {
                                 operators.Add(new OperatorInfo(
@@ -108,7 +109,7 @@ namespace remeLog.Infrastructure
                         }
                     }
                 }
-                progress.Report("Чтение завершено");
+                progress?.Report("Чтение завершено");
             });
             return operators;
         }
@@ -203,40 +204,299 @@ namespace remeLog.Infrastructure
             }
         }
 
-        public async static Task<List<Machine>> GetMachinesAsync(IProgress<string> progress)
+        public async static Task<IEnumerable<Qualification>> GetQualificationsAsync(IProgress<string>? progress = null)
         {
-            List<Machine> machines = new();
+            List<Qualification> qualifications = new();
 
             await Task.Run(async () =>
             {
-                progress.Report("Подключение к БД...");
+                progress?.Report("Подключение к БД...");
                 using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
                 {
                     await connection.OpenAsync();
-                    string query = $"SELECT Name, WnId, WnUuid, WnCounterSignal, WnNcNameSignal FROM cnc_machines WHERE IsActive = 1;";
+                    string query = $"SELECT [Qualification]," +
+                    $"[EfficiencyValueHH],[EfficiencyCoefficientHH]," +
+                    $"[EfficiencyValueH]," +
+                    $"[EfficiencyCoefficientH]," +
+                    $"[EfficiencyValueN]," +
+                    $"[EfficiencyCoefficientN]," +
+                    $"[EfficiencyValueL]," +
+                    $"[EfficiencyCoefficientL]," +
+                    $"[EfficiencyValueLL]," +
+                    $"[EfficiencyCoefficientLL]," +
+                    $"[EfficiencyValueLLL]," +
+                    $"[EfficiencyCoefficientLLL]," +
+                    $"[DownTimesValueHH]," +
+                    $"[DownTimesCoefficientHH]," +
+                    $"[DownTimesValueH]," +
+                    $"[DownTimesCoefficientH]," +
+                    $"[DownTimesValueN]," +
+                    $"[DownTimesCoefficientN]," +
+                    $"[DownTimesValueL]," +
+                    $"[DownTimesCoefficientL]," +
+                    $"[DownTimesValueLL]," +
+                    $"[DownTimesCoefficientLL]," +
+                    $"[DownTimesValueLLL]," +
+                    $"[DownTimesCoefficientLLL]," +
+                    $"[NonSerialEfficiencyValueHH]," +
+                    $"[NonSerialEfficiencyCoefficientHH]," +
+                    $"[NonSerialEfficiencyValueH]," +
+                    $"[NonSerialEfficiencyCoefficientH]," +
+                    $"[NonSerialEfficiencyValueN]," +
+                    $"[NonSerialEfficiencyCoefficientN]," +
+                    $"[NonSerialEfficiencyValueL] ," +
+                    $"[NonSerialEfficiencyCoefficientL]," +
+                    $"[NonSerialEfficiencyValueLL]," +
+                    $"[NonSerialEfficiencyCoefficientLL]," +
+                    $"[NonSerialEfficiencyValueLLL]," +
+                    $"[NonSerialEfficiencyCoefficientLLL] FROM cnc_qualifications;";
                     using (SqlCommand command = new(query, connection))
                     {
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
                         {
-                            progress.Report("Чтение данных из БД...");
+                            progress?.Report("Чтение данных из БД...");
                             while (await reader.ReadAsync())
                             {
-                                machines.Add(new Machine(
-                                    await reader.GetValueOrDefaultAsync(0, "", CancellationToken.None),             // Name
-                                    await reader.GetValueOrDefaultAsync(1, 0, CancellationToken.None),              // Winnum Id
-                                    await reader.GetValueOrDefaultAsync(2, Guid.Empty, CancellationToken.None),     // Winnum Uuid
-                                    await reader.GetValueOrDefaultAsync(3, string.Empty, CancellationToken.None),   // Winnum Counter Signal
-                                    await reader.GetValueOrDefaultAsync(4, string.Empty, CancellationToken.None))); // Winnum NcName Signal
+                                qualifications.Add(new Qualification(
+                                    reader.GetInt32(0),
+                                    reader.GetDouble(1),
+                                    reader.GetDouble(2),
+                                    reader.GetDouble(3),
+                                    reader.GetDouble(4),
+                                    reader.GetDouble(5),
+                                    reader.GetDouble(6),
+                                    reader.GetDouble(7),
+                                    reader.GetDouble(8),
+                                    reader.GetDouble(9),
+                                    reader.GetDouble(10),
+                                    reader.GetDouble(11),
+                                    reader.GetDouble(12),
+                                    reader.GetDouble(13),
+                                    reader.GetDouble(14),
+                                    reader.GetDouble(15),
+                                    reader.GetDouble(16),
+                                    reader.GetDouble(17),
+                                    reader.GetDouble(18),
+                                    reader.GetDouble(19),
+                                    reader.GetDouble(20),
+                                    reader.GetDouble(21),
+                                    reader.GetDouble(22),
+                                    reader.GetDouble(23),
+                                    reader.GetDouble(24),
+                                    reader.GetDouble(25),
+                                    reader.GetDouble(26),
+                                    reader.GetDouble(27),
+                                    reader.GetDouble(28),
+                                    reader.GetDouble(29),
+                                    reader.GetDouble(30),
+                                    reader.GetDouble(31),
+                                    reader.GetDouble(32),
+                                    reader.GetDouble(33),
+                                    reader.GetDouble(34),
+                                    reader.GetDouble(35),
+                                    reader.GetDouble(36)));
                             }
                         }
                     }
+                }
+                progress?.Report("Чтение завершено");
+            });
+            return qualifications;
+        }
+
+        public async static Task<List<Machine>> GetMachinesAsync(IProgress<string> progress)
+        {
+            List<Machine> machines = new();
+            await Task.Run(async () =>
+            {
+                progress.Report("Подключение к БД...");
+                using SqlConnection connection = new(AppSettings.Instance.ConnectionString);
+                await connection.OpenAsync();
+
+                const string query = @"
+            SELECT
+                Id, Name, IsActive, IsSerial, Type, SetupLimit, SetupCoefficient,
+                WnId, WnUuid,
+                WnCounterSignal, WnNcProgramNameSignal, WnNcPartNameSignal,
+                WnCurrentCSSignal, WnCurrentPlaneSignal,
+                WnCurrentBlockNumberSignal, WnCurrentBlockTextSignal, WnNcModeSignal,
+                WnFeedHoldSignal, WnSBKSignal, WnDryRunSignal, WnMSTLKSignal, WnMLKSignal,
+                WnProgramRunningSignal, WnStopSignal, WnOpStopSignal,
+                WnMcodeSignal, WnGMoveSignal, WnGCycleSignal, WnGcodeSignal,
+                WnRapidMultiplierSignal, WnFeedMultiplierSignal,
+                WnSpindleSpeed1MultiplierSignal, WnSpindleSpeed2MultiplierSignal,
+                WnActSpindle1SpeedSignal, WnActSpindle2SpeedSignal, WnActCutSpeedSignal,
+                WnActFeedPerMinSignal, WnActFeedPerRevSignal,
+                WnAbsXSignal, WnAbsYSignal, WnAbsZSignal, WnAbsZASignal, WnAbsBSignal, WnAbsCSignal, WnAbsWSignal,
+                WnRelXSignal, WnRelYSignal, WnRelZSignal, WnRelZASignal, WnRelBSignal, WnRelCSignal, WnRelWSignal,
+                WnMachXSignal, WnMachYSignal, WnMachZSignal, WnMachZASignal, WnMachBSignal, WnMachCSignal, WnMachWSignal,
+                WnToolSignal, WnToolHSignal, WnToolDSignal, WnToolVectorSignal,
+                WnToolGeomRSignal, WnToolGeomXSignal, WnToolGeomYSignal, WnToolGeomZSignal,
+                WnToolWearRSignal, WnToolWearXSignal, WnToolWearYSignal, WnToolWearZSignal,
+                WnAlarmMessageSignal,
+                WnLoadXSignal, WnLoadYSignal, WnLoadZSignal, WnLoadCSignal, WnLoadBSignal, WnLoadWSignal, WnLoadSpindle1Signal, WnLoadSpindle2Signal
+            FROM cnc_machines
+            WHERE IsActive = 1;";
+
+                using SqlCommand command = new(query, connection);
+                using SqlDataReader reader = await command.ExecuteReaderAsync();
+
+                progress.Report("Чтение данных из БД...");
+                var ct = CancellationToken.None;
+
+                while (await reader.ReadAsync())
+                {
+                    int i = 0;
+                    machines.Add(new Machine
+                    {
+                        // Основные
+                        Id = await reader.GetValueOrDefaultAsync(i++, 0, ct),
+                        Name = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        IsActive = await reader.GetValueOrDefaultAsync(i++, false, ct),
+                        IsSerial = await reader.GetValueOrDefaultAsync(i++, false, ct),
+                        Type = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        SetupLimit = await reader.GetValueOrDefaultAsync(i++, 0, ct),
+                        SetupCoefficient = await reader.GetValueOrDefaultAsync(i++, 0.0, ct),
+                        // Winnum
+                        WnId = await reader.GetValueOrDefaultAsync(i++, 0, ct),
+                        WnUuid = await reader.GetValueOrDefaultAsync(i++, Guid.Empty, ct),
+                        // Общие
+                        WnCounterSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnNcProgramNameSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnNcPartNameSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnCurrentCSSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnCurrentPlaneSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnCurrentBlockNumberSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnCurrentBlockTextSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnNcModeSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnFeedHoldSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnSBKSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnDryRunSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMSTLKSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMLKSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnProgramRunningSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnStopSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnOpStopSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMcodeSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnGMoveSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnGCycleSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnGcodeSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Коррекции
+                        WnRapidMultiplierSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnFeedMultiplierSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnSpindleSpeed1MultiplierSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnSpindleSpeed2MultiplierSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Актуальные значения
+                        WnActSpindle1SpeedSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnActSpindle2SpeedSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnActCutSpeedSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnActFeedPerMinSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnActFeedPerRevSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Абсолютные координаты
+                        WnAbsXSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnAbsYSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnAbsZSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnAbsZASignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnAbsBSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnAbsCSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnAbsWSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Относительные координаты
+                        WnRelXSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnRelYSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnRelZSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnRelZASignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnRelBSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnRelCSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnRelWSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Машинные координаты
+                        WnMachXSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMachYSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMachZSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMachZASignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMachBSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMachCSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnMachWSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Инструмент
+                        WnToolSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolHSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolDSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolVectorSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolGeomRSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolGeomXSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolGeomYSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolGeomZSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolWearRSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolWearXSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolWearYSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnToolWearZSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        // Аварии и нагрузки
+                        WnAlarmMessageSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadXSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadYSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadZSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadCSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadBSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadWSignal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadSpindle1Signal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                        WnLoadSpindle2Signal = await reader.GetValueOrDefaultAsync(i++, string.Empty, ct),
+                    });
                 }
                 progress.Report("Чтение завершено");
             });
             return machines;
         }
 
-        
+        public async static Task<bool> GetMachineSerialStatus(string machine, IProgress<string>? progress = null)
+        {
+            progress?.Report("Подключение к БД...");
+            using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+            {
+                await connection.OpenAsync();
+                string query = $"SELECT IsSerial FROM cnc_machines WHERE Name = @Machine;";
+                using (SqlCommand command = new(query, connection))
+                {
+                    command.Parameters.AddWithValue("@Machine", machine);
+                    using (SqlDataReader reader = await command.ExecuteReaderAsync())
+                    {
+                        progress?.Report("Чтение данных из БД...");
+                        while (await reader.ReadAsync())
+                        {
+                            return reader.GetBoolean(0);
+                        }
+                    }
+                }
+            }
+            progress?.Report("Чтение завершено");
+            return false;
+        }
+
+        public async static Task<List<DateTime>> GetHolidaysAsync(IProgress<string>? progress)
+        {
+            List<DateTime> holidays = new();
+
+            await Task.Run(async () =>
+            {
+                progress?.Report("Подключение к БД...");
+                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                {
+                    await connection.OpenAsync();
+                    string query = $"SELECT Holidays FROM cnc_remelog_config;";
+                    using (SqlCommand command = new(query, connection))
+                    {
+                        using (SqlDataReader reader = await command.ExecuteReaderAsync())
+                        {
+                            progress?.Report("Чтение данных из БД...");
+                            while (await reader.ReadAsync())
+                            {
+                                holidays.Add(reader.GetDateTime(0));
+                            }
+                        }
+                    }
+                }
+                progress?.Report("Чтение завершено");
+            });
+            return holidays;
+        }
 
         /// <summary>
         /// Сохраняет информацию о серийной детали в базе данных.
@@ -550,6 +810,7 @@ namespace remeLog.Infrastructure
                         "ContactingDepartmentsTime = @ContactingDepartmentsTime, " +
                         "FixtureMakingTime = @FixtureMakingTime, " +
                         "HardwareFailureTime = @HardwareFailureTime, " +
+                        "SpecialDowntimeTime = @SpecialDowntimeTime, " +
                         "OperatorComment = @OperatorComment, " +
                         "MasterSetupComment = @MasterSetupComment, " +
                         "MasterMachiningComment = @MasterMachiningComment, " +
@@ -564,7 +825,8 @@ namespace remeLog.Infrastructure
                         "LongSetupFixComment = @LongSetupFixComment, " +
                         "LongSetupEngeneerComment = @LongSetupEngeneerComment, " +
                         "ExcludedOperationsTime = @ExcludedOperationsTime, " +
-                        "IncreaseReason = @IncreaseReason " +
+                        "IncreaseReason = @IncreaseReason, " +
+                        "DefectiveCount = @DefectiveCount " +
                         "WHERE Guid = @Guid";
                     using (SqlCommand cmd = new(updateQuery, connection))
                     {
@@ -598,6 +860,7 @@ namespace remeLog.Infrastructure
                         cmd.Parameters.AddWithValue("@ContactingDepartmentsTime", part.ContactingDepartmentsTime);
                         cmd.Parameters.AddWithValue("@FixtureMakingTime", part.FixtureMakingTime);
                         cmd.Parameters.AddWithValue("@HardwareFailureTime", part.HardwareFailureTime);
+                        cmd.Parameters.AddWithValue("@SpecialDowntimeTime", part.SpecialDowntimeTime);
                         cmd.Parameters.AddWithValue("@OperatorComment", part.OperatorComment);
                         cmd.Parameters.AddWithValue("@MasterSetupComment", part.MasterSetupComment);
                         cmd.Parameters.AddWithValue("@MasterMachiningComment", part.MasterMachiningComment);
@@ -613,6 +876,7 @@ namespace remeLog.Infrastructure
                         cmd.Parameters.AddWithValue("@LongSetupEngeneerComment", part.LongSetupEngeneerComment);
                         cmd.Parameters.AddWithValue("@ExcludedOperationsTime", part.ExcludedOperationsTime);
                         cmd.Parameters.AddWithValue("@IncreaseReason", part.IncreaseReason);
+                        cmd.Parameters.AddWithValue("@DefectiveCount", part.DefectiveCount);
 
                         var execureResult = await cmd.ExecuteNonQueryAsync();
                     }
@@ -694,6 +958,9 @@ namespace remeLog.Infrastructure
                     var excludedOperationsTime = await reader.GetValueOrDefaultAsync(43, 0.0, cancellationToken);
                     var increaseReason = await reader.GetValueOrDefaultAsync(44, "", cancellationToken);
 
+                    var defectiveCount = await reader.GetValueOrDefaultAsync(46, 0, cancellationToken);
+                    var specialDowntime = await reader.GetValueOrDefaultAsync(47, 0.0, cancellationToken);
+
                     Part part = new(
                         guid,
                         machine,
@@ -704,6 +971,7 @@ namespace remeLog.Infrastructure
                         order,
                         setup,
                         finishedCount,
+                        defectiveCount,
                         totalCount,
                         startSetupTime,
                         startMachiningTime,
@@ -725,6 +993,7 @@ namespace remeLog.Infrastructure
                         contactiongDepartmentsTime,
                         fixtureMakingTime,
                         hardwareFailureTime,
+                        specialDowntime,
                         operatorComment,
                         masterSetupComment,
                         masterMachiningComment,
@@ -1343,7 +1612,7 @@ namespace remeLog.Infrastructure
             using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
             {
                 await connection.OpenAsync();
-                using (SqlCommand command = new("SELECT max_setup_limit, long_setup_limit, NcArchivePath, NcIntermediatePath, Administrators, CncOperations FROM cnc_remelog_config;", connection))
+                using (SqlCommand command = new("SELECT max_setup_limit, long_setup_limit, NcArchivePath, NcIntermediatePath, Administrators, CncOperations, PcaReportPath FROM cnc_remelog_config;", connection))
                 {
                     using (SqlDataReader reader = await command.ExecuteReaderAsync())
                     {
@@ -1357,6 +1626,7 @@ namespace remeLog.Infrastructure
                             if (!reader.IsDBNull(3)) AppSettings.NcIntermediatePath = await reader.GetValueOrDefaultAsync(3, "");
                             if (!reader.IsDBNull(4)) administrators.Add(await reader.GetFieldValueAsync<string>(4));
                             if (!reader.IsDBNull(5)) operatios.Add(await reader.GetFieldValueAsync<string>(5));
+                            if (!reader.IsDBNull(6)) AppSettings.PcaReportPath = await reader.GetValueOrDefaultAsync<string?>(6, null);
                         }
                         AppSettings.Administrators = administrators.ToArray();
                         AppSettings.CncOperations = operatios.ToArray();

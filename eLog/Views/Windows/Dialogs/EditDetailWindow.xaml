@@ -226,13 +226,17 @@
                            Text="Количество:"/>
                     <Grid Grid.Row="2" Grid.Column="3">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="89"/>
-                            <ColumnDefinition/>
+                            <ColumnDefinition Width="82"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="82"/>
+                            <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="89"/>
                         </Grid.ColumnDefinitions>
+
+                        <!-- Факт (годные) -->
                         <TextBox Grid.Column="0" d:Text="0"
-                             Text="{Binding FinishedCount, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}"
-                             Validation.ErrorTemplate="{StaticResource ValidationFailed}">
+                                 Text="{Binding FinishedCount, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}"
+                                 Validation.ErrorTemplate="{StaticResource ValidationFailed}">
                             <TextBox.Style>
                                 <Style TargetType="TextBox">
                                     <Setter Property="FontSize" Value="20"/>
@@ -241,7 +245,7 @@
                                     <Style.Resources>
                                         <VisualBrush x:Key="CueBannerBrush" AlignmentX="Center" AlignmentY="Center" Stretch="None">
                                             <VisualBrush.Visual>
-                                                <Label Content="факт" Foreground="LightGray" FontSize="18"/>
+                                                <Label Content="годные" Foreground="LightGray" FontSize="18"/>
                                             </VisualBrush.Visual>
                                         </VisualBrush>
                                         <Style TargetType="Border">
@@ -265,10 +269,55 @@
                                 </Style>
                             </TextBox.Style>
                         </TextBox>
-                        <TextBlock Grid.Column="1" Text="/" HorizontalAlignment="Center" FontSize="18" Margin="0"/>
-                        <TextBox Grid.Column="2" d:Text="1000"
-                             Text="{Binding TotalCount, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}"
-                             Validation.ErrorTemplate="{StaticResource ValidationFailed}">
+
+                        <!-- Разделитель "+" -->
+                        <TextBlock Grid.Column="1" Text="+" HorizontalAlignment="Center" FontSize="18" Margin="0 0" 
+                                   VerticalAlignment="Center" Foreground="#FF6B6B"/>
+
+                        <!-- Брак -->
+                        <TextBox Grid.Column="2" d:Text="0"
+                                 Text="{Binding DefectiveCount, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}"
+                                 Validation.ErrorTemplate="{StaticResource ValidationFailed}">
+                            <TextBox.Style>
+                                <Style TargetType="TextBox">
+                                    <Setter Property="FontSize" Value="20"/>
+                                    <Setter Property="Margin" Value="1"/>
+                                    <Setter Property="VerticalContentAlignment" Value="Center"/>
+                                    <Style.Resources>
+                                        <VisualBrush x:Key="CueBannerBrush" AlignmentX="Center" AlignmentY="Center" Stretch="None">
+                                            <VisualBrush.Visual>
+                                                <Label Content="брак" Foreground="#FFCDD2" FontSize="18"/>
+                                            </VisualBrush.Visual>
+                                        </VisualBrush>
+                                        <Style TargetType="Border">
+                                            <Setter Property="CornerRadius" Value="2"/>
+                                        </Style>
+                                    </Style.Resources>
+                                    <Style.Triggers>
+                                        <Trigger Property="Text" Value="{x:Static sys:String.Empty}">
+                                            <Setter Property="Background" Value="{StaticResource CueBannerBrush}" />
+                                        </Trigger>
+                                        <Trigger Property="Text" Value="{x:Null}">
+                                            <Setter Property="Background" Value="{StaticResource CueBannerBrush}" />
+                                        </Trigger>
+                                        <Trigger Property="IsKeyboardFocused" Value="True">
+                                            <Setter Property="Background" Value="{x:Null}" />
+                                        </Trigger>
+                                        <Trigger Property="Validation.HasError" Value="True">
+                                            <Setter Property="Foreground" Value="Red" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
+
+                        <!-- Разделитель "/" -->
+                        <TextBlock Grid.Column="3" Text="/" HorizontalAlignment="Center" FontSize="18" Margin="0 0"/>
+
+                        <!-- По М/Л -->
+                        <TextBox Grid.Column="4" d:Text="1000"
+                                 Text="{Binding TotalCount, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}"
+                                 Validation.ErrorTemplate="{StaticResource ValidationFailed}">
                             <TextBox.Style>
                                 <Style TargetType="TextBox">
                                     <Setter Property="FontSize" Value="20"/>
@@ -317,13 +366,13 @@
                     <DockPanel Grid.Row="3" Grid.Column="3" LastChildFill="True">
                         <Button x:Name="WithoutSetupButton" Style="{StaticResource OperationButton}"
                             Visibility="{Binding WithSetup, Converter={StaticResource VisibilityConverter}}"
-                            DockPanel.Dock="Left" HorizontalAlignment="Stretch"
+                            DockPanel.Dock="Left" HorizontalAlignment="Stretch" Width="80"
                             FontSize="22" Padding="0 0 0 5" Click="WithoutSetupButton_Click">
                             <Button.Content>
                                 <TextBlock Text="Убрать наладку" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" Margin="2 2 2 -3"/>
                             </Button.Content>
                         </Button>
-                        <TextBox DockPanel.Dock="Right" Width="187"
+                        <TextBox DockPanel.Dock="Right" Width="194"
                              d:Text="01.01.2023 01:00" IsEnabled="{Binding WithSetup}" Visibility="{Binding WithSetup, Converter={StaticResource VisibilityConverter}}"
                              Text="{Binding StartMachiningTime, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" 
                              Validation.ErrorTemplate="{StaticResource ValidationFailed}"/>

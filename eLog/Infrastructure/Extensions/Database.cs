@@ -1,5 +1,4 @@
-﻿using DocumentFormat.OpenXml.Wordprocessing;
-using eLog.Models;
+﻿using eLog.Models;
 using libeLog.Extensions;
 using libeLog.Infrastructure;
 using libeLog.Models;
@@ -8,9 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Reflection.PortableExecutable;
 using System.Threading.Tasks;
-using System.Transactions;
 using Machine = eLog.Models.Machine;
 
 namespace eLog.Infrastructure.Extensions
@@ -225,7 +222,8 @@ namespace eLog.Infrastructure.Extensions
                         "ContactingDepartmentsTime, " +
                         "FixtureMakingTime, " +
                         "HardwareFailureTime, " +
-                        "OperatorComment" +
+                        "OperatorComment, " +
+                        "DefectiveCount" +
                         ") " +
                         "VALUES (" +
                         "@Guid, " +
@@ -258,7 +256,8 @@ namespace eLog.Infrastructure.Extensions
                         "@ContactingDepartmentsTime, " +
                         "@FixtureMakingTime, " +
                         "@HardwareFailureTime, " +
-                        "@OperatorComment" +
+                        "@OperatorComment, " +
+                        "@DefectiveCount" +
                         "); SELECT SCOPE_IDENTITY();";
                     using (SqlCommand cmd = new(insertQuery, connection))
                     {
@@ -274,7 +273,7 @@ namespace eLog.Infrastructure.Extensions
                         cmd.Parameters.AddWithValue("@PartName", part.FullName);
                         cmd.Parameters.AddWithValue("@Order", part.Order);
                         cmd.Parameters.AddWithValue("@Setup", part.Setup);
-                        cmd.Parameters.AddWithValue("@FinishedCount", part.FinishedCount);
+                        cmd.Parameters.AddWithValue("@FinishedCount", part.FinishedCount + part.DefectiveCount);
                         cmd.Parameters.AddWithValue("@TotalCount", part.TotalCount);
                         cmd.Parameters.AddWithValue("@StartSetupTime", part.StartSetupTime);
                         cmd.Parameters.AddWithValue("@StartMachiningTime", part.StartMachiningTime);
@@ -305,6 +304,7 @@ namespace eLog.Infrastructure.Extensions
                         cmd.Parameters.AddWithValue("@HardwareFailureTime", Math.Round(part.DownTimes.Where(x => x is { Type: DownTime.Types.HardwareFailure }).TotalMinutes(), 0));
                         var combinedDownTimes = part.DownTimes.Combine();
                         cmd.Parameters.AddWithValue("@OperatorComment", $"{part.OperatorComments}\n{combinedDownTimes.Report()}".Trim());
+                        cmd.Parameters.AddWithValue("@DefectiveCount", part.DefectiveCount);
                         if (AppSettings.Instance.DebugMode) Util.WriteLog("Запись...");
                         var execureResult = await cmd.ExecuteNonQueryAsync();
                         if (!passive)
@@ -418,7 +418,8 @@ namespace eLog.Infrastructure.Extensions
                         "ContactingDepartmentsTime = @ContactingDepartmentsTime, " +
                         "FixtureMakingTime = @FixtureMakingTime, " +
                         "HardwareFailureTime = @HardwareFailureTime, " +
-                        "OperatorComment = @OperatorComment " +
+                        "OperatorComment = @OperatorComment, " +
+                        "DefectiveCount = @DefectiveCount " +
                         "WHERE Guid = @Guid";
                     using (SqlCommand cmd = new(updateQuery, connection))
                     {
@@ -434,7 +435,7 @@ namespace eLog.Infrastructure.Extensions
                         cmd.Parameters.AddWithValue("@PartName", part.FullName);
                         cmd.Parameters.AddWithValue("@Order", part.Order);
                         cmd.Parameters.AddWithValue("@Setup", part.Setup);
-                        cmd.Parameters.AddWithValue("@FinishedCount", part.FinishedCount);
+                        cmd.Parameters.AddWithValue("@FinishedCount", part.FinishedCount + part.DefectiveCount);
                         cmd.Parameters.AddWithValue("@TotalCount", part.TotalCount);
                         cmd.Parameters.AddWithValue("@StartSetupTime", part.StartSetupTime);
                         cmd.Parameters.AddWithValue("@StartMachiningTime", part.StartMachiningTime);
@@ -465,6 +466,7 @@ namespace eLog.Infrastructure.Extensions
                         cmd.Parameters.AddWithValue("@HardwareFailureTime", Math.Round(part.DownTimes.Where(x => x is { Type: DownTime.Types.HardwareFailure }).TotalMinutes(), 0));
                         var combinedDownTimes = part.DownTimes.Combine();
                         cmd.Parameters.AddWithValue("@OperatorComment", $"{part.OperatorComments}\n{combinedDownTimes.Report()}".Trim());
+                        cmd.Parameters.AddWithValue("@DefectiveCount", part.DefectiveCount);
 
                         if (AppSettings.Instance.DebugMode) Util.WriteLog("Запись...");
                         var execureResult = await cmd.ExecuteNonQueryAsync();

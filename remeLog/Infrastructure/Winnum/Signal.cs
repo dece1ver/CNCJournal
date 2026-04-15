@@ -60,10 +60,9 @@ namespace remeLog.Infrastructure.Winnum
         //    await _client.ExecuteRequestAsync(parameters);
         //}
 
-        public async Task<string> GetSignalAsync(string signal, SignalType stype, Ordering order, IProgress<string> progress,
-            DateTime? start = null, DateTime? end = null, int? count = null)
+        public async Task<string> GetSignalAsync(string signal, SignalType stype, Ordering order, DateTime? start = null, DateTime? end = null, int? count = null, IProgress<string>? progress = null)
         {
-            progress.Report($"Получение значений сигнала: {signal}");
+            progress?.Report($"Получение значений сигнала: {signal}");
             switch (stype)
             {
                 case SignalType.ByCount:
@@ -96,13 +95,14 @@ namespace remeLog.Infrastructure.Winnum
                 parameters.Add("end", end.Value.ToString("yyyy-MM-dd HH:mm:ss.fff"));
             if (count.HasValue)
                 parameters.Add("count", count.Value.ToString());
-
-            return await _client.ExecuteRequestAsync(parameters);
+            var result = await _client.ExecuteRequestAsync(parameters);
+            progress?.Report($"Получены значения сигнала: {signal}");
+            return result;
         }
 
-        public async Task<string> GetUniqSignalsAsync(string signal, Ordering order, DateTime start, DateTime end, IProgress<string> progress)
+        public async Task<string> GetUniqSignalsAsync(string signal, Ordering order, DateTime start, DateTime end, IProgress<string>? progress = null)
         {
-            progress.Report($"Получение уникальных значений сигнала: {signal}");
+            progress?.Report($"Получение уникальных значений сигнала: {signal}");
             var parameters = new Dictionary<string, string>
             {
                 { "rpc", "winnum.views.url.WNConnectorHelper" },
@@ -113,8 +113,9 @@ namespace remeLog.Infrastructure.Winnum
                 { "start", start.ToString("yyyy-MM-dd HH:mm:ss.fff") },
                 { "end", end.ToString("yyyy-MM-dd HH:mm:ss.fff") }
             };
-
-            return await _client.ExecuteRequestAsync(parameters);
+            var result = await _client.ExecuteRequestAsync(parameters);
+            progress?.Report($"Получены уникальные значения сигнала: {signal}");
+            return result;
         }
 
         // если понадобится, то переработать

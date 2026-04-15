@@ -89,10 +89,10 @@ namespace remeLog.Views
                             case 5:
                                 d.OrderFilter = d.OrderFilter == p.Order ? "" : p.Order;
                                 break;
-                            case 8:
+                            case 9:
                                 d.SetupFilter = d.SetupFilter == p.Setup ? null : p.Setup;
                                 break;
-                            case 42:
+                            case 44:
                                 switch (p.EngineerComment)
                                 {
                                     case "":
@@ -120,6 +120,9 @@ namespace remeLog.Views
                                         p.EngineerComment = "Изменение технологии";
                                         break;
                                     case "Изменение технологии":
+                                        p.EngineerComment = "Создание альтернативного техпроцесса";
+                                        break;
+                                    case "Создание альтернативного техпроцесса":
                                         p.EngineerComment = "";
                                         break;
                                 }
@@ -153,21 +156,35 @@ namespace remeLog.Views
                     {
                         switch (column.DisplayIndex)
                         {
-                            case 39:
+                            case 3 or 5:
+                                e.Handled = true;
+                                cell.Focus();
+                                var multiFilterValueContextMenu = (ContextMenu)FindResource("MultiFilterValueContextMenu");
+                                multiFilterValueContextMenu.PlacementTarget = cell;
+                                multiFilterValueContextMenu.IsOpen = true;
+                                break;
+                            case 10 or 11 or 12:
+                                e.Handled = true;
+                                cell.Focus();
+                                var timeContextMenu = (ContextMenu)FindResource("TimeContextMenu");
+                                timeContextMenu.PlacementTarget = cell;
+                                timeContextMenu.IsOpen = true;
+                                break;
+                            case 41:
                                 e.Handled = true;
                                 cell.Focus();
                                 var masterCommentContextMenu = (ContextMenu)FindResource("MasterCommentCellContextMenu");
                                 masterCommentContextMenu.PlacementTarget = cell;
                                 masterCommentContextMenu.IsOpen = true;
                                 break;
-                            case 40 or 41 when p.IsSerial:
+                            case 42 or 43 when p.IsSerial:
                                 e.Handled = true;
                                 cell.Focus();
                                 var serialPartFixedSetupContextMenu = (ContextMenu)FindResource("SerialPartFixedNormativesContextMenu");
                                 serialPartFixedSetupContextMenu.PlacementTarget = cell;
                                 serialPartFixedSetupContextMenu.IsOpen = true;
                                 break;
-                            case 42:
+                            case 44:
                                 e.Handled = true;
                                 cell.Focus();
                                 var engeneerCommentContextMenu = (ContextMenu)FindResource("EngeneerCommentCellContextMenu");
@@ -373,29 +390,43 @@ namespace remeLog.Views
             }
         }
 
-        private void OnInsertSymbolClick(object sender, RoutedEventArgs e)
+        private void OnInsertValueClick(object sender, RoutedEventArgs e)
         {
             if (sender is not MenuItem item) return;
-            string specialChar = item.Tag?.ToString() ?? item.Header?.ToString() ?? "";
-
-            if (Keyboard.FocusedElement is TextBox textBox)
-            {
-                int caretIndex = textBox.CaretIndex;
-                textBox.Text = textBox.Text.Insert(caretIndex, specialChar);
-                textBox.CaretIndex = caretIndex + specialChar.Length;
-                textBox.Focus();
-                return;
-            }
+            string value = item.Tag?.ToString() ?? item.Header?.ToString() ?? "";
 
             ContextMenu? contextMenu = FindVisualParent<ContextMenu>(item);
-
-            if (contextMenu?.PlacementTarget is TextBox placementTextBox)
+            if (contextMenu?.PlacementTarget is FrameworkElement target)
             {
-                int caretIndex = placementTextBox.CaretIndex;
-                placementTextBox.Text = placementTextBox.Text.Insert(caretIndex, specialChar);
-                placementTextBox.CaretIndex = caretIndex + specialChar.Length;
-                placementTextBox.Focus();
-                return;
+                switch (target)
+                {
+                    case TextBox textBox:
+                        int caretIndex = textBox.CaretIndex;
+                        textBox.Text = textBox.Text.Insert(caretIndex, value);
+                        textBox.CaretIndex = caretIndex + value.Length;
+                        textBox.Focus();
+                        return;
+
+                    case DataGridCell cell:
+                        var dataGrid = FindVisualParent<DataGrid>(cell);
+                        if (dataGrid == null) return;
+
+                        if (cell.IsEditing)
+                        {
+                            if (cell.Content is TextBox editor)
+                            {
+                                int caret = editor.CaretIndex;
+                                editor.Text = editor.Text.Insert(caret, value);
+                                editor.CaretIndex = caret + value.Length;
+                                editor.Focus();
+                            }
+                        }
+                        else
+                        {
+                            SetSingleCellValue(cell, dataGrid, value);
+                        }
+                        return;
+                }
             }
         }
 
@@ -422,6 +453,28 @@ namespace remeLog.Views
                 else
                 {
                     SetSingleCellValue(cell, dataGrid, value);
+                }
+            }
+        }
+
+        private void OnAddMultiFilterValueClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem) return;
+            if (Keyboard.FocusedElement is DataGridCell cell)
+            {
+                DataGridColumn column = cell.Column;
+                object value = cell.DataContext;
+                if (DataContext is PartsInfoWindowViewModel d && value is Part p)
+                {
+                    switch (column.DisplayIndex)
+                    {
+                        case 3:
+                            d.PushValueToEditor("Operator", p.Operator);
+                            break;
+                        case 5:
+                            d.PushValueToEditor("Order", p.Order);
+                            break;
+                    }
                 }
             }
         }

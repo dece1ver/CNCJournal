@@ -11,6 +11,7 @@ namespace remeLog.Models
         Mentoring,
         ContactingDepartments,
         FixtureMaking,
-        HardwareFailure
+        HardwareFailure,
+        Special
     }
 }

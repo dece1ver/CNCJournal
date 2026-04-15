@@ -90,7 +90,7 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="200"/>
-                                        <ColumnDefinition Width="500"/>
+                                        <ColumnDefinition Width="400"/>
                                         <ColumnDefinition/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0">
@@ -109,7 +109,7 @@
 
                                     <StackPanel Grid.Column="2">
                                         <TextBlock Text="{Binding PdComment, StringFormat={}Комментарий ПДБ: {0}}"/>
-                                        <TextBlock Text="{Binding LaborInput, StringFormat={}Трудоемкость: {0}}"/>
+                                        <TextBlock Text="{Binding SetupTechnician, StringFormat={}Комментарий наладчика: {0}}"/>
                                     </StackPanel>
                                 </Grid>
                             </GroupBox>

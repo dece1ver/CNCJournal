@@ -1,11 +1,9 @@
-﻿using System;
+﻿using remeLog.Infrastructure.Winnum.Data;
+using remeLog.ViewModels;
 using System.Collections.Generic;
 using System.Data;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using remeLog.Infrastructure.Winnum.Data;
-using remeLog.ViewModels;
 
 namespace remeLog.Views
 {
@@ -14,9 +12,9 @@ namespace remeLog.Views
     /// </summary>
     public partial class WinnumInfoWindow : Window
     {
-        public WinnumInfoWindow(string generalInfo, string ncProgramFolder, List<PriorityTagDuration> priorityTagDurations, List<TimeInterval> timeIntervals)
+        public WinnumInfoWindow(string generalInfo, string ncProgramFolder, List<PriorityTagDuration> priorityTagDurations, List<TimeInterval> timeIntervals, DataTable? timeline = null)
         {
-            DataContext = new WinnumInfoViewModel(generalInfo, ncProgramFolder, priorityTagDurations, timeIntervals);
+            DataContext = new WinnumInfoViewModel(generalInfo, ncProgramFolder, priorityTagDurations, timeIntervals, timeline);
             InitializeComponent();
         }
     }

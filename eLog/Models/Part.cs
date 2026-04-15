@@ -27,6 +27,7 @@ namespace eLog.Models
         private int _TotalCount;
         private string _Shift;
         private double _FinishedCount;
+        private int _DefectiveCount;
         private double _SetupTimePlan;
         private double _SingleProductionTimePlan;
         private Operator _Operator;
@@ -83,6 +84,13 @@ namespace eLog.Models
         {
             get => _Setup;
             set => Set(ref _Setup, value);
+        }
+
+        /// <summary> Количество брака </summary>
+        public int DefectiveCount
+        {
+            get => _DefectiveCount;
+            set => Set(ref _DefectiveCount, value);
         }
 
         /// <summary> Количество по заказу</summary>
@@ -215,7 +223,7 @@ namespace eLog.Models
 
         /// <summary> Описание количества деталей </summary>
         [JsonIgnore]
-        public string TotalCountInfo => $"{FinishedCount} / {TotalCount} шт";
+        public string TotalCountInfo => $"{FinishedCount}{(DefectiveCount > 0 ? $" (+{DefectiveCount})" : "")} / {TotalCount} шт";
 
         /// <summary> Плановое время наладки. Может быть присвоено только при инициализации (предполагается получение из БД). </summary>
         public double SetupTimePlan
@@ -447,7 +455,8 @@ namespace eLog.Models
 
                     if (downTime.Time.TotalMinutes > 0) downTimesMinutes += downTime.Time.TotalMinutes - partialBreaks;
                 }
-                var totalCount = TotalCount > 1 ? TotalCount - 1 : TotalCount;
+                var totalCount = TotalCount + DefectiveCount;
+                totalCount = totalCount > 1 ? totalCount - 1 : totalCount;
                 var startMachiningTime = SetupIsFinished
                     ? StartMachiningTime
                     : StartSetupTime
@@ -710,6 +719,7 @@ namespace eLog.Models
             _Order = part.Order;
             _TotalCount = part.TotalCount;
             _FinishedCount = part.FinishedCount;
+            _DefectiveCount = part.DefectiveCount;
             _StartSetupTime = part.StartSetupTime;
             _StartMachiningTime = part.StartMachiningTime;
             _EndMachiningTime = part.EndMachiningTime;

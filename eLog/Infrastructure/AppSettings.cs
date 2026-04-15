@@ -1,5 +1,6 @@
 ﻿using eLog.Infrastructure.Extensions;
 using eLog.Models;
+using libeLog.Infrastructure.Enums;
 using libeLog.Models;
 using Newtonsoft.Json;
 using System;
@@ -29,7 +30,8 @@ namespace eLog.Infrastructure
 
         [JsonIgnore] private static AppSettings? _Instance;
         [JsonIgnore] public static AppSettings Instance => _Instance ??= new AppSettings();
-
+        /// <summary> Имя переменной окружения пользователя, хранящей SMTP-пароль. </summary>
+        [JsonIgnore] public const string SmtpPasswordEnvVar = "NOTIFY_SMTP_PWD";
         /// <summary> Директория для хранения всякого </summary>
         [JsonIgnore] public const string BasePath = "C:\\ProgramData\\dece1ver\\eLog";
 
@@ -351,8 +353,8 @@ namespace eLog.Infrastructure
 
                 JsonConvert.PopulateObject(json, Instance, settings);
 
-                LongSetupsMailRecievers = Util.GetMailReceivers(Util.ReceiversType.LongSetup);
-                ToolSearchMailRecievers = Util.GetMailReceivers(Util.ReceiversType.ToolSearch);
+                LongSetupsMailRecievers = Util.GetMailReceivers(ReceiversType.LongSetup);
+                ToolSearchMailRecievers = Util.GetMailReceivers(ReceiversType.ToolSearch);
 
                 GoogleCredentialsPath ??= "";
                 GsId ??= "";

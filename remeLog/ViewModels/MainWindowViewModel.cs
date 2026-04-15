@@ -34,7 +34,9 @@ namespace remeLog.ViewModels
         private CancellationTokenSource _debounceTokenSource = new();
         private readonly object _debounceLock = new object();
         private bool _updatePending = false;
+        private FileSystemWatcher? _watcher;
         private int _showed;
+
         private SemaphoreSlim semaphoreSlim = new SemaphoreSlim(1, 1);
 
         public MainWindowViewModel()
@@ -123,7 +125,17 @@ namespace remeLog.ViewModels
         public ObservableCollection<CombinedParts> Parts
         {
             get => _Parts;
-            set => Set(ref _Parts, value);
+            set
+            {
+                if (Set(ref _Parts, value))
+                {
+                    OnPropertyChanged(nameof(TotalMachinesCount));
+                    OnPropertyChanged(nameof(ReportsExistCount));
+                    OnPropertyChanged(nameof(CheckedReportsCount));
+                    OnPropertyChanged(nameof(ReportsSummary));
+                    OnPropertyChanged(nameof(CheckedSummary));
+                }
+            }
         }
 
 
@@ -145,7 +157,14 @@ namespace remeLog.ViewModels
         }
 
 
-        private bool IsSingleShift => FromDate == ToDate;
+        public bool IsSingleShift => FromDate == ToDate;
+
+        public int TotalMachinesCount => Parts.Count;
+        public int ReportsExistCount => Parts.Count(p => p.IsReportExist != ReportState.NotExist);
+        public int CheckedReportsCount => Parts.Count(p => p.IsReportChecked);
+
+        public string ReportsSummary => $"МЦ: {ReportsExistCount:00}/{TotalMachinesCount:00}";
+        public string CheckedSummary => $"ТО: {CheckedReportsCount:00}/{TotalMachinesCount:00}";
 
 
         #region Команды
@@ -452,6 +471,8 @@ namespace remeLog.ViewModels
                     await semaphoreSlim.WaitAsync(cancellationToken);
                     await Util.UpdateAppSettingsAsync();
 
+                    Constants.Dates.Holidays = await Database.GetHolidaysAsync(null);
+
                     Status = "Получение списка станков...";
 
                     switch (await Task.Run(Machines.ReadMachines))
@@ -621,58 +642,72 @@ namespace remeLog.ViewModels
                 if (string.IsNullOrEmpty(currentProcessPath)) return;
 
                 var parentDirectory = Directory.GetParent(currentProcessPath);
-                if (parentDirectory?.Name.Equals("update", StringComparison.OrdinalIgnoreCase) == true) return;
+                if (parentDirectory is null) return;
+                if (parentDirectory.Name.Equals("update", StringComparison.OrdinalIgnoreCase) == true) return;
 
-                var updatePath = Path.Combine("update", currentProcessPath);
-                if (!Directory.Exists(updatePath)) { Directory.CreateDirectory("update"); }
-                using var watcher = new FileSystemWatcher("update")
+                var updateDirectory = Path.Combine(parentDirectory!.FullName ,"update");
+                if (!Directory.Exists(updateDirectory))
+                    Directory.CreateDirectory(updateDirectory);
+
+                var fileName = Path.GetFileName(currentProcessPath);
+                var updateFilePath = Path.Combine(updateDirectory, fileName);
+
+                _watcher = new FileSystemWatcher(updateDirectory)
                 {
-                    Filter = currentProcessPath,
-                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
+                    Filter = fileName,
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime,
                     EnableRaisingEvents = true
                 };
 
-                watcher.Changed += async (sender, e) =>
-                {
-                    try
-                    {
-                        if (Interlocked.CompareExchange(ref _showed, 1, 0) == 0
-                            && File.Exists(updatePath)
-                            && updatePath.IsFileNewerThan(currentProcessPath))
-                        {
-                            await App.Current.Dispatcher.InvokeAsync(() =>
-                            {
-                                using (Overlay = new())
-                                {
-                                    if (MessageBox.Show(
-                                        "Для обновления закройте приложение и подождите 5-10 минут.\nЗакрыть сейчас?",
-                                        "Доступно обновление электронного журнала",
-                                        MessageBoxButton.YesNo,
-                                        MessageBoxImage.Question) == MessageBoxResult.Yes)
-                                    {
-                                        App.Current.Dispatcher.InvokeShutdown();
-                                    }
-                                }
-                            });
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Util.WriteLog(ex);
-                    }
-                };
+                _watcher.Changed += async (sender, e) => await OnFileChangedAsync(updateFilePath, currentProcessPath);
+                _watcher.Created += async (sender, e) => await OnFileChangedAsync(updateFilePath, currentProcessPath);
+                _watcher.Renamed += async (sender, e) => await OnFileChangedAsync(updateFilePath, currentProcessPath);
 
                 await Task.Delay(Timeout.Infinite, _bgCts.Token);
             }
             catch (OperationCanceledException)
             {
-                
             }
             catch (Exception ex)
             {
                 Util.WriteLog(ex);
             }
         }
+
+        private async Task OnFileChangedAsync(string updatePath, string currentProcessPath)
+        {
+            try
+            {
+                if (Interlocked.CompareExchange(ref _showed, 1, 0) != 0)
+                    return;
+
+ 
+                if (!File.Exists(updatePath) || !updatePath.IsFileNewerThan(currentProcessPath))
+                    return;
+
+                await App.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    using (Overlay = new())
+                    {
+                        var result = MessageBox.Show(
+                            "Для обновления закройте приложение и подождите 5-10 минут.\nЗакрыть сейчас?",
+                            "Доступно обновление электронного журнала",
+                            MessageBoxButton.YesNo,
+                            MessageBoxImage.Question);
+
+                        if (result == MessageBoxResult.Yes)
+                        {
+                            App.Current.Dispatcher.InvokeShutdown();
+                        }
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex);
+            }
+        }
+
 
         public void StopBackgroundWorker()
         {

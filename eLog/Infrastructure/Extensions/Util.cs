@@ -5,6 +5,7 @@ using eLog.Views.Windows.Dialogs;
 using libeLog;
 using libeLog.Extensions;
 using libeLog.Infrastructure;
+using libeLog.Infrastructure.Enums;
 using libeLog.Models;
 using System;
 using System.Collections.Generic;
@@ -780,7 +781,25 @@ namespace eLog.Infrastructure.Extensions
             });
         }
 
+        /// <summary>
+        /// Пытается распарсить строку в int. 
+        /// Пустая или содержащая только пробелы строка интерпретируется как 0.
+        /// </summary>
+        /// <param name="s">Строка для парсинга</param>
+        /// <param name="value">Результат парсинга</param>
+        /// <returns>true, если строка пустая или корректное число; false при некорректном формате</returns>
+        public static bool TryParseEmptyAsZero(this string? s, out int value)
+        {
+            s ??= string.Empty;
+            s = s.Replace("0", "").Replace(" ", "");
+            if (string.IsNullOrWhiteSpace(s))
+            {
+                value = 0;
+                return true;
+            }
 
+            return int.TryParse(s, out value);
+        }
 
 
         public static DateTime GetStartShiftTime()
@@ -818,7 +837,7 @@ namespace eLog.Infrastructure.Extensions
             try
             {
                 UpdateLocalFileIfNeeded();
-                return ReadReceiversFromFile(receiversType);
+                return Utils.ReadReceiversFromFile(receiversType, AppSettings.LocalMailRecieversFile);
             }
             catch (Exception ex)
             {
@@ -843,60 +862,6 @@ namespace eLog.Infrastructure.Extensions
             {
                 WriteLog(ex);
             }
-        }
-
-        private static List<string> ReadReceiversFromFile(ReceiversType receiversType)
-        {
-            if (!File.Exists(AppSettings.LocalMailRecieversFile))
-                return new List<string>();
-
-            var receivers = new List<string>();
-            ReceiversType? currentSection = null;
-
-            foreach (var line in File.ReadLines(AppSettings.LocalMailRecieversFile))
-            {
-                var trimmedLine = line.Trim();
-                if (string.IsNullOrWhiteSpace(trimmedLine))
-                    continue;
-
-                if (IsSection(trimmedLine))
-                {
-                    currentSection = ParseSection(trimmedLine);
-                    continue;
-                }
-
-                if (currentSection == receiversType)
-                {
-                    receivers.Add(trimmedLine);
-                }
-            }
-
-            return receivers;
-        }
-
-        private static bool IsSection(string line)
-        {
-            return line.StartsWith('[') && line.EndsWith(']') && line.Length > 2;
-        }
-
-        private static ReceiversType? ParseSection(string line)
-        {
-            var sectionName = line.Replace(" ", "")[1..^1];
-            return Enum.TryParse<ReceiversType>(sectionName, true, out var section)
-                ? section
-                : null;
-        }
-
-        /// <summary>
-        /// В файле с получателями блоки типов записываются в [квадратных скобках] и должны совпадать с текстом самого варианта перечисления (в любом регистре, пробелы не имеют значения)
-        /// </summary>
-        public enum ReceiversType
-        {
-            LongSetup,
-            ToolSearch,
-            ProcessEngineeringDepartment,
-            ProductionSupervisors,
-            ToolStorage
-        }
+        }        
     }
 }

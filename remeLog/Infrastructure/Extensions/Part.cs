@@ -9,6 +9,7 @@ using libeLog.Extensions;
 using libeLog.Models;
 using libeLog;
 using System.Security;
+using DocumentFormat.OpenXml.Wordprocessing;
 
 
 namespace remeLog.Infrastructure.Extensions
@@ -20,14 +21,34 @@ namespace remeLog.Infrastructure.Extensions
             var validReplacementTimesRatios = parts.Where(p => p.PartReplacementTime != 0 && !double.IsNaN(p.PartReplacementTime) && !double.IsPositiveInfinity(p.PartReplacementTime)).Select(p => p.PartReplacementTime);
             return validReplacementTimesRatios.Any() ? validReplacementTimesRatios.Average() : 0.0;
         }
-        public static double AverageSetupRatio(this IEnumerable<Models.Part> parts)
+
+        public static double AverageSetupRatio(this IEnumerable<Models.Part> parts, string? machine = null)
         {
+            var maxSetupLimit = string.IsNullOrEmpty(machine) ? AppSettings.MaxSetupLimit : AppSettings.MaxSetupLimits[machine];
             var validSetupRatios = parts
                 .Where(p => p.SetupRatio > 0 && !double.IsNaN(p.SetupRatio) && !double.IsPositiveInfinity(p.SetupRatio))
-                .Select(p => p.SetupRatio <= AppSettings.MaxSetupLimit ? p.SetupRatio : AppSettings.MaxSetupLimit)
+                .Select(p => p.SetupRatio <= maxSetupLimit ? p.SetupRatio : maxSetupLimit)
                 .DefaultIfEmpty(0.0);
 
-            return validSetupRatios.Average();
+            return validSetupRatios.Any() ? validSetupRatios.Average() : 0.0;
+        }
+
+        public static double AverageSetupRatioInclurePartialSetups(this IEnumerable<Models.Part> parts)
+        {
+            List<double> setups = new();
+            foreach (var p in parts)
+            {
+                if (p.SetupRatio > 0 && !double.IsNaN(p.SetupRatio) && !double.IsPositiveInfinity(p.SetupRatio))
+                {
+                    setups.Add(p.SetupRatio <= AppSettings.MaxSetupLimit ? p.SetupRatio : AppSettings.MaxSetupLimit);
+                } 
+                else if (p.SetupTimePlanForReport > 0 && p.PartialSetupTime > 0 && p.PartialSetupTime > p.SetupTimePlanForReport)
+                {
+                    var ratio = p.SetupTimePlanForReport / p.PartialSetupTime;
+                    setups.Add(ratio <= AppSettings.MaxSetupLimit ? ratio : AppSettings.MaxSetupLimit);
+                }
+            }
+            return setups.Any() ? setups.Average() : 0.0;
         }
 
         public static double AverageSetupRatioIncludeDowntimes(this IEnumerable<Models.Part> parts)
@@ -37,7 +58,7 @@ namespace remeLog.Infrastructure.Extensions
                 .Select(p => p.SetupRatioIncludeDowntimes <= AppSettings.MaxSetupLimit ? p.SetupRatioIncludeDowntimes : AppSettings.MaxSetupLimit)
                 .DefaultIfEmpty(0.0);
 
-            return validSetupRatios.Average();
+            return validSetupRatios.Any() ? validSetupRatios.Average() : 0.0;
         }
 
         public static double SetupRatio(this IEnumerable<Models.Part> parts)
@@ -187,6 +208,12 @@ namespace remeLog.Infrastructure.Extensions
                     case Downtime.HardwareFailure:
                         sum += part.HardwareFailureTime;
                         break;
+                    case Downtime.CreateNcProgram:
+                        sum += part.CreateNcProgramTime;
+                        break;
+                    case Downtime.Special:
+                        sum += part.SpecialDowntimeTime;
+                        break;
                 }
             }
             return sum;
@@ -230,6 +257,8 @@ namespace remeLog.Infrastructure.Extensions
                     sum += part.FixtureMakingTime;
                 if (!excludeDowntimeTypes.Contains(Downtime.HardwareFailure))
                     sum += part.HardwareFailureTime;
+                if (!excludeDowntimeTypes.Contains(Downtime.Special))
+                    sum += part.SpecialDowntimeTime;
             }
             return sum / parts.FullWorkedTime().TotalMinutes;
         }
@@ -390,6 +419,16 @@ namespace remeLog.Infrastructure.Extensions
         }
 
         /// <summary>
+        /// Сумма затраченного времени на детали от начала наладки до завершения изготовления.
+        /// </summary>
+        /// <param name="part">Деталь</param>
+        /// <returns></returns>
+        public static TimeSpan FullWorkedTime(this Models.Part part)
+        {
+            return part.EndMachiningTime - part.StartSetupTime - (TimeSpan.FromMinutes(DateTimes.GetPartialBreakBetween(part.StartSetupTime, part.EndMachiningTime)));
+        }
+
+        /// <summary>
         /// Рассчитывает суммарное фактическое время наладки для коллекции деталей (включая частичные).
         /// </summary>
         /// <param name="parts">Коллекция деталей, для которых выполняется расчет.</param>
@@ -423,10 +462,27 @@ namespace remeLog.Infrastructure.Extensions
         /// Рассчитывает среднее время наладки для коллекции деталей (без частичных наладок).
         /// </summary>
         /// <param name="parts">Коллекция деталей, для которых выполняется расчет.</param>
-        /// <returns>Среднее арифметическое время в наладке <see cref="SetupDowntimes"/> тех деталей в коллекции, где осуществлялась полноценная наладка.</returns>
+        /// <returns>Среднее арифметическое время в наладке тех деталей в коллекции, где осуществлялась полноценная наладка.</returns>
         public static TimeSpan AverageSetupTime(this IEnumerable<Models.Part> parts)
         {
-            return parts.Any() ? TimeSpan.FromMinutes(parts.Where(p => p.SetupTimeFact > 0).Average(p => p.SetupTimeFact)) : TimeSpan.Zero;
+            return parts.Where(p => p.SetupTimeFact > 0).Any() ? TimeSpan.FromMinutes(parts.Where(p => p.SetupTimeFact > 0).Average(p => p.SetupTimeFact)) : TimeSpan.Zero;
+        }
+
+        /// <summary>
+        /// Рассчитывает среднее время нормативов наладки для коллекции деталей (без частичных наладок).
+        /// </summary>
+        /// <param name="parts">Коллекция деталей, для которых выполняется расчет.</param>
+        /// <returns>Среднее арифметическое время нормативов всех деталей из коллекции.</returns>
+        public static TimeSpan AverageSetupNormatives(this IEnumerable<Models.Part> parts)
+        {
+            var uniqueNormatives = parts
+                .Where(p => p.SetupTimePlanForCalc > 0)
+                .GroupBy(p => new { p.PartName, p.Machine, p.Setup, p.Order })
+                .Select(g => TimeSpan.FromMinutes(g.First().SetupTimePlanForCalc))
+                .ToList();
+            if (uniqueNormatives.Count == 0) return TimeSpan.Zero;
+            var total = uniqueNormatives.Aggregate(TimeSpan.Zero, (sum, t) => sum + t);
+            return TimeSpan.FromTicks(total.Ticks / uniqueNormatives.Count);
         }
 
         /// <summary>

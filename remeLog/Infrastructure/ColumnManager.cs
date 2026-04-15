@@ -259,6 +259,11 @@ namespace remeLog.Infrastructure
         public const string HardwareFailureTime = "hardwareFailureTime";
 
         /// <summary>
+        /// Исключенные простои
+        /// </summary>
+        public const string SpecialDowntimeTime = "specialDowntimeTime";
+
+        /// <summary>
         /// Отмеченные простои
         /// </summary>
         public const string SpecifiedDowntimesRatio = "specifiedDowntimesRatio";
@@ -420,6 +425,11 @@ namespace remeLog.Infrastructure
         public const string SetupRatio = "setupRatio";
 
         /// <summary>
+        /// Коэффициент наладки включая время частичных наладок
+        /// </summary>
+        public const string SetupRatioIncludePartialSetups = "setupRatioIncludePartialSetups";
+
+        /// <summary>
         /// Коэффициент наладки не исключая простоев
         /// </summary>
         public const string SetupRatioIncludeDowntimes = "setupRatioIncludeDowntimes";
@@ -484,6 +494,17 @@ namespace remeLog.Infrastructure
         /// </summary>
         public const string ProductionEfficiencyToTotalRatio = "productionEfficiencyToTotalRatio";
 
+
+        /// <summary>
+        /// Доля машинного времени
+        /// </summary>
+        public const string MachineTimeToTotalRatio = "machineTimeToTotalRatio";
+
+        /// <summary>
+        /// Общее время замены
+        /// </summary>
+        public const string TotalReplacementTime = "totalReplacementTime";
+
         /// <summary>
         /// Среднее время замены детали
         /// </summary>
@@ -515,6 +536,16 @@ namespace remeLog.Infrastructure
         public const string AverageSetupTime = "averageSetupTime";
 
         /// <summary>
+        /// Среднее время простоев
+        /// </summary>
+        public const string AverageDowntimesTime = "averageDowntimesTime";
+
+        /// <summary>
+        /// Среднее время норматива наладки
+        /// </summary>
+        public const string AverageSetupNormative = "averageSetupNormative";
+
+        /// <summary>
         /// Время в наладке
         /// </summary>
         public const string TotalSetupTime = "setupTime";
@@ -540,6 +571,11 @@ namespace remeLog.Infrastructure
         public const string TotalDowntimesTime = "downtimesTime";
 
         /// <summary>
+        /// Сумма машинного времени
+        /// </summary>
+        public const string TotalMachinigTime = "totalMachinigTime";
+
+        /// <summary>
         /// Вермя простоев на серийке
         /// </summary>
         public const string TotalDowntimesTimeSerial = "downtimesTimeSerial";
@@ -558,6 +594,16 @@ namespace remeLog.Infrastructure
         /// Коэффициент
         /// </summary>
         public const string Coefficient = "coefficient";
+
+        /// <summary>
+        /// Коэффициент эффективности
+        /// </summary>
+        public const string EfficiencyCoefficient = "efficiencyCoefficient";
+
+        /// <summary>
+        /// Коэффициент простоев
+        /// </summary>
+        public const string DowntimesCoefficient = "downtimesCoefficient";
 
         /// <summary>
         /// Тип
@@ -630,6 +676,11 @@ namespace remeLog.Infrastructure
         public const string SerialPerList = "serialPerList";
 
         /// <summary>
+        /// Время включенных операций
+        /// </summary>
+        public const string IncludedOperationsTime = "includedOperationsTime";
+
+        /// <summary>
         /// Время исключенных операций
         /// </summary>
         public const string ExcludedOperationsTime = "excludedOperationsTime";
@@ -696,6 +747,7 @@ namespace remeLog.Infrastructure
             { ContactingDepartmentsTime, "Другие службы" },
             { FixtureMakingTime, "Изготовление оснастки" },
             { HardwareFailureTime, "Отказ оборудования" },
+            { SpecialDowntimeTime, "Исключённые простои" },
             { SpecifiedDowntimesRatio, "Отмеченные простои" },
             { SpecifiedDowntimesComment, $"Комментарий{Environment.NewLine}к простоям" },
             { SetupRatioTitle, "Наладка" },
@@ -724,6 +776,7 @@ namespace remeLog.Infrastructure
             { UnspecifiedOtherShifts, $"Смены без работы{Environment.NewLine}по другим причинам" },
             { GeneralRatio, $"Эффективность" },
             { SetupRatio, $"Выполнение норматива{Environment.NewLine}наладки" },
+            { SetupRatioIncludePartialSetups, $"Эффективность наладки{Environment.NewLine}без вычета частичных" },
             { SetupRatioIncludeDowntimes, $"Выполнение норматива{Environment.NewLine}наладки{Environment.NewLine}(с простоями)" },
             { ProductionRatio, $"Выполнение норматива{Environment.NewLine}изготовления" },
             { ProductionRatioIncludeDowntimes, $"Выполнение норматива{Environment.NewLine}изготовления{Environment.NewLine}(с простоями)" },
@@ -736,12 +789,16 @@ namespace remeLog.Infrastructure
             { SetupToTotalRatio, $"Доля наладок" },
             { ProductionToTotalRatio, $"Доля изготовлений" },
             { ProductionEfficiencyToTotalRatio, $"Отношение нормативов{Environment.NewLine}к общему времени" },
+            { MachineTimeToTotalRatio, $"Доля машинного времени" },
             { AverageReplacementTime, $"Среднее время{Environment.NewLine}замены детали" },
+            { TotalReplacementTime, $"Общее время{Environment.NewLine}замены детали" },
             { SpecifiedDowntimes, "Отмеченные простои" },
             { SpecifiedDowntimesEx, $"Отмеченные простои{Environment.NewLine}(для К1)" },
             { UnspecifiedDowntimes, "Неуказанные простои" },
             { CountPerMachine, $"Количество{Environment.NewLine}по станку" },
             { AverageSetupTime, $"Среднее{Environment.NewLine}время наладки" },
+            { AverageDowntimesTime, $"Среднее время{Environment.NewLine}простоев" },
+            { AverageSetupNormative, $"Среднее время{Environment.NewLine}норматива наладки" },
             { TotalSetupTime, $"Время наладки" },
             { TotalSetupTimeSerial, $"Время наладки на серийке" },
             { TotalProductionTime, $"Время изготовления" },
@@ -749,8 +806,11 @@ namespace remeLog.Infrastructure
             { TotalDowntimesTime, $"Время простоев" },
             { TotalDowntimesTimeSerial, $"Время простоев на серийке" },
             { TotalTime, $"Отмеченное общее время" },
+            { TotalMachinigTime, $"Сумма машинного времени" },
             { IsEqual, $"Совпадает" },
             { Coefficient, $"Коэффициент" },
+            { EfficiencyCoefficient, $"Коэффициент эффективности" },
+            { DowntimesCoefficient, $"Коэффициент простоев" },
             { Type, $"Тип" },
             { Description, $"Описание" },
             { YearCount, $"Годовая потребность" },
@@ -765,6 +825,7 @@ namespace remeLog.Infrastructure
             { YearChangeRatio, "Изменение % годовое" },
             { SerialPerRuns, $"Серийная{Environment.NewLine}по запускам" },
             { SerialPerList, $"Серийная{Environment.NewLine}по списку" },
+            { IncludedOperationsTime, $"Время включённых{Environment.NewLine}операций" },
             { ExcludedOperationsTime, $"Время исключённых{Environment.NewLine}операций" },
             { IncreaseReason, $"Причина увеличения{Environment.NewLine}норматива" },
             { SerialPartsTime, $"Время затраченное на{Environment.NewLine}серийную продукцию, час" },
