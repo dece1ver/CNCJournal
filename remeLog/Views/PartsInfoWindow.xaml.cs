@@ -302,15 +302,22 @@ namespace remeLog.Views
                                    //break;
 
                         case Key.V:
-                            var pasteCell = dataGrid.SelectedCells.FirstOrDefault();
-                            if (pasteCell.Column.DisplayIndex is 21 or 34 or 39 or 42 or 44)
                             {
-                                OnPaste();
-                            }
+                                var cells = dataGrid.SelectedCells
+                                    .Where(CanPasteToCell)
+                                    .ToList();
 
-                            break;
+                                if (cells.Count == 0)
+                                    break;
+
+                                foreach (var cell in cells)
+                                    PasteToCell(dataGrid, cell);
+
+                                e.Handled = true;
+                                break;
+                            }
                         case Key.W:
-                            if (d.SelectedPart is Part)
+                            if (d.SelectedPart is not null)
                             {
                                 d.SearchInWinnumCommand.Execute(d.SelectedPart);
                                 e.Handled = true;
@@ -327,6 +334,72 @@ namespace remeLog.Views
                     }
                 }
             }
+        }
+
+        private bool CanPasteToCell(DataGridCellInfo cellInfo)
+        {
+            if (!cellInfo.IsValid)
+                return false;
+
+            var column = cellInfo.Column;
+
+            if (column == null || column.IsReadOnly)
+                return false;
+
+            string? propertyName = GetPropertyName(cellInfo);
+
+            if (string.IsNullOrWhiteSpace(propertyName))
+                return false;
+
+            var prop = cellInfo.Item.GetType().GetProperty(propertyName);
+
+            if (prop == null || !prop.CanWrite)
+                return false;
+
+            return true;
+        }
+
+        private string? GetPropertyName(DataGridCellInfo cellInfo)
+        {
+            var column = cellInfo.Column;
+
+            // обычный DataGridTextColumn
+            if (column is DataGridBoundColumn boundColumn &&
+                boundColumn.Binding is Binding binding)
+            {
+                if (binding.Mode == BindingMode.OneWay)
+                    return null;
+
+                return binding.Path?.Path;
+            }
+
+            // TemplateColumn
+            var content = column.GetCellContent(cellInfo.Item);
+
+            if (content is FrameworkElement fe)
+            {
+                var tb = FindVisualChild<TextBox>(fe);
+                if (tb != null)
+                {
+                    var b = BindingOperations.GetBinding(tb, TextBox.TextProperty);
+                    if (b?.Mode == BindingMode.OneWay)
+                        return null;
+
+                    return b?.Path?.Path;
+                }
+
+                var txt = FindVisualChild<TextBlock>(fe);
+                if (txt != null)
+                {
+                    var b = BindingOperations.GetBinding(txt, TextBlock.TextProperty);
+                    if (b?.Mode == BindingMode.OneWay)
+                        return null;
+
+                    return b?.Path?.Path;
+                }
+            }
+
+            return null;
         }
 
         private void PartsInfoWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -488,25 +561,46 @@ namespace remeLog.Views
             }
         }
 
+        //private void SetSingleCellValue(DataGridCell cell, DataGrid dataGrid, string value)
+        //{
+        //    TextBox? textBox = FindVisualChild<TextBox>(cell);
+        //    if (textBox != null)
+        //    {
+        //        textBox.Text = value;
+        //        textBox.Focus();
+        //        return;
+        //    }
+
+        //    dataGrid.CurrentCell = new DataGridCellInfo(cell);
+        //    dataGrid.BeginEdit();
+
+        //    textBox = FindVisualChild<TextBox>(cell);
+        //    if (textBox != null)
+        //    {
+        //        textBox.Text = value;
+        //        textBox.Focus();
+        //    }
+        //}
+
         private void SetSingleCellValue(DataGridCell cell, DataGrid dataGrid, string value)
         {
-            TextBox? textBox = FindVisualChild<TextBox>(cell);
-            if (textBox != null)
-            {
-                textBox.Text = value;
-                textBox.Focus();
-                return;
-            }
-
             dataGrid.CurrentCell = new DataGridCellInfo(cell);
-            dataGrid.BeginEdit();
+            dataGrid.SelectedCells.Clear();
+            dataGrid.SelectedCells.Add(dataGrid.CurrentCell);
 
-            textBox = FindVisualChild<TextBox>(cell);
-            if (textBox != null)
-            {
-                textBox.Text = value;
-                textBox.Focus();
-            }
+            if (!cell.IsEditing)
+                dataGrid.BeginEdit();
+
+            var textBox = FindVisualChild<TextBox>(cell);
+            if (textBox == null)
+                return;
+
+            textBox.Text = value;
+
+            var be = textBox.GetBindingExpression(TextBox.TextProperty);
+            be?.UpdateSource();
+
+            dataGrid.CommitEdit(DataGridEditingUnit.Cell, true);
         }
 
         private DataGridCell? GetDataGridCell(DataGrid dataGrid, DataGridCellInfo cellInfo)
@@ -566,46 +660,97 @@ namespace remeLog.Views
             }
         }
 
-        private static void OnPaste()
+        //private static void OnPaste()
+        //{
+        //    if (!Clipboard.ContainsText()) return;
+
+        //    string clipboardText = Clipboard.GetText();
+
+        //    if (Keyboard.FocusedElement is not DataGridCell cell) return;
+
+        //    var row = DataGridRow.GetRowContainingElement(cell);
+        //    var itemData = row?.Item;
+        //    if (itemData == null) return;
+
+        //    string? propertyName = null;
+
+        //    if (cell.Column is DataGridTextColumn textColumn && textColumn.Binding is Binding binding)
+        //    {
+        //        propertyName = binding.Path?.Path;
+        //    }
+        //    else
+        //    {
+        //        FrameworkElement? boundElement = FindBoundFrameworkElement<TextBox>(cell) as FrameworkElement;
+        //        boundElement ??= FindBoundFrameworkElement<TextBlock>(cell) as FrameworkElement;
+
+        //        if (boundElement != null)
+        //        {
+        //            if (BindingOperations.GetBinding(boundElement, GetDependencyProperty(boundElement)) is Binding innerBinding)
+        //            {
+        //                propertyName = innerBinding.Path?.Path;
+        //            }
+        //        }
+        //    }
+
+        //    if (!string.IsNullOrWhiteSpace(propertyName))
+        //    {
+        //        var prop = itemData.GetType().GetProperty(propertyName);
+        //        if (prop != null && prop.CanWrite)
+        //        {
+        //            prop.SetValue(itemData, clipboardText);
+        //        }
+        //    }
+        //}
+
+        private void OnPaste()
         {
-            if (!Clipboard.ContainsText()) return;
+            if (!Clipboard.ContainsText())
+                return;
 
-            string clipboardText = Clipboard.GetText();
+            string text = Clipboard.GetText();
 
-            if (Keyboard.FocusedElement is not DataGridCell cell) return;
+            if (Keyboard.FocusedElement is not DataGridCell cell)
+                return;
 
-            var row = DataGridRow.GetRowContainingElement(cell);
-            var itemData = row?.Item;
-            if (itemData == null) return;
+            var grid = FindVisualParent<DataGrid>(cell);
+            if (grid == null)
+                return;
 
-            string? propertyName = null;
+            grid.CurrentCell = new DataGridCellInfo(cell);
+            grid.BeginEdit();
 
-            if (cell.Column is DataGridTextColumn textColumn && textColumn.Binding is Binding binding)
-            {
-                propertyName = binding.Path?.Path;
-            }
-            else
-            {
-                FrameworkElement? boundElement = FindBoundFrameworkElement<TextBox>(cell) as FrameworkElement;
-                boundElement ??= FindBoundFrameworkElement<TextBlock>(cell) as FrameworkElement;
+            var tb = FindVisualChild<TextBox>(cell);
+            if (tb == null)
+                return;
 
-                if (boundElement != null)
-                {
-                    if (BindingOperations.GetBinding(boundElement, GetDependencyProperty(boundElement)) is Binding innerBinding)
-                    {
-                        propertyName = innerBinding.Path?.Path;
-                    }
-                }
-            }
+            tb.Text = text;
 
-            if (!string.IsNullOrWhiteSpace(propertyName))
-            {
-                var prop = itemData.GetType().GetProperty(propertyName);
-                if (prop != null && prop.CanWrite)
-                {
-                    prop.SetValue(itemData, clipboardText);
-                }
-            }
+            tb.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+
+            grid.CommitEdit(DataGridEditingUnit.Cell, true);
+        }
+
+        private void PasteToCell(DataGrid grid, DataGridCellInfo cellInfo)
+        {
+            string text = Clipboard.GetText()
+                .TrimEnd('\r', '\n');
+
+            grid.CurrentCell = cellInfo;
+            grid.BeginEdit();
+
+            var cell = GetDataGridCell(grid, cellInfo);
+            if (cell == null)
+                return;
+
+            var tb = FindVisualChild<TextBox>(cell);
+            if (tb == null)
+                return;
+
+            tb.Text = text;
+
+            tb.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+
+            grid.CommitEdit(DataGridEditingUnit.Cell, true);
         }
 
         private static T? FindBoundFrameworkElement<T>(DependencyObject parent) where T : FrameworkElement
