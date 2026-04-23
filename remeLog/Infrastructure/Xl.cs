@@ -1999,7 +1999,7 @@ namespace remeLog.Infrastructure
                 .GroupBy(c => new
                 {
                     c.PartName,
-                    c.Machine,
+                    //c.Machine,
                     c.Setup,
                     c.ChangeType,
                     c.OldValue,
@@ -2007,7 +2007,7 @@ namespace remeLog.Infrastructure
                     c.NewValue,
                     c.IsInTotalUnique,
                     c.IsInSerialList,
-                    c.IncreaseReason
+                    //c.IncreaseReason
                 })
                 .Select(g => g.OrderByDescending(c => c.Date).First())
                 .ToList();
