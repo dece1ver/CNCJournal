@@ -151,8 +151,8 @@ namespace libeLog.Infrastructure.Sql
 
             new TableBuilder("qc_users")
                 .AddIdColumn()
-                .AddStringColumn("Code_1c", 255, false)
-                .AddCompositeUnique("Code_1c")
+                .AddStringColumn("Code1C", 255, false)
+                .AddCompositeUnique("Code1C")
                 .AddStringColumn("FirstName", 50, false)
                 .AddStringColumn("LastName", 50, false)
                 .AddStringColumn("Patronymic", 50)
