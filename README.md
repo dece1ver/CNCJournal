@@ -199,7 +199,7 @@ _Таблицы_ <ins>__parts__</ins>_,_ <ins>__cnc_shifts__</ins> _и_ <ins>__c
 
 ### Установка приложений
 
-Загрузите последние версии приложений из раздела [__Releases__](https://github.com/dece1ver/Work/releases)  
+Загрузите последние версии приложений из раздела [__Releases__](https://github.com/dece1ver/CNCJournal/releases)  
 Приложения являются портативными и не требуют установки.
 
 ### Настройка eLog

@@ -1,23 +1,22 @@
 ﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Brush x:Key="WindowBackgroundColor">#2E2E2E</Brush>
+    <Brush x:Key="ForegroundColor">White</Brush>
+    <Brush x:Key="TitleBarBackgroundColor">#1E1E1E</Brush>
+    <Brush x:Key="ButtonBackgroundColor">#1E1E1E</Brush>
+    <Brush x:Key="ButtonMouseOverColor">#3E3E3E</Brush>
+    <Brush x:Key="TextBoxBackgroundColor">#3E3E3E</Brush>
+    <Brush x:Key="TextBoxBorderColor">#5E5E5E</Brush>
+    <Brush x:Key="TextBoxMouseDragOverColor">#5E5E5E</Brush>
+    <Brush x:Key="ProgressBarBackgroundColor">#3E3E3E</Brush>
+    <Brush x:Key="ScrollBarBackgroundColor">#3E3E3E</Brush>
+    <Brush x:Key="ScrollBarThumbColor">#5E5E5E</Brush>
 
-    <Brush x:Key="DarkWindowBackgroundColor">#2E2E2E</Brush>
-    <Brush x:Key="DarkForegroundColor">White</Brush>
-    <Brush x:Key="DarkTitleBarBackgroundColor">#1E1E1E</Brush>
-    <Brush x:Key="DarkButtonBackgroundColor">#1E1E1E</Brush>
-    <Brush x:Key="DarkButtonMouseOverColor">#3E3E3E</Brush>
-    <Brush x:Key="DarkTextBoxBackgroundColor">#3E3E3E</Brush>
-    <Brush x:Key="DarkTextBoxBorderColor">#5E5E5E</Brush>
-    <Brush x:Key="DarkTextBoxMouseDragOverColor">#5E5E5E</Brush>
-    <Brush x:Key="DarkProgressBarBackgroundColor">#3E3E3E</Brush>
-    <Brush x:Key="DarkScrollBarBackgroundColor">#3E3E3E</Brush>
-    <Brush x:Key="DarkScrollBarThumbColor">#5E5E5E</Brush>
-
-    <Style TargetType="Grid" x:Key="DarkTitleBarStyle">
+    <Style TargetType="Grid" x:Key="TitleBarStyle">
         <Setter Property="Background" Value="{StaticResource TitleBarBackgroundColor}"/>
     </Style>
 
-    <Style TargetType="Button" x:Key="DarkTitleBarButtonStyle">
+    <Style TargetType="Button" x:Key="TitleBarButtonStyle">
         <Setter Property="Background" Value="{StaticResource ButtonBackgroundColor}"/>
         <Setter Property="Foreground" Value="{StaticResource ForegroundColor}"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
@@ -39,7 +38,7 @@
         </Style.Triggers>
     </Style>
 
-    <Style TargetType="TextBox" x:Key="DarkTextBoxStyle">
+    <Style TargetType="TextBox" x:Key="TextBoxStyle">
         <Setter Property="Background" Value="{StaticResource TextBoxBackgroundColor}"/>
         <Setter Property="Foreground" Value="{StaticResource ForegroundColor}"/>
         <Setter Property="BorderBrush" Value="{StaticResource TextBoxBorderColor}"/>
@@ -68,14 +67,14 @@
         </Setter>
     </Style>
     
-    <Style TargetType="TextBox" x:Key="DarkInfoTextBoxStyle" BasedOn="{StaticResource TextBoxStyle}">
+    <Style TargetType="TextBox" x:Key="InfoTextBoxStyle" BasedOn="{StaticResource TextBoxStyle}">
         <Setter Property="VerticalContentAlignment" Value="Stretch"/>
         <Setter Property="FontFamily" Value="Consolas"/>
         <Setter Property="VerticalScrollBarVisibility" Value="Disabled"/>
         <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
     </Style>
     
-    <Style x:Key="DarkScrollBarLineButton" TargetType="{x:Type RepeatButton}">
+    <Style x:Key="ScrollBarLineButton" TargetType="{x:Type RepeatButton}">
         <Setter Property="Visibility" Value="Hidden"/>
         <Setter Property="SnapsToDevicePixels" Value="True"/>
         <Setter Property="OverridesDefaultStyle" Value="true"/>
@@ -91,7 +90,7 @@
         </Setter>
     </Style>
     
-    <Style x:Key="DarkScrollBarPageButton" TargetType="{x:Type RepeatButton}">
+    <Style x:Key="ScrollBarPageButton" TargetType="{x:Type RepeatButton}">
         <Setter Property="Visibility" Value="Collapsed"/>
         <Setter Property="SnapsToDevicePixels" Value="True"/>
         <Setter Property="OverridesDefaultStyle" Value="true"/>
@@ -99,7 +98,7 @@
         <Setter Property="Focusable" Value="false"/>
     </Style>
 
-    <Style x:Key="DarkScrollBarThumb" TargetType="{x:Type Thumb}">
+    <Style x:Key="ScrollBarThumb" TargetType="{x:Type Thumb}">
         <Setter Property="SnapsToDevicePixels" Value="True"/>
         <Setter Property="OverridesDefaultStyle" Value="true"/>
         <Setter Property="IsTabStop" Value="false"/>
@@ -113,7 +112,7 @@
         </Setter>
     </Style>
 
-    <ControlTemplate x:Key="DarkVerticalScrollBar" TargetType="{x:Type ScrollBar}">
+    <ControlTemplate x:Key="VerticalScrollBar" TargetType="{x:Type ScrollBar}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition MaxHeight="0"/>
@@ -137,7 +136,7 @@
         </Grid>
     </ControlTemplate>
     
-    <Style x:Key="Dark{x:Type ScrollBar}" TargetType="{x:Type ScrollBar}">
+    <Style x:Key="{x:Type ScrollBar}" TargetType="{x:Type ScrollBar}">
         <Setter Property="SnapsToDevicePixels" Value="True"/>
         <Setter Property="OverridesDefaultStyle" Value="true"/>
         <Style.Triggers>
@@ -149,7 +148,7 @@
         </Style.Triggers>
     </Style>
 
-    <Style x:Key="DarkFavsScrollViewer" TargetType="{x:Type ScrollViewer}">
+    <Style x:Key="FavsScrollViewer" TargetType="{x:Type ScrollViewer}">
         <Setter Property="OverridesDefaultStyle" Value="True"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -172,7 +171,7 @@
         </Setter>
     </Style>
 
-    <Style TargetType="Button" x:Key="DarkDefaultButtonStyle">
+    <Style TargetType="Button" x:Key="DefaultButtonStyle">
         <Setter Property="Background" Value="{StaticResource ButtonBackgroundColor}"/>
         <Setter Property="Foreground" Value="{StaticResource ForegroundColor}"/>
         <Setter Property="BorderBrush" Value="Transparent"/>

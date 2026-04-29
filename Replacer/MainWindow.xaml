@@ -9,13 +9,6 @@
         Background="#2E2E2E" Foreground="White" ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="CenterScreen" AllowsTransparency="True"
         WindowStyle="None">
-    <Window.Resources>
-        <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="Styles.xaml"/>
-            </ResourceDictionary.MergedDictionaries>
-        </ResourceDictionary>
-    </Window.Resources>
     <Border Background="{StaticResource WindowBackgroundColor}" 
             CornerRadius="0" 
             BorderBrush="{StaticResource WindowBackgroundColor}" 
