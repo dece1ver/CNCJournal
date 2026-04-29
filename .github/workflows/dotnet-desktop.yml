@@ -23,7 +23,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: 📦 Restore dependencies via solution
-        run: dotnet restore Work.sln
+        run: dotnet restore CNCJournal.sln
 
       - name: 🔨 Публикация eLog
         run: dotnet publish eLog/eLog.csproj -c Release -r win-x64 -o publish/eLog --self-contained false /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:PublishReadyToRun=false
