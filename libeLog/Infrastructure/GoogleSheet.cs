@@ -225,7 +225,7 @@ namespace libeLog.Infrastructure
             });
 
             SpreadsheetsResource.ValuesResource.GetRequest request =
-                SheetsService.Spreadsheets.Values.Get(_sheetId, "Загрузка станков!A1:L200");
+                SheetsService.Spreadsheets.Values.Get(_sheetId, "Загрузка станков!A1:L500");
 
             progress.Report("Подключение к списку...");
             ValueRange response = await request.ExecuteAsync(cancellationToken);
