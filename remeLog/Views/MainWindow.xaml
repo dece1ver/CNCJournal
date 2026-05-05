@@ -185,25 +185,57 @@
                                 </Style>
                             </Button.Resources>
                         </Button>
-                        <Button Grid.Row="0" Grid.Column="4" Content="Месяц" 
+                        <Button Grid.Row="0" Grid.Column="4" Content="Месяц"
                                 IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}"
                                 Margin="0 0 0 0" BorderThickness="0 1 1 0"
-                                Command="{Binding SetMonthDateCommand}">
+                                Command="{Binding SetMonthDateCommand}"
+                                Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
                             <Button.Resources>
                                 <Style TargetType="Border">
                                     <Setter Property="CornerRadius" Value="0 2 0 0"/>
                                 </Style>
                             </Button.Resources>
+                            <Button.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Icon="❄️" Header="Январь" Command="{Binding SetSpecificMonthCommand}" CommandParameter="1"/>
+                                    <MenuItem Icon="🌨️" Header="Февраль" Command="{Binding SetSpecificMonthCommand}" CommandParameter="2"/>
+                                    <MenuItem Icon="🌱" Header="Март" Command="{Binding SetSpecificMonthCommand}" CommandParameter="3"/>
+                                    <MenuItem Icon="🌧️" Header="Апрель" Command="{Binding SetSpecificMonthCommand}" CommandParameter="4"/>
+                                    <MenuItem Icon="🌸" Header="Май" Command="{Binding SetSpecificMonthCommand}" CommandParameter="5"/>
+                                    <MenuItem Icon="☀️" Header="Июнь" Command="{Binding SetSpecificMonthCommand}" CommandParameter="6"/>
+                                    <MenuItem Icon="🌞" Header="Июль" Command="{Binding SetSpecificMonthCommand}" CommandParameter="7"/>
+                                    <MenuItem Icon="🌻" Header="Август" Command="{Binding SetSpecificMonthCommand}" CommandParameter="8"/>
+                                    <MenuItem Icon="🍂" Header="Сентябрь" Command="{Binding SetSpecificMonthCommand}" CommandParameter="9"/>
+                                    <MenuItem Icon="🍁" Header="Октябрь" Command="{Binding SetSpecificMonthCommand}" CommandParameter="10"/>
+                                    <MenuItem Icon="🌂" Header="Ноябрь" Command="{Binding SetSpecificMonthCommand}" CommandParameter="11"/>
+                                    <MenuItem Icon="🎄" Header="Декабрь" Command="{Binding SetSpecificMonthCommand}" CommandParameter="12"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
                         </Button>
-                        <Button Grid.Row="2" Grid.Column="4" Content="Год" 
+                        <Button Grid.Row="2" Grid.Column="4" Content="Год"
                                 IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}"
                                 Margin="0 0 0 0" BorderThickness="0 0 1 1"
-                                Command="{Binding SetYearDateCommand}">
+                                Command="{Binding SetYearDateCommand}"
+                                Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
                             <Button.Resources>
                                 <Style TargetType="Border">
                                     <Setter Property="CornerRadius" Value="0 0 2 0"/>
                                 </Style>
                             </Button.Resources>
+                            <Button.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}"
+                                             ItemsSource="{Binding AvailableYears}">
+                                    <ContextMenu.ItemContainerStyle>
+                                        <Style TargetType="MenuItem">
+                                            <Setter Property="Header" Value="{Binding}"/>
+                                            <Setter Property="Command"
+                                                    Value="{Binding DataContext.SetSpecificYearCommand,
+                                                            RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                            <Setter Property="CommandParameter" Value="{Binding}"/>
+                                        </Style>
+                                    </ContextMenu.ItemContainerStyle>
+                                </ContextMenu>
+                            </Button.ContextMenu>
                         </Button>
                     </Grid>
                     <Button Width="100" HorizontalAlignment="Left" Margin="4 0"
@@ -229,6 +261,15 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock FontSize="14" Text="{Binding CheckedSummary}" FontFamily="Consolas" Foreground="#303030"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Margin="12 0"
+                                Visibility="{Binding IsSingleShift, Converter={StaticResource InvertedVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontSize="14" Text="{Binding ReportsSummaryForPeriod}" FontFamily="Consolas" Foreground="#303030"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontSize="14" Text="{Binding CheckedSummaryForPeriod}" FontFamily="Consolas" Foreground="#303030"/>
                         </StackPanel>
                     </StackPanel>
                 </DockPanel>
