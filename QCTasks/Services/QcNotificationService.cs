@@ -64,6 +64,7 @@ public class QcNotificationService
         var sb = new StringBuilder();
         sb.Append(SmtpSender.Title("Деталь отклонена при контроле ОТК", color: "#d9534f"));
         sb.Append(SmtpSender.Hr);
+        if (AppSettings.CurrentUser is { } user) sb.Append(SmtpSender.Field("Контролёр", user.DisplayName));
         sb.Append(SmtpSender.Field("Деталь", task.PartName));
         sb.Append(SmtpSender.Field("М/Л", task.Order));
         sb.Append(SmtpSender.Field("Количество", task.PartsCount));
@@ -78,6 +79,7 @@ public class QcNotificationService
         var sb = new StringBuilder();
         sb.Append(SmtpSender.Title("Деталь принята при контроле ОТК", color: "#5cb85c"));
         sb.Append(SmtpSender.Hr);
+        if (AppSettings.CurrentUser is { } user) sb.Append(SmtpSender.Field("Контролёр", user.DisplayName));
         sb.Append(SmtpSender.Field("Деталь", task.PartName));
         sb.Append(SmtpSender.Field("М/Л", task.Order));
         sb.Append(SmtpSender.Field("Количество", task.PartsCount));

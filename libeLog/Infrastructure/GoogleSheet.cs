@@ -216,16 +216,16 @@ namespace libeLog.Infrastructure
             IProgress<string> progress,
             CancellationToken cancellationToken)
         {
-            List<ProductionTaskData> data = new List<ProductionTaskData>();
+            List<ProductionTaskData> data = new();
 
             Credential = GetCredentialsFromFile(_credentialFile);
             SheetsService = new SheetsService(new BaseClientService.Initializer()
             {
                 HttpClientInitializer = Credential,
             });
-
+            await Task.Delay(100, cancellationToken);
             SpreadsheetsResource.ValuesResource.GetRequest request =
-                SheetsService.Spreadsheets.Values.Get(_sheetId, "Загрузка станков!A1:L200");
+                SheetsService.Spreadsheets.Values.Get(_sheetId, "Загрузка станков!A1:L500");
 
             progress.Report("Подключение к списку...");
             ValueRange response = await request.ExecuteAsync(cancellationToken);
@@ -381,11 +381,10 @@ namespace libeLog.Infrastructure
             for (int rowIndex = 0; rowIndex < values.Count; rowIndex++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
                 var row = values[rowIndex];
+                if (skipCnt > 0) { skipCnt--; continue; }
                 if (row == null || row.Count == 0) continue;
 
-                if (skipCnt > 0) { skipCnt--; continue; }
 
                 if (row[0] is string currentMachine
                     && currentMachine.Contains('|')

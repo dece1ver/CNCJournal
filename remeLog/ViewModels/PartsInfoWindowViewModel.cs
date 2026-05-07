@@ -85,6 +85,8 @@ namespace remeLog.ViewModels
             SetVerMillMachinesCommand = new LambdaCommand(OnSetVerMillMachinesCommandExecuted, CanSetVerMillMachinesCommandExecute);
             SetYearDateCommand = new LambdaCommand(OnSetYearDateCommandExecuted, CanSetYearDateCommandExecute);
             SetYesterdayDateCommand = new LambdaCommand(OnSetYesterdayDateCommandExecuted, CanSetYesterdayDateCommandExecute);
+            SetSpecificMonthCommand = new LambdaCommand(OnSetSpecificMonthCommandExecuted, CanSetSpecificMonthCommandExecute);
+            SetSpecificYearCommand = new LambdaCommand(OnSetSpecificYearCommandExecuted, CanSetSpecificYearCommandExecute);
             ShowAllMachinesCommand = new LambdaCommand(OnShowAllMachinesCommandExecuted, CanShowAllMachinesCommandExecute);
             ShowArchiveTableCommand = new LambdaCommand(OnShowArchiveTableCommandExecuted, CanShowArchiveTableCommandExecute);
             ShowInfoCommand = new LambdaCommand(OnShowInfoCommandExecuted, CanShowInfoCommandExecute);
@@ -119,6 +121,9 @@ namespace remeLog.ViewModels
             _ = Init();
             
         }
+
+        public List<int> AvailableYears =>
+            Enumerable.Range(2023, DateTime.Now.Year - 2023 + 1).ToList();
 
         private void _Parts_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
@@ -700,6 +705,33 @@ namespace remeLog.ViewModels
             UnlockUpdate();
         }
         private bool CanSetAllDateCommandExecute(object p) => true;
+        #endregion
+
+        #region SetSpecificMonthCommand
+        public ICommand SetSpecificMonthCommand { get; }
+        private void OnSetSpecificMonthCommandExecuted(object p)
+        {
+            if (!int.TryParse(p?.ToString(), out var month)) return;
+            var year = ToDate.Year;
+            LockUpdate();
+            FromDate = new DateTime(year, month, 1);
+            ToDate = new DateTime(year, month, DateTime.DaysInMonth(year, month));
+            UnlockUpdate();
+        }
+        private bool CanSetSpecificMonthCommandExecute(object p) => true;
+        #endregion
+
+        #region SetSpecificYearCommand
+        public ICommand SetSpecificYearCommand { get; }
+        private void OnSetSpecificYearCommandExecuted(object p)
+        {
+            if (!int.TryParse(p?.ToString(), out var year)) return;
+            LockUpdate();
+            FromDate = new DateTime(year, 1, 1);
+            ToDate = new DateTime(year, 12, 31);
+            UnlockUpdate();
+        }
+        private bool CanSetSpecificYearCommandExecute(object p) => true;
         #endregion
 
         #region IncreaseSetupCommand
@@ -1673,7 +1705,6 @@ namespace remeLog.ViewModels
         private bool CanUnlockSerialPartNormativesCommandExecute(object p) => SelectedPart is { };
         #endregion
 
-
         #region DeletePart
         public ICommand DeletePartCommand { get; }
         private void OnDeletePartCommandExecuted(object p)
@@ -1811,6 +1842,7 @@ namespace remeLog.ViewModels
         }
         private bool CanFillProcessComplianceAuditCommandExecute(object p) => SelectedPart is { };
         #endregion
+        
         #region OpenDailyReportWindow
         public ICommand OpenDailyReportWindowCommand { get; }
 

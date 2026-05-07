@@ -58,6 +58,8 @@ namespace remeLog.ViewModels
             SetWeekDateCommand = new LambdaCommand(OnSetWeekDateCommandExecuted, CanSetWeekDateCommandExecute);
             SetMonthDateCommand = new LambdaCommand(OnSetMonthDateCommandExecuted, CanSetMonthDateCommandExecute);
             SetYearDateCommand = new LambdaCommand(OnSetYearDateCommandExecuted, CanSetYearDateCommandExecute);
+            SetSpecificMonthCommand = new LambdaCommand(OnSetSpecificMonthCommandExecuted, CanSetSpecificMonthCommandExecute);
+            SetSpecificYearCommand = new LambdaCommand(OnSetSpecificYearCommandExecuted, CanSetSpecificYearCommandExecute);
             _Machines = new();
             if (AppSettings.Instance.InstantUpdateOnMainWindow) { _ = LoadPartsAsync(true); }
             //var backgroundWorker = new Thread(BackgroundWorker) { IsBackground = true };
@@ -120,6 +122,9 @@ namespace remeLog.ViewModels
             }
         }
 
+        public List<int> AvailableYears =>
+            Enumerable.Range(2023, DateTime.Now.Year - 2023 + 1).ToList();
+
         private ObservableCollection<CombinedParts> _Parts = new();
         /// <summary> Объединенный список объединенных списков </summary>
         public ObservableCollection<CombinedParts> Parts
@@ -134,6 +139,10 @@ namespace remeLog.ViewModels
                     OnPropertyChanged(nameof(CheckedReportsCount));
                     OnPropertyChanged(nameof(ReportsSummary));
                     OnPropertyChanged(nameof(CheckedSummary));
+                    OnPropertyChanged(nameof(TotalMachinesCountForPeriod));
+                    OnPropertyChanged(nameof(ReportsExistCountForPeriod));
+                    OnPropertyChanged(nameof(ReportsSummaryForPeriod));
+                    OnPropertyChanged(nameof(CheckedSummaryForPeriod));
                 }
             }
         }
@@ -158,13 +167,26 @@ namespace remeLog.ViewModels
 
 
         public bool IsSingleShift => FromDate == ToDate;
-
+        public List<ShiftInfo> TotalShifts
+        {
+            get
+            {
+                Database.GetShiftsByPeriod(Machines, FromDate, ToDate, new Shift(ShiftType.All), out var shifts);
+                return shifts;
+            }
+        }
         public int TotalMachinesCount => Parts.Count;
+        public int TotalMachinesCountForPeriod => Parts.Count * (Parts.FirstOrDefault()?.TotalShifts ?? 0) / 2;
         public int ReportsExistCount => Parts.Count(p => p.IsReportExist != ReportState.NotExist);
+        public int ReportsExistCountForPeriod => TotalShifts.Count / 2;
         public int CheckedReportsCount => Parts.Count(p => p.IsReportChecked);
+        public int CheckedReportsCountForPeriod => TotalShifts.Count(s => s.IsChecked) / 2;
 
-        public string ReportsSummary => $"МЦ: {ReportsExistCount:00}/{TotalMachinesCount:00}";
-        public string CheckedSummary => $"ТО: {CheckedReportsCount:00}/{TotalMachinesCount:00}";
+        public string ReportsSummary => $"МЦ: {ReportsExistCount:00}/{TotalMachinesCount:00}{(TotalMachinesCount > 0 && ReportsExistCount > 0 ? $" ({(Convert.ToDouble(ReportsExistCount) / TotalMachinesCount):0.#%})" : "")}";
+        public string CheckedSummary => $"ТО: {CheckedReportsCount:00}/{TotalMachinesCount:00}{(TotalMachinesCount > 0 && CheckedReportsCount > 0 ? $" ({(Convert.ToDouble(CheckedReportsCount) / TotalMachinesCount):0.#%})" : "")}";
+
+        public string ReportsSummaryForPeriod => $"МЦ: {ReportsExistCountForPeriod:00}/{TotalMachinesCountForPeriod:00}{(TotalMachinesCountForPeriod > 0 && ReportsExistCountForPeriod > 0 ? $" ({(Convert.ToDouble(ReportsExistCountForPeriod) / TotalMachinesCountForPeriod):0.#%})" : "")}";
+        public string CheckedSummaryForPeriod => $"ТО: {CheckedReportsCountForPeriod:00}/{TotalMachinesCountForPeriod:00}{(TotalMachinesCountForPeriod > 0 && CheckedReportsCountForPeriod > 0 ? $" ({(Convert.ToDouble(CheckedReportsCountForPeriod) / TotalMachinesCountForPeriod):0.#%})" : "")}";
 
 
         #region Команды
@@ -420,6 +442,33 @@ namespace remeLog.ViewModels
         private bool CanSetYearDateCommandExecute(object p) => true;
         #endregion
 
+        #region SetSpecificMonthCommand
+        public ICommand SetSpecificMonthCommand { get; }
+        private void OnSetSpecificMonthCommandExecuted(object p)
+        {
+            if (!int.TryParse(p?.ToString(), out var month)) return;
+            var year = ToDate.Year;
+            LockUpdate();
+            FromDate = new DateTime(year, month, 1);
+            ToDate = new DateTime(year, month, DateTime.DaysInMonth(year, month));
+            UnlockUpdate();
+        }
+        private bool CanSetSpecificMonthCommandExecute(object p) => true;
+        #endregion
+
+        #region SetSpecificYearCommand
+        public ICommand SetSpecificYearCommand { get; }
+        private void OnSetSpecificYearCommandExecuted(object p)
+        {
+            if (!int.TryParse(p?.ToString(), out var year)) return;
+            LockUpdate();
+            FromDate = new DateTime(year, 1, 1);
+            ToDate = new DateTime(year, 12, 31);
+            UnlockUpdate();
+        }
+        private bool CanSetSpecificYearCommandExecute(object p) => true;
+        #endregion
+
         #endregion
 
         private async Task LoadPartsAsync(bool first = false)
@@ -596,6 +645,7 @@ namespace remeLog.ViewModels
                             MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                         }
                     }
+
                 }
                 finally
                 {
