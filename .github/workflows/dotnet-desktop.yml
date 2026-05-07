@@ -10,14 +10,19 @@ jobs:
     name: Build & Release
     runs-on: windows-latest
 
+    strategy:
+      matrix:
+        project: [eLog, remeLog, QCTasks]
+      fail-fast: false
+
     env:
       DOTNET_VERSION: '6.0.x'
 
     steps:
-      - name: 📥 Checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: 🛠️ Setup .NET SDK
+      - name: 🛠 Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
@@ -25,26 +30,49 @@ jobs:
       - name: 📦 Restore dependencies via solution
         run: dotnet restore CNCJournal.sln
 
-      - name: 🔨 Публикация eLog
-        run: dotnet publish eLog/eLog.csproj -c Release -r win-x64 -o publish/eLog --self-contained false /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:PublishReadyToRun=false
+      - name: 🔨 Публикация ${{ matrix.project }}
+        run: >
+          dotnet publish ${{ matrix.project }}/${{ matrix.project }}.csproj
+          -c Release
+          -r win-x64
+          -o publish/${{ matrix.project }}
+          --self-contained false
+          /p:PublishSingleFile=true
+          /p:IncludeNativeLibrariesForSelfExtract=true
+          /p:PublishReadyToRun=false
+          /p:DebugType=none
+          /p:DebugSymbols=false
+          /p:PublishTrimmed=false
 
-      - name: 🔨 Публикация remeLog
-        run: dotnet publish remeLog/remeLog.csproj -c Release -r win-x64 -o publish/remeLog --self-contained false /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:PublishReadyToRun=false
+      - name: 📤 Сохранение артефакта
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.project }}-artifact
+          path: publish/${{ matrix.project }}/${{ matrix.project }}.exe
+          retention-days: 1
 
-      - name: 🧪 Проверка публикации
-        run: |
-          dir publish\eLog
-          dir publish\remeLog
+  create-release:
+    name: Create Release and Upload Artifacts
+    runs-on: ubuntu-latest
+    needs: build
+    if: needs.build.result == 'success'
 
-      - name: 🚀 Создание релиза и загрузка артефактов
+    steps:
+      - name: 📥 Скачать все артефакты
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 📋 Список скачанных файлов
+        run: ls -R artifacts
+
+      - name: 🚀 Создание релиза и загрузка
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
           name: Release v${{ github.run_number }}
           draft: false
           prerelease: false
-          files: |
-            publish/eLog/eLog.exe
-            publish/remeLog/remeLog.exe
+          files: artifacts/*/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

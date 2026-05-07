@@ -56,6 +56,22 @@ namespace remeLog.Views
             }
         }
 
+        private static bool IsEditingCell(DataGrid dataGrid)
+        {
+            if (dataGrid.CurrentCell == null)
+                return false;
+
+            var cellContent = dataGrid.CurrentCell.Column?
+                .GetCellContent(dataGrid.CurrentCell.Item);
+
+            if (cellContent == null)
+                return false;
+
+            var cell = FindVisualParent<DataGridCell>(cellContent);
+
+            return cell?.IsEditing == true;
+        }
+
         private void DataGrid_PreviewMouseDown(object sender, MouseButtonEventArgs e)
         {
             if (e.MiddleButton == MouseButtonState.Pressed)
@@ -259,9 +275,13 @@ namespace remeLog.Views
 
         private async void DataGrid_PreviewKeyDown(object sender, KeyEventArgs e)
         {
+            if (sender is not DataGrid dataGrid)
+                return;
+            if (IsEditingCell(dataGrid))
+                return;
             if (DataContext is PartsInfoWindowViewModel d)
             {
-                if (Keyboard.Modifiers == ModifierKeys.Control && sender is DataGrid dataGrid)
+                if (Keyboard.Modifiers == ModifierKeys.Control)
                 {
                     switch (e.Key)
                     {
