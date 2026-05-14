@@ -4,11 +4,14 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
-        xmlns:local="clr-namespace:remeLog.Views" xmlns:controls="clr-namespace:remeLog.Views.Controls"
-        mc:Ignorable="d" xmlns:inf="clr-namespace:remeLog.Infrastructure" 
+        xmlns:local="clr-namespace:remeLog.Views" 
+        xmlns:controls="clr-namespace:remeLog.Views.Controls"
+        xmlns:inf="clr-namespace:remeLog.Infrastructure" 
         xmlns:cnv="clr-namespace:remeLog.Infrastructure.Converters"
         xmlns:cnt="clr-namespace:remeLog.Views.Controls"
-        xmlns:vm="clr-namespace:remeLog.ViewModels" xmlns:md="clr-namespace:remeLog.Models" 
+        xmlns:vm="clr-namespace:remeLog.ViewModels"
+        xmlns:md="clr-namespace:remeLog.Models"
+        mc:Ignorable="d" 
         d:DataContext="{d:DesignInstance Type=vm:PartsInfoWindowViewModel}"
         Title="{Binding PartsInfo.Machine}" Height="800" Width="1600" 
         WindowStartupLocation="CenterOwner" 
@@ -711,22 +714,7 @@
             <MenuItem Header="Очистить" Click="OnClearVariantClick" Icon="{StaticResource CleanData}"/>
         </ContextMenu>
 
-        <ContextMenu x:Key="EngeneerCommentCellContextMenu">
-            <MenuItem Header="Исправлено" Click="OnVariantClick"/>
-            <MenuItem Header="Исправлено ранее" Click="OnVariantClick"/>
-            <MenuItem Header="Корректировка не требуется" Click="OnVariantClick"/>
-            <MenuItem Header="Ожидание">
-                <MenuItem Header="Ожидание следующего  изготовления" Click="OnVariantClick"/>
-                <MenuItem Header="Ожидание полного изготовления" Click="OnVariantClick"/>
-                <MenuItem Header="Ожидание решения технолога" Click="OnVariantClick"/>
-                <MenuItem Header="Ожидание решения производства" Click="OnVariantClick"/>
-            </MenuItem>
-            <MenuItem Header="Временные нормативы" Click="OnVariantClick"/>
-            <MenuItem Header="Изменение технологии" Click="OnVariantClick"/>
-            <MenuItem Header="Создание альтернативного техпроцесса" Click="OnVariantClick"/>
-            <Separator/>
-            <MenuItem Header="Очистить" Click="OnClearVariantClick" Icon="{StaticResource CleanData}"/>
-        </ContextMenu>
+        <ContextMenu x:Key="EngeneerCommentCellContextMenu"/>
 
         <ContextMenu x:Key="EditingTextBoxContextMenu">
             <MenuItem Header="Копировать" Command="ApplicationCommands.Copy" />
