@@ -98,11 +98,6 @@ namespace libeLog
             };
         }
 
-        public static class Dates
-        {
-            public static List<DateTime> Holidays { get; set; } = new();
-        }
-
         public static class Colors 
         {
             public static readonly SolidColorBrush AreopagBlue = new(Color.FromRgb(0, 0x24, 0x3D));

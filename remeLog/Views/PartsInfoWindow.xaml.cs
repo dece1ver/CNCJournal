@@ -1,20 +1,18 @@
-﻿using DocumentFormat.OpenXml.Spreadsheet;
-using libeLog.Infrastructure;
-using remeLog.Infrastructure;
+﻿using remeLog.Infrastructure;
+using remeLog.Infrastructure.Extensions;
 using remeLog.Models;
 using remeLog.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
-using Database = remeLog.Infrastructure.Database;
+using Part = remeLog.Models.Part;
 using SelectionChangedEventArgs = System.Windows.Controls.SelectionChangedEventArgs;
 
 namespace remeLog.Views
@@ -33,6 +31,44 @@ namespace remeLog.Views
         {
             InitializeComponent();
             DataContext = new PartsInfoWindowViewModel(parts);
+            var groupNames = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase)
+            {
+                "Ожидание"
+            };
+            var engineerMenu = (ContextMenu)FindResource("EngeneerCommentCellContextMenu");
+            var groups = new Dictionary<string, MenuItem>(StringComparer.CurrentCultureIgnoreCase);
+
+            foreach (var comment in AppSettings.EngineerComments)
+            {
+                var firstWord = comment
+                    .Split(new[] { ' ', '\t' }, 2, StringSplitOptions.RemoveEmptyEntries)[0]
+                    .Trim();
+                var item = new MenuItem { Header = comment }
+                    .Tap(c => c.Click += OnVariantClick);
+
+                if (groupNames.Contains(firstWord))
+                {
+                    if (!groups.TryGetValue(firstWord, out var groupMenu))
+                    {
+                        groupMenu = new MenuItem
+                        {
+                            Header = firstWord
+                        };
+
+                        groups[firstWord] = groupMenu;
+                        engineerMenu.Items.Add(groupMenu);
+                    }
+
+                    groupMenu.Items.Add(item);
+                }
+                else
+                {
+                    engineerMenu.Items.Add(item);
+                }
+            }
+                
+            engineerMenu.Items.Add(new Separator());
+            engineerMenu.Items.Add(new MenuItem { Header = "Очистить", Icon = TryFindResource("CleanData") as UIElement}.Tap(i => i.Click += OnClearVariantClick));
         }
 
         private void ComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -58,9 +94,6 @@ namespace remeLog.Views
 
         private static bool IsEditingCell(DataGrid dataGrid)
         {
-            if (dataGrid.CurrentCell == null)
-                return false;
-
             var cellContent = dataGrid.CurrentCell.Column?
                 .GetCellContent(dataGrid.CurrentCell.Item);
 
@@ -76,19 +109,12 @@ namespace remeLog.Views
         {
             if (e.MiddleButton == MouseButtonState.Pressed)
             {
-                // Получаем элемент, на который было произведено нажатие
                 DependencyObject depObj = (DependencyObject)e.OriginalSource;
-                // Находим ячейку, к которой относится событие
                 DataGridCell cell = FindVisualParent<DataGridCell>(depObj);
                 if (cell != null)
                 {
-                    // Получаем столбец ячейки
                     DataGridColumn column = cell.Column;
-                    // Получаем значение ячейки
                     object value = cell.DataContext;
-                    // Обработка события
-                    // value содержит значение ячейки
-                    // column содержит столбец, к которому относится ячейка
                     if (DataContext is PartsInfoWindowViewModel d && value is Part p)
                     {
                         switch (column.DisplayIndex)
@@ -109,39 +135,11 @@ namespace remeLog.Views
                                 d.SetupFilter = d.SetupFilter == p.Setup ? null : p.Setup;
                                 break;
                             case 44:
-                                switch (p.EngineerComment)
-                                {
-                                    case "":
-                                        p.EngineerComment = "Исправлено";
-                                        break;
-                                    case "Исправлено":
-                                        p.EngineerComment = "Исправлено ранее";
-                                        break;
-                                    case "Исправлено ранее":
-                                        p.EngineerComment = "Корректировка не требуется";
-                                        break;
-                                    case "Корректировка не требуется":
-                                        p.EngineerComment = "Ожидание полного изготовления";
-                                        break;
-                                    case "Ожидание полного изготовления":
-                                        p.EngineerComment = "Ожидание решения технолога";
-                                        break;
-                                    case "Ожидание решения технолога":
-                                        p.EngineerComment = "Ожидание решения производства";
-                                        break;
-                                    case "Ожидание решения производства":
-                                        p.EngineerComment = "Временные нормативы";
-                                        break;
-                                    case "Временные нормативы":
-                                        p.EngineerComment = "Изменение технологии";
-                                        break;
-                                    case "Изменение технологии":
-                                        p.EngineerComment = "Создание альтернативного техпроцесса";
-                                        break;
-                                    case "Создание альтернативного техпроцесса":
-                                        p.EngineerComment = "";
-                                        break;
-                                }
+                                var comments = AppSettings.EngineerComments;
+                                int i = Array.IndexOf(comments, p.EngineerComment);
+                                p.EngineerComment = i == comments.Length - 1
+                                    ? ""
+                                    : comments[Math.Max(0, i + 1)];
                                 break;
                         }
                     }

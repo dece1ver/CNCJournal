@@ -282,7 +282,7 @@
                                 <GroupBox Style="{DynamicResource ListViewGroupBox}">
                                     <GroupBox.Header>
                                         <StackPanel Orientation="Horizontal">
-                                            <Grid Grid.Row="0" Grid.Column="8" Grid.RowSpan="2" Visibility="{Binding IsSingleShift, Converter={StaticResource VisibilityConverter}}"
+                                            <Grid Grid.Row="0" Grid.Column="8" Grid.RowSpan="2" Visibility="{Binding IsSingleWorkingShift, Converter={StaticResource VisibilityConverter}}"
                                                   Margin="-3 -3 -4 -4">
                                                 <Label Content="{StaticResource StatusOkIcon}" Visibility="{Binding IsReportExist, Converter={StaticResource ReportStateVisibility }, ConverterParameter=Exist}"
                                                        ToolTip="Есть отчет за смену"/>

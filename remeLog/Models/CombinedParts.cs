@@ -125,6 +125,7 @@ namespace remeLog.Models
         public double ShiftsRatio => (double)WorkedShifts / TotalShifts * 100;
 
         public bool IsSingleShift => FromDate == ToDate;
+        public bool IsSingleWorkingShift => IsSingleShift && !AppSettings.Holidays.Contains(ToDate);
         public int Orders => Parts.GroupBy(p => p.Order).Count();
         public double AllFinishedCount => Parts.Sum(p => p.FinishedCount);
         public double FinishedCount => Parts.Where(p => p.Setup == 1).Sum(p => p.FinishedCount);

@@ -373,6 +373,7 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("CncOperations")
                 .AddStringColumn("Administrators")
                 .AddSmallDateTimeColumn("Holidays")
+                .AddStringColumn("EngineerComments")
                 .Build(),
 
             new TableBuilder("cnc_serial_parts")

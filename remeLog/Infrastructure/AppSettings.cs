@@ -1,16 +1,11 @@
 ﻿using Newtonsoft.Json;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
-using remeLog.Views;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
-using System.Threading.Tasks;
-using System.Windows.Threading;
 using JsonException = System.Text.Json.JsonException;
 
 namespace remeLog.Infrastructure
@@ -73,6 +68,10 @@ namespace remeLog.Infrastructure
         public static string[] Users { get; set; } = Array.Empty<string>();
         [JsonIgnore]
         public static string[] CncOperations { get; set; } = Array.Empty<string>();
+        [JsonIgnore]
+        public static string[] EngineerComments { get; set; } = Array.Empty<string>();
+        [JsonIgnore]
+        public static DateTime[] Holidays { get; set; } = Array.Empty<DateTime>();
         [JsonIgnore]
         public static string? PcaReportPath { get; set; }
 
