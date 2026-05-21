@@ -1612,12 +1612,13 @@ namespace remeLog.Infrastructure
             using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
             {
                 await connection.OpenAsync();
-                using (SqlCommand command = new("SELECT max_setup_limit, long_setup_limit, NcArchivePath, NcIntermediatePath, Administrators, CncOperations, PcaReportPath, EngineerComments FROM cnc_remelog_config;", connection))
+                using (SqlCommand command = new("SELECT max_setup_limit, long_setup_limit, NcArchivePath, NcIntermediatePath, Administrators, CncOperations, Holidays, PcaReportPath, EngineerComments FROM cnc_remelog_config;", connection))
                 {
                     using (SqlDataReader reader = await command.ExecuteReaderAsync())
                     {
                         var administrators = new List<string>();
                         var operations = new List<string>();
+                        var holidays = new List<DateTime>();
                         var engineerComments = new List<string>();
                         while (await reader.ReadAsync())
                         {
@@ -1627,11 +1628,13 @@ namespace remeLog.Infrastructure
                             if (!reader.IsDBNull(3)) AppSettings.NcIntermediatePath = await reader.GetValueOrDefaultAsync(3, "");
                             if (!reader.IsDBNull(4)) administrators.Add(await reader.GetFieldValueAsync<string>(4));
                             if (!reader.IsDBNull(5)) operations.Add(await reader.GetFieldValueAsync<string>(5));
-                            if (!reader.IsDBNull(6)) AppSettings.PcaReportPath = await reader.GetValueOrDefaultAsync<string?>(6, null);
-                            if (!reader.IsDBNull(7)) engineerComments.Add(await reader.GetFieldValueAsync<string>(7));
+                            if (!reader.IsDBNull(6)) holidays.Add(await reader.GetFieldValueAsync<DateTime>(6));
+                            if (!reader.IsDBNull(7)) AppSettings.PcaReportPath = await reader.GetValueOrDefaultAsync<string?>(7, null);
+                            if (!reader.IsDBNull(8)) engineerComments.Add(await reader.GetFieldValueAsync<string>(8));
                         }
                         AppSettings.Administrators = administrators.ToArray();
                         AppSettings.CncOperations = operations.ToArray();
+                        AppSettings.Holidays = holidays.ToArray();
                         AppSettings.EngineerComments = engineerComments.ToArray();
                     }
                 }

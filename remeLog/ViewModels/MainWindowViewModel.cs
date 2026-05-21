@@ -27,7 +27,6 @@ namespace remeLog.ViewModels
 {
     internal class MainWindowViewModel : ViewModel, IOverlay
     {
-        private readonly object lockObject = new();
         private bool lockUpdate = false;
         private CancellationTokenSource _cancellationTokenSource = new();
         private CancellationTokenSource _bgCts = new();
@@ -167,6 +166,7 @@ namespace remeLog.ViewModels
 
 
         public bool IsSingleShift => FromDate == ToDate;
+        public bool IsSingleWorkingShift => IsSingleShift && !AppSettings.Holidays.Contains(ToDate);
         public List<ShiftInfo> TotalShifts
         {
             get
@@ -175,7 +175,7 @@ namespace remeLog.ViewModels
                 return shifts;
             }
         }
-        public int TotalMachinesCount => Parts.Count;
+        public int TotalMachinesCount => IsSingleWorkingShift ? Parts.Count : 0;
         public int TotalMachinesCountForPeriod => Parts.Count * (Parts.FirstOrDefault()?.TotalShifts ?? 0) / 2;
         public int ReportsExistCount => Parts.Count(p => p.IsReportExist != ReportState.NotExist);
         public int ReportsExistCountForPeriod => TotalShifts.Count / 2;
@@ -519,8 +519,6 @@ namespace remeLog.ViewModels
                     var cancellationToken = _cancellationTokenSource.Token;
                     await semaphoreSlim.WaitAsync(cancellationToken);
                     await Util.UpdateAppSettingsAsync();
-
-                    Constants.Dates.Holidays = await Database.GetHolidaysAsync(null);
 
                     Status = "Получение списка станков...";
 

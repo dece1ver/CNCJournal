@@ -264,7 +264,7 @@ namespace eLog.Infrastructure.Extensions
                         cmd.Parameters.AddWithValue("@Guid", part.Guid);
                         cmd.Parameters.AddWithValue("@Machine", AppSettings.Instance.Machine?.Name ?? "");
                         cmd.Parameters.AddWithValue("@Shift", part.Shift);
-                        var needDiscrease = part.Shift == Text.NightShift && part.EndMachiningTime < new DateTime(part.EndMachiningTime.Year, part.EndMachiningTime.Month, part.EndMachiningTime.Day).AddHours(8);
+                        var needDiscrease = part.Shift == Text.NightShift && part.EndMachiningTime < new DateTime(part.EndMachiningTime.Year, part.EndMachiningTime.Month, part.EndMachiningTime.Day).AddHours(9);
                         var shiftDate = needDiscrease
                             ? new DateTime(part.EndMachiningTime.Year, part.EndMachiningTime.Month, part.EndMachiningTime.Day).AddDays(-1)
                             : new DateTime(part.EndMachiningTime.Year, part.EndMachiningTime.Month, part.EndMachiningTime.Day);

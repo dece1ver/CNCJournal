@@ -134,7 +134,7 @@ namespace remeLog.Infrastructure
         /// <param name="end">Дата окончания периода.</param>
         /// <returns>Количество рабочих дней.</returns>
         public static int GetWorkDaysBeetween(DateTime start, DateTime end)
-            => (int)(end - start).TotalDays + 1 - Constants.Dates.Holidays.Count(d => d >= start && d <= end);
+            => (int)(end - start).TotalDays + 1 - AppSettings.Holidays.Count(d => d >= start && d <= end);
 
         /// <summary>
         /// Создает функцию сравнения на основе заданного оператора сравнения и значения.
