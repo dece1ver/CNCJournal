@@ -115,7 +115,10 @@ namespace remeLog.ViewModels
                         $"Прошлое значение: {shift.UnspecifiedDowntimes:0.##}";
                 }
             }
-
+            if (!string.IsNullOrWhiteSpace(_CurrentMaster) && !_Masters.Contains(_CurrentMaster))
+            {
+                _Masters.Insert(0, _CurrentMaster);
+            }
             UpdateShiftInfoCommand = new LambdaCommand(OnUpdateShiftInfoCommandExecuted, CanUpdateShiftInfoCommandExecute);
         }
 
