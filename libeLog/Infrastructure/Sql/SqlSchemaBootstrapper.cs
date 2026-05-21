@@ -516,6 +516,49 @@ namespace libeLog.Infrastructure.Sql
                 .AddDoubleColumn("ExcludedOperationsTime")
                 .AddStringColumn("IncreaseReason", -1)
                 .AddDoubleColumn("SpecialDowntimeTime", false, 0)
+                .Build(),
+
+            new TableBuilder("remeLog_app_presence")
+                .AddGuidColumn("SessionId", true, false)
+                .AddStringColumn("Application", 64, false)
+                .AddStringColumn("MachineName", 128, false)
+                .AddStringColumn("UserName", 128, false)
+                .AddStringColumn("DisplayName", 128)
+                .AddStringColumn("Status", 32, false, "'Online'")
+                .AddStringColumn("AppVersion", 32)
+                .AddDateTimeColumn("StartedUtc", false)
+                .AddDateTimeColumn("LastSeenUtc", false)
+                .AddIndex(new[] { "LastSeenUtc" }, name: "IX_app_presence_alive")
+                .AddIndex(new[] { "Application", "LastSeenUtc" }, name: "IX_app_presence_app_alive")
+                .Build(),
+
+            new TableBuilder("remeLog_app_commands")
+                .AddGuidColumn("Id", true, false)
+                .AddGuidColumn("TargetSessionId")
+                .AddStringColumn("TargetApplication", 64)
+                .AddStringColumn("TargetMachine", 128, false)
+                .AddStringColumn("TargetUser", 128)
+                .AddStringColumn("SenderMachine", 128, false)
+                .AddStringColumn("SenderUser", 128, false)
+                .AddStringColumn("CommandType", 64, false)
+                .AddStringColumn("Payload", -1)
+                .AddDateTimeColumn("CreatedUtc", false)
+                .AddDateTimeColumn("ProcessedUtc")
+
+                .AddIndex(
+                    columns: new[] { "TargetSessionId", "CreatedUtc" },
+                    include: new[] { "CommandType", "Payload", "TargetMachine" },
+                    filter: "ProcessedUtc IS NULL",
+                    name: "IX_app_commands_poll"
+                )
+                .AddIndex(
+                    columns: new[] { "TargetSessionId", "ProcessedUtc" },
+                    name: "IX_app_commands_session"
+                )
+                .AddIndex(
+                    columns: new[] { "CreatedUtc" },
+                    name: "IX_app_commands_cleanup"
+                )
                 .Build()
         };
     }

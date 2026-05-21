@@ -59,6 +59,7 @@ namespace remeLog.ViewModels
             SetYearDateCommand = new LambdaCommand(OnSetYearDateCommandExecuted, CanSetYearDateCommandExecute);
             SetSpecificMonthCommand = new LambdaCommand(OnSetSpecificMonthCommandExecuted, CanSetSpecificMonthCommandExecute);
             SetSpecificYearCommand = new LambdaCommand(OnSetSpecificYearCommandExecuted, CanSetSpecificYearCommandExecute);
+            ShowActiveInstancesCommand = new LambdaCommand(OnShowActiveInstancesCommandExecuted, CanShowActiveInstancesCommandExecute);
             _Machines = new();
             if (AppSettings.Instance.InstantUpdateOnMainWindow) { _ = LoadPartsAsync(true); }
             //var backgroundWorker = new Thread(BackgroundWorker) { IsBackground = true };
@@ -164,6 +165,8 @@ namespace remeLog.ViewModels
             set => Set(ref _Debug, value);
         }
 
+        public bool IsAdministrator =>
+            AppSettings.Administrators.Contains(Environment.UserName, StringComparer.OrdinalIgnoreCase);
 
         public bool IsSingleShift => FromDate == ToDate;
         public bool IsSingleWorkingShift => IsSingleShift && !AppSettings.Holidays.Contains(ToDate);
@@ -469,6 +472,54 @@ namespace remeLog.ViewModels
         private bool CanSetSpecificYearCommandExecute(object p) => true;
         #endregion
 
+        #region ShowActiveInstances
+        public ICommand ShowActiveInstancesCommand { get; }
+
+        private async void OnShowActiveInstancesCommandExecuted(object p)
+        {
+            if (string.IsNullOrWhiteSpace(AppSettings.Instance.ConnectionString))
+            {
+                MessageBox.Show("Строка подключения не настроена.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            List<AppPresence> instances;
+
+            try
+            {
+                InProgress = true;
+                Status = "Получение активных экземпляров...";
+                instances = await Database.ReadActiveInstancesAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка при получении данных:\n{ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            finally
+            {
+                Status = string.Empty;
+                InProgress = false;
+            }
+
+            if (!instances.Any())
+            {
+                MessageBox.Show("Активных экземпляров не обнаружено.", "Активные экземпляры", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            using (Overlay = new())
+            {
+                var window = new ActiveInstancesWindow(instances)
+                {
+                    Owner = Application.Current.MainWindow
+                };
+                window.ShowDialog();
+            }
+        }
+
+        private bool CanShowActiveInstancesCommandExecute(object p) => IsAdministrator && !InProgress;
+        #endregion
         #endregion
 
         private async Task LoadPartsAsync(bool first = false)
@@ -519,6 +570,7 @@ namespace remeLog.ViewModels
                     var cancellationToken = _cancellationTokenSource.Token;
                     await semaphoreSlim.WaitAsync(cancellationToken);
                     await Util.UpdateAppSettingsAsync();
+                    OnPropertyChanged(nameof(IsAdministrator));
 
                     Status = "Получение списка станков...";
 

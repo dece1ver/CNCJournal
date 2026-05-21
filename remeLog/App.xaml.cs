@@ -1,5 +1,6 @@
 ﻿using libeLog.Extensions;
 using remeLog.Infrastructure;
+using remeLog.Infrastructure.Services;
 using System;
 using System.Diagnostics;
 using System.Globalization;
@@ -17,6 +18,7 @@ namespace remeLog
     {
         private readonly string _uniqueEventName;
         private EventWaitHandle? _eventWaitHandle;
+        private AppPresenceService? _presenceService;
         public static readonly Viewbox OkIcon = (Viewbox)App.Current.FindResource("StatusOkIcon");
         public static readonly Viewbox SyncIcon = (Viewbox)App.Current.FindResource("SyncIcon");
         public static readonly Viewbox ErrorIcon = (Viewbox)App.Current.FindResource("StatusErrorIcon");
@@ -64,6 +66,26 @@ namespace remeLog
 
             Util.WriteLog("Начало инициализации приложения");
             InitializeApplication();
+            if (!string.IsNullOrEmpty(AppSettings.Instance.ConnectionString)) StartPresenceServices();
+        }
+
+        private void StartPresenceServices()
+        {
+            try
+            {
+                Util.WriteLog("Запуск AppPresenceService");
+
+                _presenceService = new AppPresenceService(
+                    AppSettings.Instance.ConnectionString!);
+
+                _presenceService.Start();
+
+                Util.WriteLog("AppPresenceService успешно запущен");
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "Ошибка запуска AppPresenceService");
+            }
         }
 
         private bool TryConnectToExistingInstance()
@@ -328,6 +350,14 @@ namespace remeLog
 
         protected override void OnExit(ExitEventArgs e)
         {
+            try
+            {
+                _presenceService?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "Ошибка остановки AppPresenceService");
+            }
             _eventWaitHandle?.Close();
             base.OnExit(e);
         }

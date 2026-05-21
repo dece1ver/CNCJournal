@@ -1652,5 +1652,60 @@ namespace remeLog.Infrastructure
                 AppSettings.Save();
             }
         }
+
+        /// <summary>
+        /// Читает все записи о присутствии за последние 24 часа.
+        /// </summary>
+        public static async Task<List<AppPresence>> ReadActiveInstancesAsync()
+        {
+            const string sql = @"
+    SELECT
+        SessionId,
+        MachineName,
+        UserName,
+        AppVersion,
+        StartedUtc,
+        LastSeenUtc
+    FROM
+    (
+        SELECT
+            SessionId,
+            MachineName,
+            UserName,
+            AppVersion,
+            StartedUtc,
+            LastSeenUtc,
+            ROW_NUMBER() OVER (
+                PARTITION BY MachineName, UserName
+                ORDER BY LastSeenUtc DESC
+            ) AS rn
+        FROM remeLog_app_presence
+        WHERE LastSeenUtc >= DATEADD(DAY, -1, GETUTCDATE())
+    ) t
+    WHERE rn = 1
+    ORDER BY LastSeenUtc DESC;";
+
+            var result = new List<AppPresence>();
+
+            await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(sql, connection);
+            await using var reader = await command.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                result.Add(new AppPresence
+                {
+                    SessionId = reader.GetGuid(0),
+                    MachineName = reader.GetString(1),
+                    UserName = reader.GetString(2),
+                    AppVersion = reader.GetString(3),
+                    StartedLocal = DateTime.SpecifyKind(reader.GetDateTime(4), DateTimeKind.Utc).ToLocalTime(),
+                    LastSeenLocal = DateTime.SpecifyKind(reader.GetDateTime(5), DateTimeKind.Utc).ToLocalTime()
+                });
+            }
+
+            return result;
+        }
     }
 }
