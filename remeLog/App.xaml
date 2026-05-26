@@ -18,6 +18,8 @@
             <contolrs:SpinnerBrackets x:Key="SpinnerBrackets" x:Shared="False" />
 
             <cnv:BooleanToBrushConverter x:Key="BooleanToBrushConverter"/>
+            <cnv:BoolToOnlineConverter x:Key="BoolToOnlineConverter"/>
+            <cnv:BoolToOnlineBrushConverter x:Key="BoolToOnlineBrushConverter"/>
             <cnv:CollectionConverteter x:Key="CollectionConverteter"/>
             <cnv:EnumDescriptionConverter x:Key="EnumDescriptionConverter"/>
             <cnv:ExpressionToDoubleConverter x:Key="ExpressionToDoubleConverter"/>

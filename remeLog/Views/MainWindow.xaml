@@ -63,6 +63,11 @@
                               Command="{Binding ShowMonitorCommand}" Icon="{StaticResource AboutIcon}"/>
                     <MenuItem Header="Проверка БД"
                               Command="{Binding UpdateDatabaseCommand}" Icon="{StaticResource SyncIcon}"/>
+                    <MenuItem Header="Активные экземпляры"
+                              Command="{Binding ShowActiveInstancesCommand}"
+                              IsEnabled="{Binding IsAdministrator}"
+                              Icon="{StaticResource OperatorsIcon}"
+                              ToolTip="Просмотр запущенных экземпляров приложения"/>
                 </MenuItem>
                 <MenuItem Header="Справка">
                     <MenuItem Header="О программе"
