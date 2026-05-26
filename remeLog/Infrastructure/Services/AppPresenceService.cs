@@ -2,7 +2,6 @@
 using Microsoft.Data.SqlClient;
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -16,112 +15,135 @@ namespace remeLog.Infrastructure
     /// </summary>
     public sealed class AppPresenceService : IDisposable
     {
-        private readonly string _connectionString;
+        /// <summary>Таймаут подключения к SQL-серверу (секунды).</summary>
+        private const int DbConnectTimeoutSeconds = 5;
 
+        /// <summary>Таймаут выполнения SQL-команды (секунды).</summary>
+        private const int DbCommandTimeoutSeconds = 8;
+
+        /// <summary>Интервал heartbeat в штатном режиме.</summary>
+        private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(10);
+
+        /// <summary>Интервал heartbeat после ошибки (backoff).</summary>
+        private static readonly TimeSpan HeartbeatBackoffInterval = TimeSpan.FromSeconds(30);
+
+        /// <summary>Интервал опроса команд.</summary>
+        private static readonly TimeSpan PollingInterval = TimeSpan.FromSeconds(2);
+
+        /// <summary>Интервал опроса команд после ошибки (backoff).</summary>
+        private static readonly TimeSpan PollingBackoffInterval = TimeSpan.FromSeconds(10);
+
+        /// <summary>Интервал очистки устаревших записей.</summary>
+        private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(30);
+
+        private readonly string _connectionString;
         private readonly CancellationTokenSource _cts = new();
 
         private readonly Guid _sessionId = Guid.NewGuid();
-
         private readonly string _machineName = Environment.MachineName;
-
         private readonly string _userName = Environment.UserName;
-
         private readonly string _applicationName = "remeLog";
+        private readonly string _version = App.CreateUniqueEventName();
 
         private DateTime _lastCleanupUtc = DateTime.MinValue;
 
-        private readonly string _version = App.CreateUniqueEventName();
+        private Task? _heartbeatTask;
+        private Task? _pollingTask;
+
+        private bool _disposed;
+
 
         public AppPresenceService(string connectionString)
         {
             _connectionString = connectionString;
         }
 
-        /// <summary>
-        /// Уникальный идентификатор текущего экземпляра приложения.
-        /// </summary>
+        /// <summary>Уникальный идентификатор текущего экземпляра приложения.</summary>
         public Guid SessionId => _sessionId;
 
-        /// <summary>
-        /// Запускает фоновые циклы heartbeat и polling.
-        /// </summary>
+        /// <summary>Запускает фоновые циклы heartbeat и polling.</summary>
         public void Start()
         {
-            Task.Run(HeartbeatLoopAsync);
-            Task.Run(CommandPollingLoopAsync);
+            _heartbeatTask = Task.Run(HeartbeatLoopAsync);
+            _pollingTask = Task.Run(CommandPollingLoopAsync);
         }
 
-        /// <summary>
-        /// Основной heartbeat-цикл.
-        /// </summary>
+
+        /// <summary>Heartbeat-цикл: обновляет присутствие и периодически чистит устаревшие записи.</summary>
         private async Task HeartbeatLoopAsync()
         {
             while (!_cts.IsCancellationRequested)
             {
                 try
                 {
-                    await UpsertPresenceAsync();
-                    if ((DateTime.UtcNow - _lastCleanupUtc).TotalMinutes >= 30)
+                    await UpsertPresenceAsync(_cts.Token).ConfigureAwait(false);
+
+                    if ((DateTime.UtcNow - _lastCleanupUtc) >= CleanupInterval)
                     {
                         _lastCleanupUtc = DateTime.UtcNow;
-                        await CleanupAsync();
+                        await CleanupAsync(_cts.Token).ConfigureAwait(false);
                     }
+
+                    await Task.Delay(HeartbeatInterval, _cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
                 }
                 catch (Exception ex)
                 {
                     Util.WriteLog(ex, "Ошибка heartbeat");
-                }
 
-                await Task.Delay(TimeSpan.FromSeconds(10), _cts.Token);
+                    try
+                    {
+                        await Task.Delay(HeartbeatBackoffInterval, _cts.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                }
             }
         }
 
-        private async Task CleanupAsync()
-        {
-            const string sql = @"
-                DELETE FROM remeLog_app_presence
-                WHERE LastSeenUtc < DATEADD(DAY, -2, GETUTCDATE());
-
-                DELETE FROM remeLog_app_commands
-                WHERE CreatedUtc < DATEADD(DAY, -7, GETUTCDATE());
-            ";
-
-            await using var connection = new SqlConnection(_connectionString);
-            await SqlSchemaBootstrapper.ExecuteRawAsync(connection, sql);
-        }
-
-        /// <summary>
-        /// Основной polling-цикл команд.
-        /// </summary>
+        /// <summary>Цикл опроса входящих команд.</summary>
         private async Task CommandPollingLoopAsync()
         {
             while (!_cts.IsCancellationRequested)
             {
                 try
                 {
-                    await PollCommandsAsync();
+                    await PollCommandsAsync(_cts.Token).ConfigureAwait(false);
+
+                    await Task.Delay(PollingInterval, _cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
                 }
                 catch (Exception ex)
                 {
                     Util.WriteLog(ex, "Ошибка polling команд");
-                }
 
-                await Task.Delay(TimeSpan.FromSeconds(2), _cts.Token);
+                    try
+                    {
+                        await Task.Delay(PollingBackoffInterval, _cts.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                }
             }
         }
 
-        /// <summary>
-        /// Обновляет информацию о присутствии клиента.
-        /// </summary>
-        private async Task UpsertPresenceAsync()
+
+        /// <summary>Обновляет (или вставляет) запись о присутствии клиента.</summary>
+        private async Task UpsertPresenceAsync(CancellationToken ct)
         {
             const string sql = @"
 MERGE remeLog_app_presence AS target
-USING
-(
-    SELECT
-        @SessionId      AS SessionId
-) AS source
+USING (SELECT @SessionId AS SessionId) AS source
 ON target.SessionId = source.SessionId
 
 WHEN MATCHED THEN
@@ -131,192 +153,212 @@ WHEN MATCHED THEN
 WHEN NOT MATCHED THEN
     INSERT
     (
-        SessionId,
-        Application,
-        MachineName,
-        UserName,
-        DisplayName,
-        Status,
-        AppVersion,
-        StartedUtc,
-        LastSeenUtc
+        SessionId, Application, MachineName, UserName,
+        DisplayName, Status, AppVersion, StartedUtc, LastSeenUtc
     )
     VALUES
     (
-        @SessionId,
-        @Application,
-        @MachineName,
-        @UserName,
-        @DisplayName,
-        'Online',
-        @AppVersion,
-        SYSUTCDATETIME(),
-        SYSUTCDATETIME()
+        @SessionId, @Application, @MachineName, @UserName,
+        @DisplayName, 'Online', @AppVersion, SYSUTCDATETIME(), SYSUTCDATETIME()
     );";
 
-            await using var connection = new SqlConnection(_connectionString);
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct).ConfigureAwait(false);
 
-            await connection.OpenAsync(_cts.Token);
-
-            await using var command = new SqlCommand(sql, connection);
+            await using var command = new SqlCommand(sql, connection)
+            {
+                CommandTimeout = DbCommandTimeoutSeconds
+            };
 
             command.Parameters.AddWithValue("@SessionId", _sessionId);
-
             command.Parameters.AddWithValue("@Application", _applicationName);
-
             command.Parameters.AddWithValue("@MachineName", _machineName);
-
             command.Parameters.AddWithValue("@UserName", _userName);
-
             command.Parameters.AddWithValue("@DisplayName", _userName);
-
             command.Parameters.AddWithValue("@AppVersion", _version);
 
-            await command.ExecuteNonQueryAsync(_cts.Token);
+            await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
-        /// <summary>
-        /// Проверяет наличие новых команд.
-        /// </summary>
-        private async Task PollCommandsAsync()
+        /// <summary>Удаляет устаревшие записи присутствия и команд.</summary>
+        private async Task CleanupAsync(CancellationToken ct)
         {
             const string sql = @"
-SELECT
-    Id,
-    CommandType,
-    Payload
+DELETE FROM remeLog_app_presence
+WHERE LastSeenUtc < DATEADD(DAY, -2, GETUTCDATE());
+
+DELETE FROM remeLog_app_commands
+WHERE CreatedUtc < DATEADD(DAY, -7, GETUTCDATE());";
+
+            await using var connection = CreateConnection();
+            await SqlSchemaBootstrapper.ExecuteRawAsync(connection, sql).ConfigureAwait(false);
+        }
+
+        /// <summary>Читает необработанные команды и выполняет их.</summary>
+        private async Task PollCommandsAsync(CancellationToken ct)
+        {
+            const string sql = @"
+SELECT Id, CommandType, Payload
 FROM remeLog_app_commands
 WHERE
-    TargetMachine = @MachineName
+    TargetMachine  = @MachineName
     AND ProcessedUtc IS NULL
 ORDER BY CreatedUtc;";
 
-            await using var connection = new SqlConnection(_connectionString);
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct).ConfigureAwait(false);
 
-            await connection.OpenAsync(_cts.Token);
-
-            await using var command = new SqlCommand(sql, connection);
-
+            await using var command = new SqlCommand(sql, connection)
+            {
+                CommandTimeout = DbCommandTimeoutSeconds
+            };
             command.Parameters.AddWithValue("@MachineName", _machineName);
 
-            await using var reader = await command.ExecuteReaderAsync(_cts.Token);
+            await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
 
             var commands = new List<(Guid Id, string Type, string Payload)>();
 
-            while (await reader.ReadAsync(_cts.Token))
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
             {
                 commands.Add((
                     reader.GetGuid(0),
                     reader.GetString(1),
-                    reader.IsDBNull(2)
-                        ? string.Empty
-                        : reader.GetString(2)
+                    reader.IsDBNull(2) ? string.Empty : reader.GetString(2)
                 ));
             }
 
-            await reader.CloseAsync();
+            await reader.CloseAsync().ConfigureAwait(false);
 
             foreach (var item in commands)
             {
-                await HandleCommandAsync(connection, item);
+                ct.ThrowIfCancellationRequested();
+                await HandleCommandAsync(connection, item, ct).ConfigureAwait(false);
             }
         }
 
-        /// <summary>
-        /// Обрабатывает входящую команду.
-        /// </summary>
+        /// <summary>Обрабатывает входящую команду.</summary>
         private async Task HandleCommandAsync(
             SqlConnection connection,
-            (Guid Id, string Type, string Payload) command)
+            (Guid Id, string Type, string Payload) cmd,
+            CancellationToken ct)
         {
             try
             {
-                switch (command.Type)
+                switch (cmd.Type)
                 {
                     case "Wake":
-                        {
-                            ShowToast(command.Payload);
-                            break;
-                        }
+                        ShowToast(cmd.Payload);
+                        break;
 
                     case "ActivateWindow":
-                        {
-                            await Application.Current.Dispatcher.InvokeAsync(() =>
-                            {
-                                if (Application.Current.MainWindow is Window window)
-                                {
-                                    if (window.WindowState == WindowState.Minimized)
-                                        window.WindowState = WindowState.Normal;
+                        await Application.Current.Dispatcher
+                            .InvokeAsync(ActivateMainWindow)
+                            .Task.ConfigureAwait(false);
+                        break;
 
-                                    window.Show();
-
-                                    window.Activate();
-
-                                    window.Topmost = true;
-                                    window.Topmost = false;
-
-                                    window.Focus();
-                                }
-                            });
-
-                            break;
-                        }
+                    default:
+                        Util.WriteLog($"AppPresenceService: неизвестный тип команды '{cmd.Type}'");
+                        break;
                 }
 
-                await MarkCommandProcessedAsync(connection, command.Id);
+                await MarkCommandProcessedAsync(connection, cmd.Id, ct).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex, $"Ошибка обработки команды {command.Id}");
+                Util.WriteLog(ex, $"Ошибка обработки команды {cmd.Id} ({cmd.Type})");
             }
         }
 
-        /// <summary>
-        /// Помечает команду обработанной.
-        /// </summary>
-        private async Task MarkCommandProcessedAsync(
+        /// <summary>Помечает команду обработанной.</summary>
+        private static async Task MarkCommandProcessedAsync(
             SqlConnection connection,
-            Guid commandId)
+            Guid commandId,
+            CancellationToken ct)
         {
             const string sql = @"
 UPDATE remeLog_app_commands
 SET ProcessedUtc = SYSUTCDATETIME()
 WHERE Id = @Id;";
 
-            await using var command = new SqlCommand(sql, connection);
-
+            await using var command = new SqlCommand(sql, connection)
+            {
+                CommandTimeout = DbCommandTimeoutSeconds
+            };
             command.Parameters.AddWithValue("@Id", commandId);
 
-            await command.ExecuteNonQueryAsync(_cts.Token);
+            await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
-        /// <summary>
-        /// Показывает системное уведомление Windows.
-        /// </summary>
+        /// <summary>Создаёт <see cref="SqlConnection"/> с явным таймаутом подключения.</summary>
+        private SqlConnection CreateConnection()
+        {
+            var builder = new SqlConnectionStringBuilder(_connectionString)
+            {
+                ConnectTimeout = DbConnectTimeoutSeconds
+            };
+            return new SqlConnection(builder.ConnectionString);
+        }
+
+        /// <summary>Активирует главное окно приложения.</summary>
+        private static void ActivateMainWindow()
+        {
+            if (Application.Current.MainWindow is not Window window) return;
+
+            if (window.WindowState == WindowState.Minimized)
+                window.WindowState = WindowState.Normal;
+
+            window.Show();
+            window.Activate();
+            window.Topmost = true;
+            window.Topmost = false;
+            window.Focus();
+        }
+
+        /// <summary>Показывает системное уведомление Windows.</summary>
         private static void ShowToast(string text)
         {
             const string AppId = "remeLog";
 
-            var xml = new XmlDocument();
-            xml.LoadXml(
-                "<toast>" +
-                "<visual>" +
-                "<binding template=\"ToastGeneric\">" +
-                "<text>remeLog</text>" +
-                "<text>" + System.Security.SecurityElement.Escape(text) + "</text>" +
-                "</binding>" +
-                "</visual>" +
-                "</toast>");
+            try
+            {
+                var xml = new XmlDocument();
+                xml.LoadXml(
+                    "<toast>" +
+                    "<visual><binding template=\"ToastGeneric\">" +
+                    "<text>remeLog</text>" +
+                    "<text>" + System.Security.SecurityElement.Escape(text) + "</text>" +
+                    "</binding></visual>" +
+                    "</toast>");
 
-            var toast = new ToastNotification(xml);
-            ToastNotificationManager.CreateToastNotifier(AppId).Show(toast);
+                var toast = new ToastNotification(xml);
+                ToastNotificationManager.CreateToastNotifier(AppId).Show(toast);
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "Ошибка показа Toast-уведомления");
+            }
         }
-
-
 
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
+
             _cts.Cancel();
+
+            try
+            {
+                Task.WhenAll(
+                        _heartbeatTask ?? Task.CompletedTask,
+                        _pollingTask ?? Task.CompletedTask)
+                    .Wait(TimeSpan.FromSeconds(5));
+            }
+            catch
+            { }
+            finally
+            {
+                _cts.Dispose();
+            }
         }
     }
 }
