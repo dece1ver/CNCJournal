@@ -529,7 +529,10 @@ namespace libeLog.Infrastructure.Sql
                 .AddDateTimeColumn("StartedUtc", false)
                 .AddDateTimeColumn("LastSeenUtc", false)
                 .AddIndex(new[] { "LastSeenUtc" }, name: "IX_app_presence_alive")
-                .AddIndex(new[] { "Application", "LastSeenUtc" }, name: "IX_app_presence_app_alive")
+                .AddIndex(
+                    new[] { "MachineName", "UserName", "LastSeenUtc" },
+                    name: "IX_app_presence_active_instances",
+                    include: new[] { "SessionId", "AppVersion", "StartedUtc" })
                 .Build(),
 
             new TableBuilder("remeLog_app_commands")

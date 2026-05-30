@@ -1054,177 +1054,134 @@ namespace remeLog.Infrastructure
             }
         }
 
-        public static DbResult ReadMachines(this ICollection<string> machines)
+        /// <summary>
+        /// Читает список активных станков (имена).
+        /// </summary>
+        public static (DbResult Result, List<string> Machines) ReadMachines()
         {
-            machines.Clear();
+            var machines = new List<string>();
             try
             {
-                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
-                {
-                    connection.Open();
-                    string query = $"SELECT Name FROM cnc_machines WHERE IsActive = 1 ORDER BY Name ASC";
-                    using (SqlCommand command = new(query, connection))
-                    {
-                        using (SqlDataReader reader = command.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                machines.Add(reader.GetString(0));
-                            }
-                        }
-                    }
-                }
-                return DbResult.Ok;
+                using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+                connection.Open();
+                const string query = "SELECT Name FROM cnc_machines WHERE IsActive = 1 ORDER BY Name ASC";
+                using var command = new SqlCommand(query, connection);
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                    machines.Add(reader.GetString(0));
+                return (DbResult.Ok, machines);
             }
             catch (SqlException sqlEx)
             {
-                switch (sqlEx.Number)
-                {
-                    case 18456:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
-                        return DbResult.AuthError;
-                    default:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
-                        return DbResult.Error;
-                }
+                Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
+                return (sqlEx.Number == 18456 ? DbResult.AuthError : DbResult.Error, machines);
             }
             catch (Exception ex)
             {
                 Util.WriteLog(ex);
-                return DbResult.Error;
+                return (DbResult.Error, machines);
             }
         }
 
         /// <summary>
-        /// Это для MachineFilter, для Machine использовать GetMachinesAsync
+        /// Читает список активных станков с типом (для MachineFilter).
+        /// Для получения полной модели Machine использовать GetMachinesAsync.
         /// </summary>
-        /// <param name="machines"></param>
-        /// <returns></returns>
-        public async static Task<DbResult> ReadMachines(this ICollection<MachineFilter> machines)
+        public static async Task<(DbResult Result, List<MachineFilter> Machines)> ReadMachinesAsync()
         {
+            var machines = new List<MachineFilter>();
             try
             {
-                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await connection.OpenAsync();
+                const string query = "SELECT Name, Type FROM cnc_machines WHERE IsActive = 1 ORDER BY Name ASC";
+                await using var command = new SqlCommand(query, connection);
+                await using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
                 {
-                    await connection.OpenAsync();
-                    string query = $"SELECT Name, Type FROM cnc_machines WHERE IsActive = 1 ORDER BY Name ASC";
-                    using (SqlCommand command = new(query, connection))
-                    {
-                        using (SqlDataReader reader = await command.ExecuteReaderAsync())
-                        {
-                            while (await reader.ReadAsync())
-                            {
-                                machines.Add(new(await reader.GetFieldValueAsync<string>(0), await reader.GetFieldValueAsync<string>(1), false));
-                            }
-                        }
-                    }
+                    machines.Add(new MachineFilter(
+                        await reader.GetFieldValueAsync<string>(0),
+                        await reader.GetFieldValueAsync<string>(1),
+                        false));
                 }
-                return DbResult.Ok;
+                return (DbResult.Ok, machines);
             }
             catch (SqlException sqlEx)
             {
-                switch (sqlEx.Number)
-                {
-                    case 18456:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
-                        return DbResult.AuthError;
-                    default:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
-                        return DbResult.Error;
-                }
+                Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
+                return (sqlEx.Number == 18456 ? DbResult.AuthError : DbResult.Error, machines);
             }
             catch (Exception ex)
             {
                 Util.WriteLog(ex);
-                return DbResult.Error;
+                return (DbResult.Error, machines);
             }
         }
 
-        public static DbResult ReadDeviationReasons(this ICollection<(string, bool)> reasons, DeviationReasonType type)
+        /// <summary>
+        /// Читает причины отклонений заданного типа.
+        /// </summary>
+        public static (DbResult Result, List<(string Reason, bool RequireComment)> Reasons)
+            ReadDeviationReasons(DeviationReasonType type)
         {
+            var reasons = new List<(string, bool)>();
             try
             {
-                reasons.Clear();
-                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                var typeCondition = type switch
                 {
-                    var typeCondition = type switch
-                    {
-                        DeviationReasonType.Setup => "Type = 'Setup'",
-                        DeviationReasonType.Machining => "Type = 'Machining'",
-                        _ => throw new ArgumentException("Неверный аргумент в типе причин."),
-                    };
-                    connection.Open();
-                    string query = $"SELECT Reason, RequireComment FROM cnc_deviation_reasons WHERE Type IS NULL OR {typeCondition} ORDER BY Reason ASC";
-                    using (SqlCommand command = new(query, connection))
-                    {
-                        using (SqlDataReader reader = command.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                reasons.Add((reader.GetString(0), reader.GetBoolean(1)));
-                            }
-                        }
-                    }
-                }
-                return DbResult.Ok;
+                    DeviationReasonType.Setup => "Type = 'Setup'",
+                    DeviationReasonType.Machining => "Type = 'Machining'",
+                    _ => throw new ArgumentException($"Неверный тип причин: {type}", nameof(type)),
+                };
+
+                using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+                connection.Open();
+                var query = $"SELECT Reason, RequireComment FROM cnc_deviation_reasons " +
+                            $"WHERE Type IS NULL OR {typeCondition} ORDER BY Reason ASC";
+                using var command = new SqlCommand(query, connection);
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                    reasons.Add((reader.GetString(0), reader.GetBoolean(1)));
+                return (DbResult.Ok, reasons);
             }
             catch (SqlException sqlEx)
             {
-                switch (sqlEx.Number)
-                {
-                    case 18456:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
-                        return DbResult.AuthError;
-                    default:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
-                        return DbResult.Error;
-                }
+                Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
+                return (sqlEx.Number == 18456 ? DbResult.AuthError : DbResult.Error, reasons);
             }
             catch (Exception ex)
             {
                 Util.WriteLog(ex);
-                return DbResult.Error;
+                return (DbResult.Error, reasons);
             }
         }
 
-        public static DbResult ReadDowntimeReasons(this ICollection<string> reasons)
+        /// <summary>
+        /// Читает причины неотмеченных простоев.
+        /// </summary>
+        public static (DbResult Result, List<string> Reasons) ReadDowntimeReasons()
         {
+            var reasons = new List<string>();
             try
             {
-                reasons.Clear();
-                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
-                {
-                    connection.Open();
-                    string query = $"SELECT Reason FROM cnc_downtime_reasons ORDER BY Reason ASC";
-                    using (SqlCommand command = new(query, connection))
-                    {
-                        using (SqlDataReader reader = command.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                reasons.Add(reader.GetString(0));
-                            }
-                        }
-                    }
-                }
-                return DbResult.Ok;
+                using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+                connection.Open();
+                const string query = "SELECT Reason FROM cnc_downtime_reasons ORDER BY Reason ASC";
+                using var command = new SqlCommand(query, connection);
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                    reasons.Add(reader.GetString(0));
+                return (DbResult.Ok, reasons);
             }
             catch (SqlException sqlEx)
             {
-                switch (sqlEx.Number)
-                {
-                    case 18456:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
-                        return DbResult.AuthError;
-                    default:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
-                        return DbResult.Error;
-                }
+                Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
+                return (sqlEx.Number == 18456 ? DbResult.AuthError : DbResult.Error, reasons);
             }
             catch (Exception ex)
             {
                 Util.WriteLog(ex);
-                return DbResult.Error;
+                return (DbResult.Error, reasons);
             }
         }
 

@@ -172,14 +172,14 @@ namespace remeLog.ViewModels
 
         public bool IsSingleShift => FromDate == ToDate;
         public bool IsSingleWorkingShift => IsSingleShift && !AppSettings.Holidays.Contains(ToDate);
+
+        private List<ShiftInfo> _totalShifts = new();
         public List<ShiftInfo> TotalShifts
         {
-            get
-            {
-                Database.GetShiftsByPeriod(Machines, FromDate, ToDate, new Shift(ShiftType.All), out var shifts);
-                return shifts;
-            }
+            get => _totalShifts;
+            set => Set(ref _totalShifts, value);
         }
+
         public int TotalMachinesCount => IsSingleWorkingShift ? Parts.Count : 0;
         public int TotalMachinesCountForPeriod => Parts.Count * (Parts.FirstOrDefault()?.TotalShifts ?? 0) / 2;
         public int ReportsExistCount => Parts.Count(p => p.IsReportExist != ReportState.NotExist);
@@ -597,63 +597,42 @@ namespace remeLog.ViewModels
                     OnPropertyChanged(nameof(IsAdministrator));
                     Util.WriteLog($"[LoadParts] UpdateAppSettings: {(sw.Elapsed - t0).TotalMilliseconds:F0} ms");
 
-                    // Станки
+                    // Справочники
                     var t1 = sw.Elapsed;
-                    Status = "Получение списка станков...";
-                    var machinesResult = await Task.Run(Machines.ReadMachines, cancellationToken);
-                    Util.WriteLog($"[LoadParts] ReadMachines: {(sw.Elapsed - t1).TotalMilliseconds:F0} ms");
-                    if (machinesResult != DbResult.Ok)
-                    {
-                        ShowDbError(machinesResult, "список станков");
-                        return;
-                    }
+                    Status = "Загрузка справочников...";
 
-                    // Причины простоев 
-                    var t2 = sw.Elapsed;
-                    Status = "Получение списка причин неотмеченных простоев...";
-                    var downtimeResult = await Task.Run(
-                        AppSettings.Instance.UnspecifiedDowntimesReasons.ReadDowntimeReasons,
-                        cancellationToken);
-                    Util.WriteLog($"[LoadParts] ReadDowntimeReasons: {(sw.Elapsed - t2).TotalMilliseconds:F0} ms");
-                    if (downtimeResult != DbResult.Ok)
-                    {
-                        ShowDbError(downtimeResult, "причины простоев");
-                        return;
-                    }
+                    var machinesTask = Task.Run(Database.ReadMachines, cancellationToken);
+                    var downtimeTask = Task.Run(Database.ReadDowntimeReasons, cancellationToken);
+                    var setupTask = Task.Run(() => Database.ReadDeviationReasons(DeviationReasonType.Setup), cancellationToken);
+                    var machiningTask = Task.Run(() => Database.ReadDeviationReasons(DeviationReasonType.Machining), cancellationToken);
 
-                    // Причины отклонений наладки
-                    var t3 = sw.Elapsed;
-                    Status = "Получение списка причин отклонений в наладке...";
-                    var setupResult = await Task.Run(
-                        () => AppSettings.Instance.SetupReasons.ReadDeviationReasons(DeviationReasonType.Setup),
-                        cancellationToken);
-                    Util.WriteLog($"[LoadParts] ReadDeviationReasons(Setup): {(sw.Elapsed - t3).TotalMilliseconds:F0} ms");
-                    if (setupResult != DbResult.Ok)
-                    {
-                        ShowDbError(setupResult, "причины отклонений наладки");
-                        return;
-                    }
+                    await Task.WhenAll(machinesTask, downtimeTask, setupTask, machiningTask);
+#if DEBUG
+                    Util.WriteLog($"[LoadParts] Справочники (параллельно): {(sw.Elapsed - t1).TotalMilliseconds:F0} ms"); 
+#endif
 
-                    // Причины отклонений изготовления
-                    var t4 = sw.Elapsed;
-                    Status = "Получение списка причин отклонений в изготовлении...";
-                    var machiningResult = await Task.Run(
-                        () => AppSettings.Instance.MachiningReasons.ReadDeviationReasons(DeviationReasonType.Machining),
-                        cancellationToken);
-                    Util.WriteLog($"[LoadParts] ReadDeviationReasons(Machining): {(sw.Elapsed - t4).TotalMilliseconds:F0} ms");
-                    if (machiningResult != DbResult.Ok)
-                    {
-                        ShowDbError(machiningResult, "причины отклонений изготовления");
-                        return;
-                    }
+                    var (mr, machines) = machinesTask.Result;
+                    var (dr, downtimes) = downtimeTask.Result;
+                    var (sr, setup) = setupTask.Result;
+                    var (cr, machining) = machiningTask.Result;
+
+                    if (mr != DbResult.Ok) { ShowDbError(mr, "список станков"); return; }
+                    if (dr != DbResult.Ok) { ShowDbError(dr, "причины простоев"); return; }
+                    if (sr != DbResult.Ok) { ShowDbError(sr, "причины отклонений наладки"); return; }
+                    if (cr != DbResult.Ok) { ShowDbError(cr, "причины отклонений изгот."); return; }
+
+                    Machines = machines;
+                    AppSettings.Instance.UnspecifiedDowntimesReasons = downtimes;
+                    AppSettings.Instance.SetupReasons = setup;
+                    AppSettings.Instance.MachiningReasons = machining;
+                    OnPropertyChanged(nameof(IsAdministrator));
 
                     var t5 = sw.Elapsed;
                     Status = "Получение статусов отчётов...";
 
-                    // список станков для фонового потока
                     var machinesCopy = Machines.ToList();
 
-                    var reportStates = await Task.Run(() =>
+                    var reportStatesTask = Task.Run(() =>
                     {
                         var list = new List<(string Machine, ReportState State, bool IsChecked)>();
 
@@ -697,7 +676,20 @@ namespace remeLog.ViewModels
                         return list;
                     }, cancellationToken);
 
+                    var totalShiftsTask = Task.Run(() =>
+                    {
+                        Database.GetShiftsByPeriod(machinesCopy, FromDate, ToDate,
+                            new Shift(ShiftType.All), out var shifts);
+                        return shifts;
+                    }, cancellationToken);
+
+                    await Task.WhenAll(reportStatesTask, totalShiftsTask);
+                    _totalShifts = totalShiftsTask.Result;
+                    var reportStates = reportStatesTask.Result;
+
+#if DEBUG
                     Util.WriteLog($"[LoadParts] ReadShiftInfos ({machinesCopy.Count} станков): {(sw.Elapsed - t5).TotalMilliseconds:F0} ms");
+#endif
 
                     var t6 = sw.Elapsed;
                     Status = "Построение списка деталей...";
@@ -712,53 +704,77 @@ namespace remeLog.ViewModels
                             }).ToList();
 
                         Parts.ReplaceAll(list);
+                        OnPropertyChanged(nameof(TotalMachinesCount));
+                        OnPropertyChanged(nameof(TotalMachinesCountForPeriod));
+                        OnPropertyChanged(nameof(ReportsExistCount));
+                        OnPropertyChanged(nameof(ReportsExistCountForPeriod));
+                        OnPropertyChanged(nameof(CheckedReportsCount));
+                        OnPropertyChanged(nameof(CheckedReportsCountForPeriod));
+                        OnPropertyChanged(nameof(ReportsSummary));
+                        OnPropertyChanged(nameof(CheckedSummary));
+                        OnPropertyChanged(nameof(ReportsSummaryForPeriod));
+                        OnPropertyChanged(nameof(CheckedSummaryForPeriod));
                     });
 
-                    Util.WriteLog($"[LoadParts] UI update (Parts collection): {(sw.Elapsed - t6).TotalMilliseconds:F0} ms");
+#if DEBUG
+                    Util.WriteLog($"[LoadParts] UI update (Parts collection): {(sw.Elapsed - t6).TotalMilliseconds:F0} ms"); 
+#endif
 
                     var t7 = sw.Elapsed;
                     Status = "Загрузка деталей...";
 
-                    foreach (var part in Parts)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
+                    var partsCopy = Parts.ToList();
 
-                        var tPart = sw.Elapsed;
-                        try
+                    await Parallel.ForEachAsync(
+                        partsCopy,
+                        new ParallelOptions
                         {
-                            var partsData = await Database.ReadPartsByShiftDateAndMachine(
-                                FromDate, ToDate, part.Machine, cancellationToken);
-
-                            await Application.Current.Dispatcher.InvokeAsync(
-                                () => part.Parts = partsData);
-
-                            Util.WriteLog($"[LoadParts] ReadParts({part.Machine}): {(sw.Elapsed - tPart).TotalMilliseconds:F0} ms");
-                        }
-                        catch (OperationCanceledException)
+                            MaxDegreeOfParallelism = 4,
+                            CancellationToken = cancellationToken
+                        },
+                        async (part, ct) =>
                         {
-                            Util.WriteLog($"[LoadParts] ReadParts({part.Machine}): отменено");
-                            return;
-                        }
-                        catch (SqlException sqlEx)
-                        {
-                            Util.WriteLog(sqlEx, $"[LoadParts] SqlException при загрузке {part.Machine}");
-                            var message = sqlEx.Number switch
+                            var tPart = sw.Elapsed;
+                            try
                             {
-                                SqlErrorCode.NoConnection => StatusTips.NoConnectionToDb,
-                                SqlErrorCode.AuthError => StatusTips.AuthFailedToDb,
-                                _ => $"Ошибка БД №{sqlEx.Number}\n{sqlEx.Message}",
-                            };
-                            MessageBox.Show(message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                        }
-                        catch (Exception ex)
-                        {
-                            Util.WriteLog(ex, $"[LoadParts] Exception при загрузке {part.Machine}");
-                            MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                        }
-                    }
+                                var partsData = await Database.ReadPartsByShiftDateAndMachine(
+                                    FromDate, ToDate, part.Machine, ct);
 
+                                await Application.Current.Dispatcher.InvokeAsync(
+                                    () => part.Parts = partsData);
+
+#if DEBUG
+                                Util.WriteLog($"[LoadParts] ReadParts({part.Machine}): {(sw.Elapsed - tPart).TotalMilliseconds:F0} ms"); 
+#endif
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                Util.WriteLog($"[LoadParts] ReadParts({part.Machine}): отменено");
+                            }
+                            catch (SqlException sqlEx)
+                            {
+                                Util.WriteLog(sqlEx, $"[LoadParts] SqlException при загрузке {part.Machine}");
+                                var message = sqlEx.Number switch
+                                {
+                                    SqlErrorCode.NoConnection => StatusTips.NoConnectionToDb,
+                                    SqlErrorCode.AuthError => StatusTips.AuthFailedToDb,
+                                    _ => $"Ошибка БД №{sqlEx.Number}\n{sqlEx.Message}",
+                                };
+                                await Application.Current.Dispatcher.InvokeAsync(
+                                    () => MessageBox.Show(message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error));
+                            }
+                            catch (Exception ex)
+                            {
+                                Util.WriteLog(ex, $"[LoadParts] Exception при загрузке {part.Machine}");
+                                await Application.Current.Dispatcher.InvokeAsync(
+                                    () => MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error));
+                            }
+                        });
+
+#if DEBUG
                     Util.WriteLog($"[LoadParts] ReadParts (все станки): {(sw.Elapsed - t7).TotalMilliseconds:F0} ms");
                     Util.WriteLog($"[LoadParts] ИТОГО: {sw.Elapsed.TotalMilliseconds:F0} ms");
+#endif
                 }
                 finally
                 {

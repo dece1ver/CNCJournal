@@ -1,5 +1,7 @@
-﻿using remeLog.Infrastructure;
+﻿using DocumentFormat.OpenXml.Spreadsheet;
+using remeLog.Infrastructure;
 using remeLog.Infrastructure.Extensions;
+using remeLog.Infrastructure.Types;
 using remeLog.Models;
 using remeLog.ViewModels;
 using System;
@@ -147,68 +149,78 @@ namespace remeLog.Views
             }
             else if (e.RightButton == MouseButtonState.Pressed)
             {
-                DependencyObject depObj = (DependencyObject)e.OriginalSource;
+                var depObj = (DependencyObject)e.OriginalSource;
 
-                TextBox editingTextBox = FindVisualParent<TextBox>(depObj);
-                if (editingTextBox != null)
+                // Редактируемый TextBox — показываем меню редактирования
+                if (FindVisualParent<TextBox>(depObj) is { } editingTextBox)
                 {
                     editingTextBox.Focus();
                     e.Handled = true;
-                    var extendedTextBoxMenu = (ContextMenu)FindResource("EditingTextBoxContextMenu");
-
-                    extendedTextBoxMenu.PlacementTarget = editingTextBox;
-                    extendedTextBoxMenu.IsOpen = true;
+                    var textBoxMenu = (ContextMenu)FindResource("EditingTextBoxContextMenu");
+                    textBoxMenu.PlacementTarget = editingTextBox;
+                    textBoxMenu.IsOpen = true;
                     return;
                 }
 
-                DataGridCell cell = FindVisualParent<DataGridCell>(depObj);
-                if (cell != null)
+                if (FindVisualParent<DataGridCell>(depObj) is not { } cell) return;
+
+                var column = cell.Column;
+                var value = cell.DataContext;
+
+                if (DataContext is PartsInfoWindowViewModel d && value is Part p)
                 {
-                    DataGridColumn column = cell.Column;
-                    object value = cell.DataContext;
-                    if (DataContext is PartsInfoWindowViewModel d && value is Part p)
+                    switch (column.DisplayIndex)
                     {
-                        switch (column.DisplayIndex)
-                        {
-                            case 3 or 5:
-                                e.Handled = true;
-                                cell.Focus();
-                                var multiFilterValueContextMenu = (ContextMenu)FindResource("MultiFilterValueContextMenu");
-                                multiFilterValueContextMenu.PlacementTarget = cell;
-                                multiFilterValueContextMenu.IsOpen = true;
-                                break;
-                            case 10 or 11 or 12:
-                                e.Handled = true;
-                                cell.Focus();
-                                var timeContextMenu = (ContextMenu)FindResource("TimeContextMenu");
-                                timeContextMenu.PlacementTarget = cell;
-                                timeContextMenu.IsOpen = true;
-                                break;
-                            case 41:
-                                e.Handled = true;
-                                cell.Focus();
-                                var masterCommentContextMenu = (ContextMenu)FindResource("MasterCommentCellContextMenu");
-                                masterCommentContextMenu.PlacementTarget = cell;
-                                masterCommentContextMenu.IsOpen = true;
-                                break;
-                            case 42 or 43 when p.IsSerial:
-                                e.Handled = true;
-                                cell.Focus();
-                                var serialPartFixedSetupContextMenu = (ContextMenu)FindResource("SerialPartFixedNormativesContextMenu");
-                                serialPartFixedSetupContextMenu.PlacementTarget = cell;
-                                serialPartFixedSetupContextMenu.IsOpen = true;
-                                break;
-                            case 44:
-                                e.Handled = true;
-                                cell.Focus();
-                                var engeneerCommentContextMenu = (ContextMenu)FindResource("EngeneerCommentCellContextMenu");
-                                engeneerCommentContextMenu.PlacementTarget = cell;
-                                engeneerCommentContextMenu.IsOpen = true;
-                                break;
-                        }
+                        // Оператор и М/Л — добавление в MultiValueEditor
+                        case 3 or 5:
+                            e.Handled = true;
+                            cell.Focus();
+                            var multiMenu = (ContextMenu)FindResource("MultiFilterValueContextMenu");
+                            multiMenu.PlacementTarget = cell;
+                            multiMenu.IsOpen = true;
+                            break;
+
+                        // Времена — вставка готовых значений
+                        case 10 or 11 or 12:
+                            e.Handled = true;
+                            cell.Focus();
+                            var timeMenu = (ContextMenu)FindResource("TimeContextMenu");
+                            timeMenu.PlacementTarget = cell;
+                            timeMenu.IsOpen = true;
+                            break;
+
+                        // Комментарий мастера к наладке
+                        case 41:
+                            e.Handled = true;
+                            cell.Focus();
+                            var masterMenu = (ContextMenu)FindResource("MasterCommentCellContextMenu");
+                            masterMenu.PlacementTarget = cell;
+                            masterMenu.IsOpen = true;
+                            break;
+
+                        // Нормативы серийной детали
+                        case 42 or 43 when p.IsSerial:
+                            e.Handled = true;
+                            cell.Focus();
+                            var normMenu = (ContextMenu)FindResource("SerialPartFixedNormativesContextMenu");
+                            normMenu.PlacementTarget = cell;
+                            normMenu.IsOpen = true;
+                            break;
+
+                        // Комментарий техотдела
+                        case 44:
+                            e.Handled = true;
+                            cell.Focus();
+                            var engMenu = (ContextMenu)FindResource("EngeneerCommentCellContextMenu");
+                            engMenu.PlacementTarget = cell;
+                            engMenu.IsOpen = true;
+                            break;
                     }
                 }
+                if (!e.Handled)
+                    TryShowFilterContextMenu(cell, e);
             }
+
         }
 
         private void DataGrid_SelectedCellsChanged(object sender, SelectedCellsChangedEventArgs e)
@@ -348,11 +360,123 @@ namespace remeLog.Views
                                 e.Handled = true;
                             }
                             break;
-                        
                     }
                 }
             }
         }
+
+        /// <summary>
+        /// Показывает контекстное меню фильтрации для любой колонки таблицы.
+        /// Вызывается из DataGrid_PreviewMouseDown как fallback после специфичных меню.
+        /// </summary>
+        private void TryShowFilterContextMenu(DataGridCell cell, MouseButtonEventArgs e)
+        {
+            if (DataContext is not PartsInfoWindowViewModel d) return;
+
+            int colIndex = cell.Column.DisplayIndex;
+
+            if (!PartColumnMeta.Map.TryGetValue(colIndex, out var meta)) return;
+            if (meta.Kind == FilterKind.None) return;
+
+            string? cellValue = GetCellTextValue(cell);
+            if (string.IsNullOrWhiteSpace(cellValue)) return;
+
+            var menu = (ContextMenu)FindResource("GenericCellFilterContextMenu");
+            menu.Items.Clear();
+
+            menu.Items.Add(new MenuItem
+            {
+                Header = meta.DisplayName,
+                IsEnabled = false,
+                FontWeight = FontWeights.SemiBold,
+            });
+            menu.Items.Add(new Separator());
+
+            // Для колонок с существующими UI-контролами (Смена, Оператор, Деталь,
+            // М/Л, Установка) обновляем их напрямую; для остальных — чип.
+            var filterItem = new MenuItem { Header = $"Фильтровать: «{cellValue}»" };
+            filterItem.Click += (_, _) =>
+            {
+                switch (colIndex)
+                {
+                    case 2:
+                        d.ShiftFilter = new Shift(cellValue);
+                        break;
+                    case 3:
+                        d.OperatorFilter = cellValue;
+                        break;
+                    case 4:
+                        d.PartNameFilter = cellValue;
+                        break;
+                    case 5:
+                        d.OrderFilter = cellValue;
+                        break;
+                    case 9 when int.TryParse(cellValue, out int setup):
+                        d.SetupFilter = setup;
+                        break;
+                    default:
+                        d.SetChipFilter(meta, cellValue);
+                        break;
+                }
+            };
+            menu.Items.Add(filterItem);
+            var addItem = new MenuItem { Header = $"Добавить к фильтру: «{cellValue}»" };
+            addItem.Click += (_, _) =>
+            {
+                string editorKey = colIndex switch
+                {
+                    3 => "Operator",
+                    5 => "Order",
+                    _ when string.IsNullOrWhiteSpace(meta.SqlColumn) => $"col:{colIndex}",
+                    _ => meta.SqlColumn,
+                };
+                d.PushValueToEditor(editorKey, cellValue);
+            };
+
+            menu.Items.Add(addItem);
+
+            var existingChip = d.ChipFilters.FirstOrDefault(c => c.DisplayName == meta.DisplayName);
+
+            bool hasActiveFilter = colIndex switch
+            {
+                2 => d.ShiftFilter.Type != ShiftType.All,
+                3 => !string.IsNullOrEmpty(d.OperatorFilter),
+                4 => !string.IsNullOrEmpty(d.PartNameFilter),
+                5 => !string.IsNullOrEmpty(d.OrderFilter),
+                9 => d.SetupFilter.HasValue,
+                _ => existingChip is not null,
+            };
+
+            if (hasActiveFilter)
+            {
+                menu.Items.Add(new Separator());
+
+                var clearItem = new MenuItem { Header = $"Убрать фильтр по «{meta.DisplayName}»" };
+                clearItem.Click += (_, _) =>
+                {
+                    switch (colIndex)
+                    {
+                        case 2: d.ShiftFilter = new Shift(ShiftType.All); break;
+                        case 3: d.OperatorFilter = string.Empty; break;
+                        case 4: d.PartNameFilter = string.Empty; break;
+                        case 5: d.OrderFilter = string.Empty; break;
+                        case 9: d.SetupFilter = null; break;
+                        default:
+                            if (existingChip is not null)
+                                d.RemoveChipFilter(existingChip);
+                            break;
+                    }
+                };
+                menu.Items.Add(clearItem);
+            }
+
+            e.Handled = true;
+            cell.Focus();
+            menu.PlacementTarget = cell;
+            menu.IsOpen = true;
+        }
+
+
 
         private bool CanPasteToCell(DataGridCellInfo cellInfo)
         {
@@ -748,6 +872,23 @@ namespace remeLog.Views
             grid.CommitEdit(DataGridEditingUnit.Cell, true);
         }
 
+        /// <summary>
+        /// Получает строковое значение из ячейки DataGrid в режиме отображения.
+        /// </summary>
+        private string? GetCellTextValue(DataGridCell cell)
+        {
+            if (FindVisualChild<TextBlock>(cell) is { } tb
+                && !string.IsNullOrWhiteSpace(tb.Text))
+                return tb.Text;
+
+            if (FindVisualChild<CheckBox>(cell) is { } cb)
+                return cb.IsChecked == true ? "True" : "False";
+
+            return null;
+        }
+
+
+
         private void PasteToCell(DataGrid grid, DataGridCellInfo cellInfo)
         {
             string text = Clipboard.GetText()
@@ -770,6 +911,14 @@ namespace remeLog.Views
 
             grid.CommitEdit(DataGridEditingUnit.Cell, true);
         }
+
+        private static bool TryGetColumnMeta(int displayIndex, out ColumnMeta meta)
+        {
+            if (PartColumnMeta.Map.TryGetValue(displayIndex, out meta!))
+                return meta.Kind != FilterKind.None && !string.IsNullOrEmpty(meta.SqlColumn);
+            return false;
+        }
+
 
         private static T? FindBoundFrameworkElement<T>(DependencyObject parent) where T : FrameworkElement
         {

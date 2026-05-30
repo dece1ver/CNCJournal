@@ -1,6 +1,4 @@
-﻿using DocumentFormat.OpenXml.Bibliography;
-using DocumentFormat.OpenXml.Office2019.Excel.RichData2;
-using libeLog;
+﻿using libeLog;
 using libeLog.Base;
 using libeLog.Extensions;
 using libeLog.Infrastructure;
@@ -93,6 +91,8 @@ namespace remeLog.ViewModels
             UnlockSerialPartNormativesCommand = new LambdaCommand(OnUnlockSerialPartNormativesCommandExecuted, CanUnlockSerialPartNormativesCommandExecute);
             OpenMultiValueEditorCommand = new LambdaCommand(OnOpenMultiValueEditorCommandExecuted, CanOpenMultiValueEditorCommandExecute);
             UpdatePartsCommand = new LambdaCommand(OnUpdatePartsCommandExecutedAsync, CanUpdatePartsCommandExecute);
+            RemoveChipFilterCommand = new LambdaCommand(OnRemoveChipFilterExecuted);
+            ClearChipFiltersCommand = new LambdaCommand(_ => ClearChipFilters());
 
             CalcFixed = Part.CalcFixed;
             PartsInfo = parts;
@@ -116,11 +116,24 @@ namespace remeLog.ViewModels
             {
                 PropertyChanged += Part_PropertyChanged!;
             }
-            UpdateHasErrors();
+            ChipFilters = new ObservableCollection<FilterChip>();
+            ChipFilters.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasChipFilters));
             OnPropertyChanged(nameof(HasErrors));
+            UpdateHasErrors();
             _ = Init();
-            
         }
+
+        private ObservableCollection<FilterChip> _ChipFilters = new();
+        /// <summary>Активные чип-фильтры, добавленные через контекстное меню.</summary>
+        public ObservableCollection<FilterChip> ChipFilters
+        {
+            get => _ChipFilters;
+            private set => Set(ref _ChipFilters, value);
+        }
+
+        /// <summary>True если есть хотя бы один чип-фильтр — управляет видимостью панели.</summary>
+        public bool HasChipFilters => ChipFilters.Count > 0;
+
 
         public List<int> AvailableYears =>
             Enumerable.Range(2023, DateTime.Now.Year - 2023 + 1).ToList();
@@ -138,8 +151,8 @@ namespace remeLog.ViewModels
 
         async Task Init()
         {
-            await _MachineFilters.ReadMachines();
-            
+            var (_, machineFilters) = await Database.ReadMachinesAsync();
+            _MachineFilters = machineFilters.ToObservableCollection();
             foreach (var machineFilter in MachineFilters)
             {
                 machineFilter.Filter = machineFilter.Machine == PartsInfo.Machine || PartsInfo.Machine == "Все станки";
@@ -1932,56 +1945,143 @@ namespace remeLog.ViewModels
 
         private void OnOpenMultiValueEditorCommandExecuted(object p)
         {
-            if (p is not string fieldName) return;
+            if (p is not string fieldKey) return;
 
-            string currentValue = fieldName switch
+            // Текущее значение для предзаполнения редактора
+            string currentValue = fieldKey switch
             {
                 "Operator" => OperatorFilter,
                 "Order" => OrderFilter,
-                _ => ""
+                _ => ChipFilters.FirstOrDefault(c => c.SqlColumn == fieldKey)?.Value ?? "",
             };
 
-            var editor = new MultiValueEditorWindow(fieldName, currentValue)
+            // Отображаемое название для заголовка окна редактора
+            string displayName = fieldKey switch
+            {
+                "Operator" => "Оператор",
+                "Order" => "М/Л",
+                _ when fieldKey.StartsWith("col:", StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(fieldKey.AsSpan(4), out int colIndex)
+                    && PartColumnMeta.Map.TryGetValue(colIndex, out var metaByIndex)
+                        => metaByIndex.DisplayName,
+
+                _ => PartColumnMeta.Map.Values
+                         .FirstOrDefault(m => m.SqlColumn == fieldKey)?.DisplayName
+                     ?? fieldKey,
+            };
+
+            var editor = new MultiValueEditorWindow(displayName, currentValue)
             {
                 Owner = Application.Current.Windows.OfType<PartsInfoWindow>().FirstOrDefault(),
                 ShowInTaskbar = false,
-                Topmost = true 
+                Topmost = true,
             };
 
-            editor.Closed += (s, args) =>
+            editor.Closed += (_, _) =>
             {
-                _editors.Remove(fieldName);
-                if (editor.Resilt)
+                _editors.Remove(fieldKey);
+
+                if (!editor.Resilt) return;
+
+                switch (fieldKey)
                 {
-                    switch (fieldName)
-                    {
-                        case "Operator":
-                            OperatorFilter = editor.ResultString;
+                    case "Operator":
+                        OperatorFilter = editor.ResultString;
+                        break;
+                    case "Order":
+                        OrderFilter = editor.ResultString;
+                        break;
+
+                    default:
+                        ColumnMeta? meta = null;
+
+                        if (fieldKey.StartsWith("col:") &&
+                            int.TryParse(fieldKey[4..], out int colIndex))
+                        {
+                            PartColumnMeta.Map.TryGetValue(colIndex, out meta);
+                        }
+                        else
+                        {
+                            meta = PartColumnMeta.Map.Values
+                                .FirstOrDefault(m => m.SqlColumn == fieldKey);
+                        }
+
+                        if (meta is null)
                             break;
-                        case "Order":
-                            OrderFilter = editor.ResultString;
-                            break;
-                    }
+
+                        var existing = ChipFilters.FirstOrDefault(c => c.SqlColumn == fieldKey);
+                        if (existing is not null) ChipFilters.Remove(existing);
+
+                        if (!string.IsNullOrWhiteSpace(editor.ResultString))
+                        {
+                            // Для InMemory-колонок пересобираем предикат из всех значений
+                            Func<Part, bool>? predicate = null;
+                            if (meta.Kind == FilterKind.InMemory && meta.Predicate is not null)
+                            {
+                                var values = editor.ResultString
+                                    .Split(';', StringSplitOptions.RemoveEmptyEntries
+                                              | StringSplitOptions.TrimEntries)
+                                    .ToArray();
+
+                                predicate = p =>
+                                    values.Any(v => meta.Predicate(p, v));
+                            }
+
+                            ChipFilters.Add(new FilterChip
+                            {
+                                SqlColumn = fieldKey,
+                                DisplayName = meta.DisplayName,
+                                Value = editor.ResultString,
+                                IsInMemory = meta.Kind == FilterKind.InMemory,
+                            });
+
+                        }
+
+                        _ = LoadPartsAsync();
+                        break;
                 }
             };
-            _editors[fieldName] = editor;
+
+            _editors[fieldKey] = editor;
             editor.Show();
         }
 
         private static bool CanOpenMultiValueEditorCommandExecute(object p) => p is string;
         #endregion
 
-        public void PushValueToEditor(string type, string value)
+        #region RemoveChipFilter
+        public ICommand RemoveChipFilterCommand { get; }
+        private void OnRemoveChipFilterExecuted(object p)
         {
-            if (!_editors.ContainsKey(type)) 
+            if (p is FilterChip chip)
+                RemoveChipFilter(chip);
+        }
+
+        #endregion
+
+        #region ClearChipFilters
+        public ICommand ClearChipFiltersCommand { get; }
+
+        #endregion
+
+        public void PushValueToEditor(string fieldKey, string value)
+        {
+            if (!_editors.TryGetValue(fieldKey, out var existing) || !existing.IsVisible)
             {
-                OpenMultiValueEditorCommand.Execute(type);
+                OpenMultiValueEditorCommand.Execute(fieldKey);
             }
-            if (!_editors[type].Values.Any(v => string.Equals(v.Value, value, StringComparison.OrdinalIgnoreCase)))
+
+            if (_editors.TryGetValue(fieldKey, out var editor))
             {
-                _editors[type].Values.Add(new() { Value = value });
+                if (!editor.Values.Any(v =>
+                        string.Equals(v.Value, value, StringComparison.OrdinalIgnoreCase)))
+                {
+                    editor.Values.Add(new() { Value = value });
+                }
             }
         }
+
+
 
         private async Task<bool> LoadPartsAsync(bool first = false)
         {
@@ -2021,6 +2121,7 @@ namespace remeLog.ViewModels
                 }
 
                 var tempParts = await Database.ReadPartsWithConditions(BuildConditions(), cancellationToken);
+                tempParts = ApplyInMemoryFilters(tempParts);
 
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
@@ -2036,7 +2137,11 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"{ex.Message}");
+                var message = ex.Message;
+#if DEBUG
+                message = message += ex.StackTrace;
+#endif
+                MessageBox.Show($"{message}");
                 InProgress = false;
                 return false;
             }
@@ -2058,38 +2163,111 @@ namespace remeLog.ViewModels
             sb.AppendFormat("ShiftDate BETWEEN '{0}' AND '{1}' ", FromDate, ToDate);
 
             if (ShiftFilter is not { Type: ShiftType.All })
-            {
                 sb.AppendFormat("AND Shift = '{0}' ", ShiftFilter.FilterText);
-            }
 
             AppendMultiValueCondition(sb, "Operator", OperatorFilter);
-
             AppendCondition(sb, "PartName", PartNameFilter);
-
             AppendMultiValueCondition(sb, "[Order]", OrderFilter);
-
             AppendCondition(sb, "EngineerComment", EngineerCommentFilter);
 
-            if (Util.TryParseComparison(FinishedCountFilter, out var finishedCountOperator, out var finishedCountValue))
-                sb.AppendFormat("AND FinishedCount {0} {1} ", finishedCountOperator, finishedCountValue);
+            if (Util.TryParseComparison(FinishedCountFilter, out var finishedOp, out var finishedVal))
+                sb.AppendFormat("AND FinishedCount {0} {1} ", finishedOp, finishedVal);
 
-            if (Util.TryParseComparison(TotalCountFilter, out var totalCountOperator, out var totalCountValue))
-                sb.AppendFormat("AND totalCount {0} {1} ", totalCountOperator, totalCountValue);
+            if (Util.TryParseComparison(TotalCountFilter, out var totalOp, out var totalVal))
+                sb.AppendFormat("AND totalCount {0} {1} ", totalOp, totalVal);
 
             if (SetupFilter != null)
                 sb.AppendFormat("AND Setup = {0} ", SetupFilter);
 
             if (OnlySerialPartsFilter)
             {
-                var serialNamesNormalized = string.Join(", ", SerialParts.Select(sp => $"'{sp.PartName.NormalizedPartNameWithoutComments()}'"));
-                sb.AppendFormat("AND NormalizedPartName IN ({0}) ", serialNamesNormalized);
+                var serialNames = string.Join(", ",
+                    SerialParts.Select(sp => $"'{sp.PartName.NormalizedPartNameWithoutComments()}'"));
+                sb.AppendFormat("AND NormalizedPartName IN ({0}) ", serialNames);
             }
 
-            var machines = string.Join(", ", MachineFilters.Where(mf => mf.Filter).Select(m => $"'{m.Machine}'").Distinct());
+            var machines = string.Join(", ",
+                MachineFilters.Where(mf => mf.Filter).Select(m => $"'{m.Machine}'").Distinct());
             sb.AppendFormat("AND Machine IN ({0}) ", machines);
+
+            foreach (var chip in ChipFilters)
+            {
+                if (chip.IsInMemory) continue;
+                var meta = PartColumnMeta.Map.Values
+                    .FirstOrDefault(m => m.SqlColumn == chip.SqlColumn);
+
+                if (meta is null || meta.Kind == FilterKind.None)
+                    continue;
+
+                var values = chip.Value
+                    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .ToList();
+
+                if (values.Count == 0) continue;
+
+                if (values.Count == 1)
+                {
+                    AppendChipCondition(sb, chip.SqlColumn, values[0], meta.Kind);
+                }
+                else
+                {
+                    // Множественный фильтр: только для Text (IN-список) и Number
+                    if (meta.Kind == FilterKind.Text)
+                    {
+                        var inList = string.Join(", ",
+                            values.Select(v => $"'{v.Replace("'", "''")}'"));
+                        sb.AppendFormat("AND {0} IN ({1}) ", chip.SqlColumn, inList);
+                    }
+                    else
+                    {
+                        sb.Append("AND (");
+                        for (int i = 0; i < values.Count; i++)
+                        {
+                            if (i > 0) sb.Append(" OR ");
+                            AppendChipConditionRaw(sb, chip.SqlColumn, values[i], meta.Kind);
+                        }
+                        sb.Append(") ");
+                    }
+                }
+            }
+
 
             return sb.ToString();
         }
+
+        private static void AppendChipCondition(StringBuilder sb, string column, string value, FilterKind kind)
+        {
+            sb.Append("AND ");
+            AppendChipConditionRaw(sb, column, value, kind);
+            sb.Append(' ');
+        }
+
+        private static void AppendChipConditionRaw(StringBuilder sb, string column, string value, FilterKind kind)
+        {
+            switch (kind)
+            {
+                case FilterKind.Text:
+                    sb.AppendFormat("{0} = '{1}'", column, value.Replace("'", "''"));
+                    break;
+
+                case FilterKind.Number:
+                    var numeric = value.TrimEnd('%', ' ');
+                    if (double.TryParse(numeric,
+                            System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            out _))
+                    {
+                        sb.AppendFormat("{0} = {1}", column, numeric);
+                    }
+                    break;
+
+                case FilterKind.Bool:
+                    var boolVal = value is "True" or "1" or "true" or "✓" ? "1" : "0";
+                    sb.AppendFormat("{0} = {1}", column, boolVal);
+                    break;
+            }
+        }
+
 
         private void AppendMultiValueCondition(StringBuilder sb, string column, string value)
         {
@@ -2285,6 +2463,164 @@ namespace remeLog.ViewModels
                     yield return source;
             }
         }
+
+        /// <summary>
+        /// Добавляет чип-фильтр или объединяет со существующим для того же столбца
+        /// (через точку с запятой, как MultiValueEditor).
+        /// </summary>
+        public void AddChipFilter(string sqlColumn, string displayName, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+
+            var existing = ChipFilters.FirstOrDefault(c => c.SqlColumn == sqlColumn);
+            if (existing != null)
+            {
+                // Не добавляем дубли
+                var existingValues = existing.Value
+                    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (existingValues.Contains(value, StringComparer.OrdinalIgnoreCase))
+                    return;
+
+                ChipFilters.Remove(existing);
+                ChipFilters.Add(new FilterChip
+                {
+                    SqlColumn = sqlColumn,
+                    DisplayName = displayName,
+                    Value = $"{existing.Value};{value}",
+                });
+            }
+            else
+            {
+                ChipFilters.Add(new FilterChip
+                {
+                    SqlColumn = sqlColumn,
+                    DisplayName = displayName,
+                    Value = value,
+                });
+            }
+
+            _ = LoadPartsAsync();
+        }
+
+        /// <summary>
+        /// Добавляет чип-фильтр. Если meta.Kind == InMemory - фильтр применяется
+        /// после загрузки в памяти, не в SQL.
+        /// </summary>
+        public void AddChipFilter(ColumnMeta meta, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+
+            var existing = ChipFilters.FirstOrDefault(c => c.DisplayName == meta.DisplayName);
+
+            if (existing is not null)
+            {
+                // Не добавляем дубли
+                var existingValues = existing.Value.Split(';',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                if (existingValues.Contains(value, StringComparer.OrdinalIgnoreCase))
+                    return;
+
+                ChipFilters.Remove(existing);
+
+                ChipFilters.Add(new FilterChip
+                {
+                    SqlColumn = meta.SqlColumn,
+                    DisplayName = meta.DisplayName,
+                    Value = $"{existing.Value};{value}",
+                    IsInMemory = meta.Kind == FilterKind.InMemory,
+                });
+            }
+            else
+            {
+                ChipFilters.Add(new FilterChip
+                {
+                    SqlColumn = meta.SqlColumn,
+                    DisplayName = meta.DisplayName,
+                    Value = value,
+                    IsInMemory = meta.Kind == FilterKind.InMemory,
+                });
+            }
+
+            _ = LoadPartsAsync();
+        }
+
+
+
+        /// <summary>Устанавливает ровно одно значение чипа для столбца, убирая предыдущее.</summary>
+        public void SetChipFilter(ColumnMeta meta, string value)
+        {
+            var existing = ChipFilters.FirstOrDefault(c => c.DisplayName == meta.DisplayName);
+            if (existing is not null) ChipFilters.Remove(existing);
+
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                ChipFilters.Add(new FilterChip
+                {
+                    SqlColumn = meta.SqlColumn,
+                    DisplayName = meta.DisplayName,
+                    Value = value,
+                    IsInMemory = meta.Kind == FilterKind.InMemory,
+                });
+            }
+
+            _ = LoadPartsAsync();
+        }
+
+
+        public void RemoveChipFilter(FilterChip chip)
+        {
+            ChipFilters.Remove(chip);
+            _ = LoadPartsAsync();
+        }
+
+        public void ClearChipFilters()
+        {
+            ChipFilters.Clear();
+            _ = LoadPartsAsync();
+        }
+
+        /// <summary>
+        /// Применяет InMemory-фильтры к уже загруженной коллекции.
+        /// </summary>
+        private List<Part> ApplyInMemoryFilters(List<Part> parts)
+        {
+            var inMemoryChips = ChipFilters.Where(c => c.IsInMemory).ToList();
+
+            if (inMemoryChips.Count == 0) return parts;
+
+            return parts.Where(p => inMemoryChips.All(chip =>
+            {
+                var meta = PartColumnMeta.Map.Values
+                    .FirstOrDefault(m => m.DisplayName == chip.DisplayName);
+
+                if (meta?.Predicate is null) return true;
+
+                var values = chip.Value.Split(';',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                return values.Length == 0 || values.Any(v => meta.Predicate(p, v));
+
+            })).ToList();
+        }
+
+
+        private static bool TryGetMetaByEditorKey(string fieldKey, out ColumnMeta? meta)
+        {
+            meta = null;
+
+            if (fieldKey.StartsWith("col:", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(fieldKey.AsSpan(4), out int colIndex) &&
+                PartColumnMeta.Map.TryGetValue(colIndex, out var byIndex))
+            {
+                meta = byIndex;
+                return true;
+            }
+
+            meta = PartColumnMeta.Map.Values.FirstOrDefault(m => m.SqlColumn == fieldKey);
+            return meta is not null;
+        }
+
 
         private void LockUpdate() => lockUpdate = true;
 

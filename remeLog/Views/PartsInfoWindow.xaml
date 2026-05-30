@@ -21,6 +21,7 @@
         <KeyBinding Modifiers="Ctrl" Key="S" Command="{Binding UpdatePartsCommand}"/>
     </Window.InputBindings>
     <Window.Resources>
+        <ContextMenu x:Key="GenericCellFilterContextMenu"/>
         <Style TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
@@ -93,8 +94,7 @@
             </DataGridTextColumn.EditingElementStyle>
         </DataGridTextColumn>
 
-        <DataGridTextColumn x:Key="ShiftDateColumn" Header="Дата" Binding="{Binding ShiftDate, StringFormat=dd.MM.yy, Converter={StaticResource ShortDateConverter}}" Width="50"
-                            >
+        <DataGridTextColumn x:Key="ShiftDateColumn" Header="Дата" Binding="{Binding ShiftDate, StringFormat=dd.MM.yy, Converter={StaticResource ShortDateConverter}}" Width="50">
             <DataGridTextColumn.ElementStyle>
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
             </DataGridTextColumn.ElementStyle>
@@ -1334,6 +1334,66 @@
                     </MenuItem>
                 </MenuItem>
             </Menu>
+            <!-- Панель чип-фильтров -->
+            <Border DockPanel.Dock="Top"
+        BorderBrush="LightGray" BorderThickness="0 0 0 1"
+        Background="#F5F5F5"
+        Padding="4 3"
+        Visibility="{Binding HasChipFilters,
+                     Converter={StaticResource VisibilityConverter},
+                     FallbackValue=Collapsed}">
+                <DockPanel>
+
+                    <!-- Кнопка сброса всех чипов -->
+                    <Button DockPanel.Dock="Right"
+                Content="Очистить фильтры"
+                Command="{Binding ClearChipFiltersCommand}"
+                Background="Transparent"
+                BorderThickness="0"
+                Margin="4 0 0 0"
+                FontSize="11"
+                Foreground="Gray"
+                VerticalAlignment="Center"/>
+
+                    <!-- Список чипов -->
+                    <ItemsControl ItemsSource="{Binding ChipFilters}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type md:FilterChip}">
+                                <Border Background="#DDEEFF"
+                            BorderBrush="#99BBDD"
+                            BorderThickness="1"
+                            CornerRadius="3"
+                            Margin="2 1"
+                            Padding="5 2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Label}"
+                                       FontSize="12"
+                                       VerticalAlignment="Center"/>
+                                        <Button Content="×"
+                                    FontSize="13"
+                                    FontWeight="Bold"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Padding="3 0 0 0"
+                                    Margin="4 0 0 0"
+                                    VerticalAlignment="Center"
+                                    Foreground="#666666"
+                                    Command="{Binding DataContext.RemoveChipFilterCommand,
+                                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                </DockPanel>
+            </Border>
             <Grid>
                 <DataGrid ItemsSource="{Binding Parts, UpdateSourceTrigger=PropertyChanged}" AutoGenerateColumns="False" 
                           VerticalGridLinesBrush="LightGray" HorizontalGridLinesBrush="LightGray"
