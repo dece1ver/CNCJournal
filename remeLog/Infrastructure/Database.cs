@@ -3,6 +3,7 @@ using libeLog.Infrastructure;
 using libeLog.Models;
 using Microsoft.Data.SqlClient;
 using remeLog.Infrastructure.Extensions;
+using remeLog.Infrastructure.Types;
 using remeLog.Models;
 using remeLog.Models.Reports;
 using System;
@@ -1664,5 +1665,260 @@ namespace remeLog.Infrastructure
 
             return result;
         }
+        // Сохранить / обновить решение по суткам
+
+        /// <summary>
+        /// Upsert решения аналитика по суткам (machine + shiftDate — уникальный ключ).
+        /// При повторном вызове обновляет существующую запись.
+        /// </summary>
+        public static async Task<(DbResult Result, int DayReviewId, string Message)>
+            SaveDayReviewAsync(DayReview review)
+        {
+            const string upsertSql = @"
+                DECLARE @id INT;
+ 
+                IF EXISTS (SELECT 1 FROM ai_day_reviews
+                           WHERE Machine = @Machine AND ShiftDate = @ShiftDate)
+                BEGIN
+                    UPDATE ai_day_reviews
+                    SET ReviewedBy      = @ReviewedBy,
+                        ReviewedAt      = @ReviewedAt,
+                        Decision        = @Decision,
+                        IsFullyReviewed = @IsFullyReviewed,
+                        Comment         = @Comment
+                    WHERE Machine = @Machine AND ShiftDate = @ShiftDate;
+ 
+                    SELECT @id = Id FROM ai_day_reviews
+                    WHERE Machine = @Machine AND ShiftDate = @ShiftDate;
+                END
+                ELSE
+                BEGIN
+                    INSERT INTO ai_day_reviews
+                        (Machine, ShiftDate, ReviewedBy, ReviewedAt,
+                         Decision, IsFullyReviewed, Comment)
+                    VALUES
+                        (@Machine, @ShiftDate, @ReviewedBy, @ReviewedAt,
+                         @Decision, @IsFullyReviewed, @Comment);
+ 
+                    SET @id = SCOPE_IDENTITY();
+                END
+ 
+                SELECT @id;";
+
+            try
+            {
+                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(upsertSql, conn);
+
+                cmd.Parameters.AddWithValue("@Machine", review.Machine);
+                cmd.Parameters.AddWithValue("@ShiftDate", review.ShiftDate.Date);
+                cmd.Parameters.AddWithValue("@ReviewedBy", review.ReviewedBy);
+                cmd.Parameters.AddWithValue("@ReviewedAt", review.ReviewedAt);
+                cmd.Parameters.AddWithValue("@Decision", review.Decision.ToDbString());
+                cmd.Parameters.AddWithValue("@IsFullyReviewed", review.IsFullyReviewed);
+                cmd.Parameters.AddWithValue("@Comment",
+                    string.IsNullOrEmpty(review.Comment) ? DBNull.Value : review.Comment);
+
+                var scalar = await cmd.ExecuteScalarAsync();
+                int newId = Convert.ToInt32(scalar);
+                review.Id = newId;
+
+                return (DbResult.Ok, newId, "OK");
+            }
+            catch (SqlException sqlEx)
+            {
+                Util.WriteLog(sqlEx, $"SaveDayReviewAsync: #{sqlEx.Number}");
+                return sqlEx.Number == 18456
+                    ? (DbResult.AuthError, 0, $"Ошибка авторизации: {sqlEx.Message}")
+                    : (DbResult.Error, 0, $"Ошибка БД #{sqlEx.Number}: {sqlEx.Message}");
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "SaveDayReviewAsync");
+                return (DbResult.Error, 0, ex.Message);
+            }
+        }
+
+        // Получить решение по суткам
+
+        /// <summary>
+        /// Возвращает решение по суткам или null, если день ещё не проверен.
+        /// </summary>
+        public static async Task<DayReview?> GetDayReviewAsync(string machine, DateTime shiftDate)
+        {
+            const string sql = @"
+                SELECT Id, Machine, ShiftDate, ReviewedBy, ReviewedAt,
+                       Decision, IsFullyReviewed, Comment,
+                       AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
+                       AiModelVersion, AiPromptVersion, AiAnalyzedAt
+                FROM ai_day_reviews
+                WHERE Machine = @Machine AND ShiftDate = @ShiftDate";
+
+            try
+            {
+                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@Machine", machine);
+                cmd.Parameters.AddWithValue("@ShiftDate", shiftDate.Date);
+
+                await using var r = await cmd.ExecuteReaderAsync();
+                return await r.ReadAsync() ? ReadDayReview(r) : null;
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "GetDayReviewAsync");
+                return null;
+            }
+        }
+
+        // Bulk: статус проверки для списка машин за период
+
+        /// <summary>
+        /// Возвращает словарь (machine, date) → DayReview для отображения статусов в главном окне.
+        /// </summary>
+        public static async Task<Dictionary<(string Machine, DateTime Date), DayReview>>
+            GetDayReviewsForPeriodAsync(IEnumerable<string> machines, DateTime fromDate, DateTime toDate)
+        {
+            var result = new Dictionary<(string, DateTime), DayReview>();
+
+            const string sql = @"
+                SELECT Id, Machine, ShiftDate, ReviewedBy, ReviewedAt,
+                       Decision, IsFullyReviewed, Comment,
+                       AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
+                       AiModelVersion, AiPromptVersion, AiAnalyzedAt
+                FROM ai_day_reviews
+                WHERE ShiftDate BETWEEN @From AND @To
+                ORDER BY ShiftDate, Machine";
+
+            try
+            {
+                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@From", fromDate.Date);
+                cmd.Parameters.AddWithValue("@To", toDate.Date);
+
+                await using var r = await cmd.ExecuteReaderAsync();
+                while (await r.ReadAsync())
+                {
+                    var dr = ReadDayReview(r);
+                    result[(dr.Machine, dr.ShiftDate.Date)] = dr;
+                }
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "GetDayReviewsForPeriodAsync");
+            }
+
+            return result;
+        }
+
+        // Флаги конкретных строк
+
+        /// <summary>
+        /// Сохраняет флаг конкретной записи внутри дня.
+        /// Upsert по (DayReviewId, PartGuid).
+        /// </summary>
+        public static async Task<(DbResult Result, string Message)>
+            SavePartFlagAsync(PartFlag flag)
+        {
+            const string sql = @"
+                IF EXISTS (SELECT 1 FROM ai_part_flags
+                           WHERE DayReviewId = @DayReviewId AND PartGuid = @PartGuid)
+                    UPDATE ai_part_flags
+                    SET IsCleared = @IsCleared, Comment = @Comment
+                    WHERE DayReviewId = @DayReviewId AND PartGuid = @PartGuid;
+                ELSE
+                    INSERT INTO ai_part_flags (DayReviewId, PartGuid, IsCleared, Comment)
+                    VALUES (@DayReviewId, @PartGuid, @IsCleared, @Comment);";
+
+            try
+            {
+                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@DayReviewId", flag.DayReviewId);
+                cmd.Parameters.AddWithValue("@PartGuid", flag.PartGuid);
+                cmd.Parameters.AddWithValue("@IsCleared", flag.IsCleared);
+                cmd.Parameters.AddWithValue("@Comment",
+                    string.IsNullOrEmpty(flag.Comment) ? DBNull.Value : flag.Comment);
+
+                await cmd.ExecuteNonQueryAsync();
+                return (DbResult.Ok, "OK");
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "SavePartFlagAsync");
+                return (DbResult.Error, ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Загружает все флаги строк для данного дня.
+        /// </summary>
+        public static async Task<List<PartFlag>> GetPartFlagsAsync(int dayReviewId)
+        {
+            const string sql = @"
+                SELECT Id, DayReviewId, PartGuid, IsCleared, Comment,
+                       AiRequiresReview, AiConfidence, AiSuggestedReason, AiSignals, AiExplanation
+                FROM ai_part_flags
+                WHERE DayReviewId = @DayReviewId";
+
+            var result = new List<PartFlag>();
+            try
+            {
+                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@DayReviewId", dayReviewId);
+
+                await using var r = await cmd.ExecuteReaderAsync();
+                while (await r.ReadAsync())
+                {
+                    result.Add(new PartFlag
+                    {
+                        Id = r.GetInt32(0),
+                        DayReviewId = r.GetInt32(1),
+                        PartGuid = r.GetGuid(2),
+                        IsCleared = r.GetBoolean(3),
+                        Comment = r.IsDBNull(4) ? string.Empty : r.GetString(4),
+                        AiRequiresReview = r.IsDBNull(5) ? null : r.GetBoolean(5),
+                        AiConfidence = r.IsDBNull(6) ? null : r.GetDouble(6),
+                        AiSuggestedReason = r.IsDBNull(7) ? null : r.GetString(7),
+                        AiSignals = r.IsDBNull(8) ? null : r.GetString(8),
+                        AiExplanation = r.IsDBNull(9) ? null : r.GetString(9),
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "GetPartFlagsAsync");
+            }
+            return result;
+        }
+
+        // Маппер
+
+        private static DayReview ReadDayReview(SqlDataReader r) => new()
+        {
+            Id = r.GetInt32(0),
+            Machine = r.GetString(1),
+            ShiftDate = r.GetDateTime(2),
+            ReviewedBy = r.GetString(3),
+            ReviewedAt = r.GetDateTime(4),
+            Decision = AnalystDecisionExtensions.FromDbString(r.GetString(5)),
+            IsFullyReviewed = r.GetBoolean(6),
+            Comment = r.IsDBNull(7) ? string.Empty : r.GetString(7),
+            AiRequiresReview = r.IsDBNull(8) ? null : r.GetBoolean(8),
+            AiConfidence = r.IsDBNull(9) ? null : r.GetDouble(9),
+            AiSignals = r.IsDBNull(10) ? null : r.GetString(10),
+            AiExplanation = r.IsDBNull(11) ? null : r.GetString(11),
+            AiModelVersion = r.IsDBNull(12) ? null : r.GetString(12),
+            AiPromptVersion = r.IsDBNull(13) ? null : r.GetString(13),
+            AiAnalyzedAt = r.IsDBNull(14) ? null : r.GetDateTime(14),
+        };
+
     }
 }

@@ -857,6 +857,124 @@
                                             Converter={StaticResource ExpressionToIntConverter}}"/>
                         </Grid>
                     </GroupBox>
+                    <GroupBox Header="Первичная проверка"
+          Visibility="{Binding IsSingleMachineSingleDay,
+                       Converter={StaticResource VisibilityConverter}}">
+
+                        <Grid Margin="2 0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Кнопка "Проверено" -->
+                            <Button Grid.Row="0" Grid.Column="0"
+                Content="✔ Проверено"
+                Margin="0 1 4 1"
+                Padding="8 2"
+                Command="{Binding MarkDayOkCommand}"
+                ToolTip="Сутки проверены, все записи однозначны">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Background" Value="#E8F5E9"/>
+                                        <Setter Property="BorderBrush" Value="#A5D6A7"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentDayReview.Decision}"
+                                     Value="Ok">
+                                                <Setter Property="Background" Value="#81C784"/>
+                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                            </DataTrigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Opacity" Value="0.5"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                                <Button.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="2"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
+
+                            <!-- Кнопка "Эскалация" -->
+                            <Button Grid.Row="0" Grid.Column="1"
+                Content="⚠ Эскалация"
+                Margin="0 1 4 1"
+                Padding="8 2"
+                Command="{Binding MarkDayEscalatedCommand}"
+                ToolTip="Есть неоднозначные записи — передать экспертам">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Background" Value="#FFF8E1"/>
+                                        <Setter Property="BorderBrush" Value="#FFE082"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentDayReview.Decision}"
+                                     Value="Escalated">
+                                                <Setter Property="Background" Value="#FFD54F"/>
+                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                            </DataTrigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Opacity" Value="0.5"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                                <Button.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="2"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
+
+                            <!-- Статус: кто и когда проверил -->
+                            <TextBlock Grid.Row="0" Grid.Column="2"
+                   Text="{Binding DayReviewStatusText}"
+                   VerticalAlignment="Center"
+                   Margin="4 0 0 0"
+                   FontSize="11">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#757575"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsDayReviewed}" Value="True">
+                                                <Setter Property="Foreground"
+                                    Value="{Binding DayReviewStatusColor}"/>
+                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <!-- Подсказка: несохранённые изменения блокируют кнопки -->
+                            <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                   Margin="0 1 0 0"
+                   FontSize="10"
+                   Foreground="#B71C1C">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <!-- Показываем предупреждение только если есть несохранённые строки -->
+                                            <DataTrigger Binding="{Binding HasUnsavedParts}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Setter Property="Text"
+                                    Value="⚠ Есть незаписанные изменения — сначала нажмите «Записать»"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                        </Grid>
+                    </GroupBox>
+
                 </StackPanel>
             </DockPanel>
 

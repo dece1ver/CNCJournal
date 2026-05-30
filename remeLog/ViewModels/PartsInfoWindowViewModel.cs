@@ -93,6 +93,8 @@ namespace remeLog.ViewModels
             UpdatePartsCommand = new LambdaCommand(OnUpdatePartsCommandExecutedAsync, CanUpdatePartsCommandExecute);
             RemoveChipFilterCommand = new LambdaCommand(OnRemoveChipFilterExecuted);
             ClearChipFiltersCommand = new LambdaCommand(_ => ClearChipFilters());
+            MarkDayOkCommand = new LambdaCommand(OnMarkDayOkExecuted, CanMarkDayOkExecute);
+            MarkDayEscalatedCommand = new LambdaCommand(OnMarkDayEscalatedExecuted, CanMarkDayEscalatedExecute);
 
             CalcFixed = Part.CalcFixed;
             PartsInfo = parts;
@@ -163,6 +165,7 @@ namespace remeLog.ViewModels
             lockUpdate = false;
 
             await LoadPartsAsync();
+            await LoadDayReviewAsync();
         }
 
         private void Part_PropertyChanged(object sender, PropertyChangedEventArgs e)
@@ -202,6 +205,50 @@ namespace remeLog.ViewModels
                 }
             }
         }
+
+        private DayReview? _CurrentDayReview;
+        /// <summary> Текущее решение аналитика по открытым суткам (null = ещё не проверено). </summary>
+        public DayReview? CurrentDayReview
+        {
+            get => _CurrentDayReview;
+            private set
+            {
+                if (Set(ref _CurrentDayReview, value))
+                {
+                    OnPropertyChanged(nameof(DayReviewStatusText));
+                    OnPropertyChanged(nameof(DayReviewStatusColor));
+                    OnPropertyChanged(nameof(IsDayReviewed));
+                }
+            }
+        }
+
+        /// <summary>
+        /// true — открыт ровно один станок за ровно одни сутки.
+        /// Только в этом случае показываем панель первичной проверки.
+        /// </summary>
+        public bool IsSingleMachineSingleDay =>
+            FromDate.Date == ToDate.Date
+            && PartsInfo.Machine != "Все станки"
+            && MachineFilters.Count(f => f.Filter) == 1;
+
+        /// <summary> true — решение по суткам уже зафиксировано. </summary>
+        public bool IsDayReviewed => CurrentDayReview != null;
+
+        /// <summary> Текст статуса для отображения в UI. </summary>
+        public string DayReviewStatusText =>
+            CurrentDayReview == null
+                ? "Не проверено"
+                : $"{CurrentDayReview.Decision.ToDisplayString()}  ·  {CurrentDayReview.ReviewedBy}  ·  {CurrentDayReview.ReviewedAt:dd.MM.yy HH:mm}";
+
+        /// <summary> Цвет статуса: зелёный / жёлтый / серый. </summary>
+        public string DayReviewStatusColor => CurrentDayReview?.Decision switch
+        {
+            AnalystDecision.Ok => "#2E7D32",  // зелёный
+            AnalystDecision.Escalated => "#F57F17",  // жёлтый
+            _ => "#757575",  // серый
+        };
+
+
 
         public Shift[] ShiftFilterItems { get; set; }
 
@@ -2064,6 +2111,21 @@ namespace remeLog.ViewModels
 
         #endregion
 
+        #region MarkDayOk
+        public ICommand MarkDayOkCommand { get; private set; } = null!;
+        private async void OnMarkDayOkExecuted(object _)
+            => await SaveDayReviewInternalAsync(AnalystDecision.Ok, isFullyReviewed: true);
+        private bool CanMarkDayOkExecute(object _) => IsSingleMachineSingleDay && !Parts.Any(p => p.NeedUpdate);
+
+        #endregion
+
+        #region MarkDayEscalated
+        public ICommand MarkDayEscalatedCommand { get; private set; } = null!;
+        private async void OnMarkDayEscalatedExecuted(object _)
+            => await SaveDayReviewInternalAsync(AnalystDecision.Escalated, isFullyReviewed: false);
+        private bool CanMarkDayEscalatedExecute(object _) => IsSingleMachineSingleDay && !Parts.Any(p => p.NeedUpdate);
+        #endregion
+
         public void PushValueToEditor(string fieldKey, string value)
         {
             if (!_editors.TryGetValue(fieldKey, out var existing) || !existing.IsVisible)
@@ -2129,6 +2191,7 @@ namespace remeLog.ViewModels
                     Parts = new(tempParts);
                 });
                 InProgress = false;
+                await LoadDayReviewAsync();
                 return true;
             }
             catch (OperationCanceledException)
@@ -2619,6 +2682,60 @@ namespace remeLog.ViewModels
 
             meta = PartColumnMeta.Map.Values.FirstOrDefault(m => m.SqlColumn == fieldKey);
             return meta is not null;
+        }
+
+        /// <summary>
+        /// Сохраняет решение аналитика и обновляет UI.
+        /// </summary>
+        private async Task SaveDayReviewInternalAsync(AnalystDecision decision, bool isFullyReviewed)
+        {
+            var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine
+                          ?? PartsInfo.Machine;
+
+            var review = new DayReview(
+                machine: machine,
+                shiftDate: FromDate.Date,
+                reviewedBy: Environment.UserName,
+                decision: decision,
+                isFullyReviewed: isFullyReviewed
+            );
+
+            Status = "Сохранение решения...";
+            var (result, _, message) = await Database.SaveDayReviewAsync(review);
+
+            if (result == DbResult.Ok)
+            {
+                CurrentDayReview = review;
+                Status = $"Решение сохранено: {decision.ToDisplayString()}";
+                await Task.Delay(2000);
+                Status = string.Empty;
+            }
+            else
+            {
+                MessageBox.Show(message, "Ошибка сохранения", MessageBoxButton.OK, MessageBoxImage.Error);
+                Status = string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Загружает существующее решение по текущим суткам/станку.
+        /// Вызывается из Init() и LoadPartsAsync().
+        /// </summary>
+        private async Task LoadDayReviewAsync()
+        {
+            if (!IsSingleMachineSingleDay)
+            {
+                CurrentDayReview = null;
+                OnPropertyChanged(nameof(IsSingleMachineSingleDay));
+                return;
+            }
+
+            OnPropertyChanged(nameof(IsSingleMachineSingleDay));
+
+            var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine
+                          ?? PartsInfo.Machine;
+
+            CurrentDayReview = await Database.GetDayReviewAsync(machine, FromDate.Date);
         }
 
 

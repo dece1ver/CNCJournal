@@ -562,7 +562,49 @@ namespace libeLog.Infrastructure.Sql
                     columns: new[] { "CreatedUtc" },
                     name: "IX_app_commands_cleanup"
                 )
-                .Build()
+                .Build(),
+            new TableBuilder("ai_day_reviews")
+                .AddIdColumn()
+                .AddStringColumn("Machine", 50, false)
+                .AddSmallDateTimeColumn("ShiftDate", false)
+                .AddCompositeUnique("Machine", "ShiftDate")        // одно решение на сутки/станок
+                .AddStringColumn("ReviewedBy", 128, false)
+                .AddDateTimeColumn("ReviewedAt", false)
+                .AddStringColumn("Decision", 20, false)            // ok | escalated
+                .AddBoolColumn("IsFullyReviewed", false, false)
+                .AddStringColumn("Comment", -1)
+                // AI-поля (nullable, заполняются на этапе 3)
+                .AddBoolColumn("AiRequiresReview")
+                .AddDoubleColumn("AiConfidence")
+                .AddStringColumn("AiSignals", -1)                  // JSON-массив
+                .AddStringColumn("AiExplanation", -1)
+                .AddStringColumn("AiModelVersion", 50)
+                .AddStringColumn("AiPromptVersion", 50)
+                .AddDateTimeColumn("AiAnalyzedAt")
+                .AddIndex(new[] { "ShiftDate" }, name: "IX_ai_day_reviews_date")
+                .Build(),
+ 
+            // Вспомогательная таблица - флаги конкретных строк внутри суток
+            new TableBuilder("ai_part_flags")
+                .AddIdColumn()
+                .AddIntColumn("DayReviewId", false)
+                .AddForeignKey("DayReviewId", "ai_day_reviews", "Id",
+                               ForeignKeyAction.Cascade, ForeignKeyAction.Cascade)
+                .AddGuidColumn("PartGuid", nullable: false)
+                .AddForeignKey("PartGuid", "parts", "Guid",
+                               ForeignKeyAction.Cascade, ForeignKeyAction.Cascade)
+                .AddBoolColumn("IsCleared", false, false)
+                .AddStringColumn("Comment", -1)
+                // AI-поля на уровне строки
+                .AddBoolColumn("AiRequiresReview")
+                .AddDoubleColumn("AiConfidence")
+                .AddStringColumn("AiSuggestedReason", 255)
+                .AddStringColumn("AiSignals", -1)
+                .AddStringColumn("AiExplanation", -1)
+                .AddIndex(new[] { "DayReviewId" }, name: "IX_ai_part_flags_day")
+                .AddIndex(new[] { "PartGuid" },    name: "IX_ai_part_flags_part")
+                .Build(),
+
         };
     }
 }
