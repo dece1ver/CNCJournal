@@ -857,8 +857,8 @@
                                             Converter={StaticResource ExpressionToIntConverter}}"/>
                         </Grid>
                     </GroupBox>
-                    <GroupBox Header="Первичная проверка"
-                              Visibility="{Binding IsSingleMachineSingleDay,
+                    <GroupBox Header="Первичная проверка" MinWidth="520"
+                              Visibility="{Binding CanUserReview,
                        Converter={StaticResource VisibilityConverter}}">
                         <Grid Margin="2 0">
                             <Grid.ColumnDefinitions>

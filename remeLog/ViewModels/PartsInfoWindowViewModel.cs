@@ -250,6 +250,8 @@ namespace remeLog.ViewModels
             && PartsInfo.Machine != "Все станки"
             && MachineFilters.Count(f => f.Filter) == 1;
 
+        public bool CanUserReview => IsSingleMachineSingleDay && AppSettings.Administrators.Contains(Environment.UserName);
+
         /// <summary> true — решение по суткам уже зафиксировано. </summary>
         public bool IsDayReviewed => CurrentDayReview != null;
 
@@ -2809,20 +2811,20 @@ namespace remeLog.ViewModels
             {
                 CurrentDayReview = null;
                 OnPropertyChanged(nameof(IsSingleMachineSingleDay));
+                OnPropertyChanged(nameof(CanUserReview));
                 OnPropertyChanged(nameof(FlaggedPartsCount));
                 return;
             }
 
             OnPropertyChanged(nameof(IsSingleMachineSingleDay));
+            OnPropertyChanged(nameof(CanUserReview));
 
             var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine
                           ?? PartsInfo.Machine;
 
             CurrentDayReview = await Database.GetDayReviewAsync(machine, FromDate.Date);
 
-            // Заполняем текстовое поле существующим комментарием
-            if (CurrentDayReview != null && !string.IsNullOrEmpty(CurrentDayReview.Comment))
-                DayReviewComment = CurrentDayReview.Comment;
+            DayReviewComment = CurrentDayReview?.Comment ?? string.Empty;
         }
 
         /// <summary>
