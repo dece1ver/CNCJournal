@@ -223,6 +223,34 @@ namespace remeLog.Views
 
         }
 
+        private System.Windows.Controls.ContextMenu BuildPartFlagContextMenu(PartsInfoWindowViewModel vm, Part part)
+        {
+            var menu = new System.Windows.Controls.ContextMenu();
+
+            if (!part.IsFlagged)
+            {
+                var flagItem = new MenuItem
+                {
+                    Header = "⚠ Проблемная запись — отметить",
+                };
+                flagItem.Click += (_, _) => vm.TogglePartFlagCommand.Execute(part);
+                menu.Items.Add(flagItem);
+            }
+            else
+            {
+                var unflagItem = new MenuItem
+                {
+                    Header = "✔ Снять отметку проблемной",
+                    FontWeight = System.Windows.FontWeights.SemiBold,
+                };
+                unflagItem.Click += (_, _) => vm.TogglePartFlagCommand.Execute(part);
+                menu.Items.Add(unflagItem);
+            }
+
+            return menu;
+        }
+
+
         private void DataGrid_SelectedCellsChanged(object sender, SelectedCellsChangedEventArgs e)
         {
             if (sender is DataGrid dataGrid && DataContext is PartsInfoWindowViewModel d)
@@ -468,6 +496,24 @@ namespace remeLog.Views
                     }
                 };
                 menu.Items.Add(clearItem);
+            }
+
+            if (DataContext is PartsInfoWindowViewModel dv
+                && dv.IsSingleMachineSingleDay
+                && cell.DataContext is Part flaggedPart)
+            {
+                menu.Items.Add(new Separator());
+                var flagItem = new MenuItem
+                {
+                    Header = flaggedPart.IsFlagged
+                        ? "Снять отметку проблемной"
+                        : "Отметить как проблемную",
+                    FontWeight = flaggedPart.IsFlagged
+                        ? FontWeights.SemiBold
+                        : FontWeights.Normal,
+                };
+                flagItem.Click += (_, _) => dv.TogglePartFlagCommand.Execute(flaggedPart);
+                menu.Items.Add(flagItem);
             }
 
             e.Handled = true;

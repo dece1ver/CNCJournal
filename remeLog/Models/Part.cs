@@ -1202,6 +1202,18 @@ namespace remeLog.Models
             }
         }
 
+        private bool _IsFlagged;
+        /// <summary>
+        /// Помечена ли строка аналитиком как проблемная (только в памяти, не сохраняется).
+        /// Используется для визуальной маркировки при первичной проверке.
+        /// </summary>
+        public bool IsFlagged
+        {
+            get => _IsFlagged;
+            set => Set(ref _IsFlagged, value);
+        }
+
+
         public double SingleProductionTime { get 
             {
                 var partsCount = StartSetupTime != StartMachiningTime && FinishedCount > 1 ? FinishedCount - 1 : FinishedCount;

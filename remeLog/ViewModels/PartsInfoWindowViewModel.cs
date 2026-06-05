@@ -95,6 +95,7 @@ namespace remeLog.ViewModels
             ClearChipFiltersCommand = new LambdaCommand(_ => ClearChipFilters());
             MarkDayOkCommand = new LambdaCommand(OnMarkDayOkExecuted, CanMarkDayOkExecute);
             MarkDayEscalatedCommand = new LambdaCommand(OnMarkDayEscalatedExecuted, CanMarkDayEscalatedExecute);
+            TogglePartFlagCommand = new LambdaCommand(OnTogglePartFlagExecuted);
 
             CalcFixed = Part.CalcFixed;
             PartsInfo = parts;
@@ -155,11 +156,13 @@ namespace remeLog.ViewModels
         {
             var (_, machineFilters) = await Database.ReadMachinesAsync();
             _MachineFilters = machineFilters.ToObservableCollection();
+            _MachineFilters.CollectionChanged += MachineFiltersSource_CollectionChanged!;
             foreach (var machineFilter in MachineFilters)
             {
+                machineFilter.PropertyChanged += MachineFilters_PropertyChanged!;
                 machineFilter.Filter = machineFilter.Machine == PartsInfo.Machine || PartsInfo.Machine == "Все станки";
             }
-
+            OnPropertyChanged(nameof(MachineFilters));
             SerialParts = await libeLog.Infrastructure.Database.GetSerialPartsAsync(AppSettings.Instance.ConnectionString!);
 
             lockUpdate = false;
@@ -222,6 +225,22 @@ namespace remeLog.ViewModels
             }
         }
 
+        private string _DayReviewComment = string.Empty;
+        /// <summary> Комментарий аналитика к суткам — вводится перед нажатием кнопки. </summary>
+        public string DayReviewComment
+        {
+            get => _DayReviewComment;
+            set => Set(ref _DayReviewComment, value);
+        }
+
+        public bool HasUnsavedParts => Parts.Any(p => p.NeedUpdate);
+
+        /// <summary> Количество строк, помеченных как проблемные. </summary>
+        public int FlaggedPartsCount => Parts.Count(p => p.IsFlagged);
+
+        /// <summary> Есть ли проблемные строки. </summary>
+        public bool HasFlaggedParts => Parts.Any(p => p.IsFlagged);
+
         /// <summary>
         /// true — открыт ровно один станок за ровно одни сутки.
         /// Только в этом случае показываем панель первичной проверки.
@@ -235,8 +254,7 @@ namespace remeLog.ViewModels
         public bool IsDayReviewed => CurrentDayReview != null;
 
         /// <summary> Текст статуса для отображения в UI. </summary>
-        public string DayReviewStatusText =>
-            CurrentDayReview == null
+        public string DayReviewStatusText => CurrentDayReview == null
                 ? "Не проверено"
                 : $"{CurrentDayReview.Decision.ToDisplayString()}  ·  {CurrentDayReview.ReviewedBy}  ·  {CurrentDayReview.ReviewedAt:dd.MM.yy HH:mm}";
 
@@ -2126,6 +2144,21 @@ namespace remeLog.ViewModels
         private bool CanMarkDayEscalatedExecute(object _) => IsSingleMachineSingleDay && !Parts.Any(p => p.NeedUpdate);
         #endregion
 
+        #region TogglePartFlag
+        public ICommand TogglePartFlagCommand { get; private set; } = null!;
+        private void OnTogglePartFlagExecuted(object p)
+        {
+            if (p is Part part)
+            {
+                part.IsFlagged = !part.IsFlagged;
+                OnPropertyChanged(nameof(FlaggedPartsCount));
+                OnPropertyChanged(nameof(HasFlaggedParts));
+            }
+        }
+
+        private bool CanTogglePartFlagExecute(object _) => IsSingleMachineSingleDay && !Parts.Any(p => p.NeedUpdate);
+        #endregion
+
         public void PushValueToEditor(string fieldKey, string value)
         {
             if (!_editors.TryGetValue(fieldKey, out var existing) || !existing.IsVisible)
@@ -2192,6 +2225,7 @@ namespace remeLog.ViewModels
                 });
                 InProgress = false;
                 await LoadDayReviewAsync();
+                LoadExistingFlags();
                 return true;
             }
             catch (OperationCanceledException)
@@ -2692,30 +2726,75 @@ namespace remeLog.ViewModels
             var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine
                           ?? PartsInfo.Machine;
 
+            var flaggedParts = Parts.Where(p => p.IsFlagged).ToList();
+
+            // При эскалации без комментария — предупредить, но не блокировать
+            if (decision == AnalystDecision.Escalated
+                && string.IsNullOrWhiteSpace(DayReviewComment)
+                && flaggedParts.Count == 0)
+            {
+                var answer = MessageBox.Show(
+                    "Не указан комментарий и не отмечены проблемные строки.\nПродолжить?",
+                    "Эскалация без деталей",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+                if (answer == MessageBoxResult.No) return;
+            }
+
             var review = new DayReview(
                 machine: machine,
                 shiftDate: FromDate.Date,
                 reviewedBy: Environment.UserName,
                 decision: decision,
-                isFullyReviewed: isFullyReviewed
+                isFullyReviewed: isFullyReviewed,
+                comment: DayReviewComment
             );
 
             Status = "Сохранение решения...";
-            var (result, _, message) = await Database.SaveDayReviewAsync(review);
+            var (result, dayReviewId, message) = await Database.SaveDayReviewAsync(review);
 
-            if (result == DbResult.Ok)
-            {
-                CurrentDayReview = review;
-                Status = $"Решение сохранено: {decision.ToDisplayString()}";
-                await Task.Delay(2000);
-                Status = string.Empty;
-            }
-            else
+            if (result != DbResult.Ok)
             {
                 MessageBox.Show(message, "Ошибка сохранения", MessageBoxButton.OK, MessageBoxImage.Error);
                 Status = string.Empty;
+                return;
             }
+
+            // Сохраняем флаги проблемных строк
+            foreach (var part in flaggedParts)
+            {
+                var flag = new PartFlag(
+                    dayReviewId: dayReviewId,
+                    partGuid: part.Guid,
+                    isCleared: false          // false = проблемная запись
+                );
+                await Database.SavePartFlagAsync(flag);
+            }
+
+            // Снимаем флаги с "однозначных" строк при эскалации — они помечаются как cleared
+            if (decision == AnalystDecision.Escalated)
+            {
+                foreach (var part in Parts.Where(p => !p.IsFlagged))
+                {
+                    var flag = new PartFlag(
+                        dayReviewId: dayReviewId,
+                        partGuid: part.Guid,
+                        isCleared: true       // true = эта строка ок, несмотря на эскалацию
+                    );
+                    await Database.SavePartFlagAsync(flag);
+                }
+            }
+
+            CurrentDayReview = review;
+
+            var flagInfo = flaggedParts.Count > 0
+                ? $" ({flaggedParts.Count} проблемных строк)"
+                : "";
+            Status = $"Решение сохранено: {decision.ToDisplayString()}{flagInfo}";
+            await Task.Delay(2500);
+            Status = string.Empty;
         }
+
 
         /// <summary>
         /// Загружает существующее решение по текущим суткам/станку.
@@ -2723,10 +2802,14 @@ namespace remeLog.ViewModels
         /// </summary>
         private async Task LoadDayReviewAsync()
         {
+            OnPropertyChanged(nameof(FlaggedPartsCount));
+            OnPropertyChanged(nameof(HasFlaggedParts));
+
             if (!IsSingleMachineSingleDay)
             {
                 CurrentDayReview = null;
                 OnPropertyChanged(nameof(IsSingleMachineSingleDay));
+                OnPropertyChanged(nameof(FlaggedPartsCount));
                 return;
             }
 
@@ -2736,6 +2819,30 @@ namespace remeLog.ViewModels
                           ?? PartsInfo.Machine;
 
             CurrentDayReview = await Database.GetDayReviewAsync(machine, FromDate.Date);
+
+            // Заполняем текстовое поле существующим комментарием
+            if (CurrentDayReview != null && !string.IsNullOrEmpty(CurrentDayReview.Comment))
+                DayReviewComment = CurrentDayReview.Comment;
+        }
+
+        /// <summary>
+        /// Восстанавливает флаги строк из уже сохранённых PartFlag'ов.
+        /// Вызывается после LoadPartsAsync.
+        /// </summary>
+        private async void LoadExistingFlags()
+        {
+            if (CurrentDayReview == null) return;
+
+            var flags = await Database.GetPartFlagsAsync(CurrentDayReview.Id);
+            var problematicGuids = flags
+                .Where(f => !f.IsCleared)
+                .Select(f => f.PartGuid)
+                .ToHashSet();
+
+            foreach (var part in Parts)
+                part.IsFlagged = problematicGuids.Contains(part.Guid);
+
+            OnPropertyChanged(nameof(FlaggedPartsCount));
         }
 
 
