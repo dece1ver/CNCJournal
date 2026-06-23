@@ -37,6 +37,7 @@ namespace remeLog.ViewModels
         private CancellationTokenSource _cancellationTokenSource = new();
         private CancellationTokenSource _wncCancellationTokenSource = new();
         private Dictionary<string, MultiValueEditorWindow> _editors = new();
+        private static readonly AiServiceClient _aiClient = new();
         private static bool lockUpdate;
 
         public PartsInfoWindowViewModel(CombinedParts parts)
@@ -96,6 +97,8 @@ namespace remeLog.ViewModels
             MarkDayOkCommand = new LambdaCommand(OnMarkDayOkExecuted, CanMarkDayOkExecute);
             MarkDayEscalatedCommand = new LambdaCommand(OnMarkDayEscalatedExecuted, CanMarkDayEscalatedExecute);
             TogglePartFlagCommand = new LambdaCommand(OnTogglePartFlagExecuted);
+            AnalyzeDayCommand = new LambdaCommand(OnAnalyzeDayExecuted, CanAnalyzeDayExecute);
+            ShowAiExplanationCommand = new LambdaCommand(OnShowAiExplanationExecuted, CanShowAiExplanationExecute);
 
             CalcFixed = Part.CalcFixed;
             PartsInfo = parts;
@@ -240,6 +243,43 @@ namespace remeLog.ViewModels
 
         /// <summary> Есть ли проблемные строки. </summary>
         public bool HasFlaggedParts => Parts.Any(p => p.IsFlagged);
+
+        private AiAnalysisResult? _AiResult;
+        public AiAnalysisResult? AiResult
+        {
+            get => _AiResult;
+            private set
+            {
+                if (Set(ref _AiResult, value))
+                {
+                    OnPropertyChanged(nameof(HasAiResult));
+                    OnPropertyChanged(nameof(AiResultText));
+                    OnPropertyChanged(nameof(AiResultColor));
+                }
+            }
+        }
+
+        public bool HasAiResult => AiResult != null;
+
+        public string AiResultText
+        {
+            get
+            {
+                if (AiResult == null) return "";
+                if (AiResult.HasError) return $"Ошибка: {AiResult.Error}";
+                var verdict = AiResult.RequiresReview ? "⚠ Требует проверки" : "✔ Всё в порядке";
+                return $"{verdict}  ({AiResult.Confidence:0%})";
+            }
+        }
+
+        public string AiResultColor => AiResult switch
+        {
+            null => "#757575",
+            { HasError: true } => "#B71C1C",
+            { RequiresReview: true } => "#F57F17",
+            _ => "#2E7D32",
+        };
+
 
         /// <summary>
         /// true — открыт ровно один станок за ровно одни сутки.
@@ -514,6 +554,14 @@ namespace remeLog.ViewModels
         {
             get => _BackgroundInProgress;
             set => Set(ref _BackgroundInProgress, value);
+        }
+
+        private bool _AiInProgress;
+        /// <summary> Ai думает </summary>
+        public bool AiInProgress
+        {
+            get => _AiInProgress;
+            set => Set(ref _AiInProgress, value);
         }
 
         private bool _WncSearchInProgress;
@@ -2161,6 +2209,65 @@ namespace remeLog.ViewModels
         private bool CanTogglePartFlagExecute(object _) => IsSingleMachineSingleDay && !Parts.Any(p => p.NeedUpdate);
         #endregion
 
+        #region AnalyzeDay
+        public ICommand AnalyzeDayCommand { get; private set; } = null!;
+
+        private async void OnAnalyzeDayExecuted(object _)
+        {
+            var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine
+                          ?? PartsInfo.Machine;
+
+            AiResult = null;
+            var prevStatus = Status;
+            Status = "ИИ думает...";
+            AiInProgress = true;
+            try
+            {
+                var result = await _aiClient.AnalyzeAsync(machine, FromDate.Date, Parts);
+                AiResult = result;
+
+                // Записываем AI-результат в DayReview если он уже есть
+                if (CurrentDayReview != null && !result.HasError)
+                {
+                    await Database.SaveAiAnalysisAsync(
+                        CurrentDayReview.Id, result, "qwen3:14b");
+                    CurrentDayReview.AiRequiresReview = result.RequiresReview;
+                    CurrentDayReview.AiConfidence = result.Confidence;
+                    CurrentDayReview.AiAnalyzedAt = DateTime.Now;
+                }
+            }
+            finally
+            {
+                Status = prevStatus;
+                AiInProgress = false;
+            }
+        }
+
+        private bool CanAnalyzeDayExecute(object _) =>
+            IsSingleMachineSingleDay && Parts.Count > 0 && !InProgress;
+
+        #endregion
+
+        #region ShowAiExplanation
+        public ICommand ShowAiExplanationCommand { get; private set; } = null!;
+
+        private async void OnShowAiExplanationExecuted(object _)
+        {
+            
+            if (AiResult is { } aiResult)
+            {
+                MessageBox.Show($"{aiResult.Explanation}\n" +
+                    $"{(aiResult.Signals.Length > 0 ? $"\nОсновные признаки:\n{string.Join('\n', aiResult.Signals)}" : "")}", 
+                    "ИИ подумал", 
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private bool CanShowAiExplanationExecute(object _) =>
+            AiResult != null;
+
+        #endregion
+
         public void PushValueToEditor(string fieldKey, string value)
         {
             if (!_editors.TryGetValue(fieldKey, out var existing) || !existing.IsVisible)
@@ -2228,6 +2335,7 @@ namespace remeLog.ViewModels
                 InProgress = false;
                 await LoadDayReviewAsync();
                 LoadExistingFlags();
+                AiResult = null;
                 return true;
             }
             catch (OperationCanceledException)

@@ -374,6 +374,7 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("Administrators")
                 .AddSmallDateTimeColumn("Holidays")
                 .AddStringColumn("EngineerComments")
+                .AddStringColumn("AiIp")
                 .Build(),
 
             new TableBuilder("cnc_serial_parts")
@@ -567,24 +568,22 @@ namespace libeLog.Infrastructure.Sql
                 .AddIdColumn()
                 .AddStringColumn("Machine", 50, false)
                 .AddSmallDateTimeColumn("ShiftDate", false)
-                .AddCompositeUnique("Machine", "ShiftDate")        // одно решение на сутки/станок
+                .AddCompositeUnique("Machine", "ShiftDate")
                 .AddStringColumn("ReviewedBy", 128, false)
                 .AddDateTimeColumn("ReviewedAt", false)
-                .AddStringColumn("Decision", 20, false)            // ok | escalated
+                .AddStringColumn("Decision", 20, false)
                 .AddBoolColumn("IsFullyReviewed", false, false)
                 .AddStringColumn("Comment", -1)
-                // AI-поля (nullable, заполняются на этапе 3)
                 .AddBoolColumn("AiRequiresReview")
                 .AddDoubleColumn("AiConfidence")
-                .AddStringColumn("AiSignals", -1)                  // JSON-массив
+                .AddStringColumn("AiSignals", -1)
                 .AddStringColumn("AiExplanation", -1)
                 .AddStringColumn("AiModelVersion", 50)
                 .AddStringColumn("AiPromptVersion", 50)
                 .AddDateTimeColumn("AiAnalyzedAt")
                 .AddIndex(new[] { "ShiftDate" }, name: "IX_ai_day_reviews_date")
                 .Build(),
- 
-            // Вспомогательная таблица - флаги конкретных строк внутри суток
+
             new TableBuilder("ai_part_flags")
                 .AddIdColumn()
                 .AddIntColumn("DayReviewId", false)

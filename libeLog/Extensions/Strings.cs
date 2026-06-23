@@ -4,6 +4,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text.RegularExpressions;
@@ -429,6 +430,19 @@ namespace libeLog.Extensions
                 return fullName;
 
             return $"{lastName} {firstName[0]}.{patronymic[0]}.";
+        }
+
+        /// <summary>
+        /// Возвращает исходную строку, если она содержит корректный IP-адрес,
+        /// иначе возвращает указанное значение по умолчанию.
+        /// </summary>
+        /// <param name="value">Строка с IP-адресом.</param>
+        /// <param name="defaultValue">Значение, возвращаемое при некорректном IP-адресе.</param>
+        /// <returns>Корректный IP-адрес или значение по умолчанию.</returns>
+        public static string GetIpOrDefault(this string? value, string defaultValue = "localhost")
+        {
+            value = value?.Trim();
+            return IPAddress.TryParse(value, out _) ? value : defaultValue;
         }
     }
 }

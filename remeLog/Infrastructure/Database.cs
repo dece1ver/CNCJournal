@@ -3,6 +3,7 @@ using libeLog.Infrastructure;
 using libeLog.Models;
 using Microsoft.Data.SqlClient;
 using remeLog.Infrastructure.Extensions;
+using remeLog.Infrastructure.remeLog.Infrastructure;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
 using remeLog.Models.Reports;
@@ -11,6 +12,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Data;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -20,6 +22,11 @@ namespace remeLog.Infrastructure
 {
     public static class Database
     {
+        private static readonly JsonSerializerOptions _jsonOpts = new()
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
+
         public static string GetLicenseKey(string licenseName)
         {
             try
@@ -1015,6 +1022,94 @@ namespace remeLog.Infrastructure
             }
         }
 
+        /// <summary>
+        /// Читает прошлые записи той же детали (PartName + Order + Machine) до указанной
+        /// даты, обогащённые решением аналитика из ai_day_reviews.
+        /// Два отдельных запроса вместо JOIN — чтобы не ломать индексацию FillPartsAsync
+        /// (она читает колонки по порядковым номерам).
+        /// </summary>
+        public async static Task<List<PartsHistoryEntry>> ReadPartsHistoryAsync(
+            string partName, string order, string machine, DateTime beforeDate,
+            int maxRecords, int maxDaysBack, CancellationToken cancellationToken)
+        {
+            using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await connection.OpenAsync(cancellationToken);
+
+            var partsSql =
+                "SELECT TOP (@MaxRecords) * " +
+                "FROM Parts " +
+                "WHERE PartName = @PartName " +
+                "  AND [Order] = @Order " +
+                "  AND Machine = @Machine " +
+                "  AND ShiftDate < @BeforeDate " +
+                "  AND ShiftDate >= @MinDate " +
+                "ORDER BY ShiftDate DESC, StartSetupTime DESC;";
+
+            var parts = new List<Part>();
+            using (var cmd = new SqlCommand(partsSql, connection))
+            {
+                cmd.Parameters.AddWithValue("@MaxRecords", maxRecords);
+                cmd.Parameters.AddWithValue("@PartName", partName);
+                cmd.Parameters.AddWithValue("@Order", order);
+                cmd.Parameters.AddWithValue("@Machine", machine);
+                cmd.Parameters.AddWithValue("@BeforeDate", beforeDate.Date);
+                cmd.Parameters.AddWithValue("@MinDate", beforeDate.Date.AddDays(-maxDaysBack));
+                await FillPartsAsync(parts, cmd, cancellationToken);
+            }
+
+            if (parts.Count == 0)
+                return new List<PartsHistoryEntry>();
+
+            var uniqueDates = parts
+                .Select(p => p.ShiftDate.Date)
+                .Distinct()
+                .ToList();
+
+            var dateParams = uniqueDates
+                .Select((_, i) => "@d" + i)
+                .ToArray();
+
+            var reviewSql =
+                "SELECT ShiftDate, Decision, Comment, AiExplanation " +
+                "FROM ai_day_reviews " +
+                "WHERE Machine = @Machine " +
+                "  AND ShiftDate IN (" + string.Join(", ", dateParams) + ");";
+
+            var reviews = new Dictionary<DateTime, (string Decision, string? Comment, string? AiExplanation)>();
+            using (var cmd = new SqlCommand(reviewSql, connection))
+            {
+                cmd.Parameters.AddWithValue("@Machine", machine);
+                for (int i = 0; i < uniqueDates.Count; i++)
+                    cmd.Parameters.AddWithValue(dateParams[i], uniqueDates[i]);
+
+                using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var date = reader.GetDateTime(0).Date;
+                    var decision = reader.GetString(1);
+                    var comment = reader.IsDBNull(2) ? null : reader.GetString(2);
+                    var aiExpl = reader.IsDBNull(3) ? null : reader.GetString(3);
+                    reviews[date] = (decision, comment, aiExpl);
+                }
+            }
+
+            var result = new List<PartsHistoryEntry>();
+            foreach (var p in parts)
+            {
+                reviews.TryGetValue(p.ShiftDate.Date, out var review);
+                result.Add(new PartsHistoryEntry
+                {
+                    Part = p,
+                    AnalystDecision = review.Decision,
+                    AnalystComment = review.Comment,
+                    AiExplanation = review.AiExplanation,
+                });
+            }
+            return result;
+        }
+
+
+
         public static DbResult ReadMasters(this ICollection<string> masters)
         {
             try
@@ -1570,7 +1665,7 @@ namespace remeLog.Infrastructure
             using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
             {
                 await connection.OpenAsync();
-                using (SqlCommand command = new("SELECT max_setup_limit, long_setup_limit, NcArchivePath, NcIntermediatePath, Administrators, CncOperations, Holidays, PcaReportPath, EngineerComments FROM cnc_remelog_config;", connection))
+                using (SqlCommand command = new("SELECT max_setup_limit, long_setup_limit, NcArchivePath, NcIntermediatePath, Administrators, CncOperations, Holidays, PcaReportPath, EngineerComments, AiIp FROM cnc_remelog_config;", connection))
                 {
                     using (SqlDataReader reader = await command.ExecuteReaderAsync())
                     {
@@ -1589,6 +1684,7 @@ namespace remeLog.Infrastructure
                             if (!reader.IsDBNull(6)) holidays.Add(await reader.GetFieldValueAsync<DateTime>(6));
                             if (!reader.IsDBNull(7)) AppSettings.PcaReportPath = await reader.GetValueOrDefaultAsync<string?>(7, null);
                             if (!reader.IsDBNull(8)) engineerComments.Add(await reader.GetFieldValueAsync<string>(8));
+                            if (!reader.IsDBNull(9)) AppSettings.AiIp = (await reader.GetFieldValueAsync<string>(9));
                         }
                         AppSettings.Administrators = administrators.ToArray();
                         AppSettings.CncOperations = operations.ToArray();
@@ -1737,6 +1833,45 @@ namespace remeLog.Infrastructure
             {
                 Util.WriteLog(ex, "SaveDayReviewAsync");
                 return (DbResult.Error, 0, ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Обновляет только AI-поля существующей записи.
+        /// Вызывается после получения ответа от модели.
+        /// </summary>
+        public static async Task<DbResult> SaveAiAnalysisAsync(
+            int dayReviewId, AiAnalysisResult result, string modelVersion)
+        {
+            const string sql = @"
+        UPDATE ai_day_reviews
+        SET AiRequiresReview = @AiRequiresReview,
+            AiConfidence     = @AiConfidence,
+            AiSignals        = @AiSignals,
+            AiExplanation    = @AiExplanation,
+            AiModelVersion   = @AiModelVersion,
+            AiAnalyzedAt     = @AiAnalyzedAt
+        WHERE Id = @Id";
+            try
+            {
+                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@Id", dayReviewId);
+                cmd.Parameters.AddWithValue("@AiRequiresReview", result.RequiresReview);
+                cmd.Parameters.AddWithValue("@AiConfidence", result.Confidence);
+                cmd.Parameters.AddWithValue("@AiSignals", JsonSerializer.Serialize(result.Signals, _jsonOpts));
+                cmd.Parameters.AddWithValue("@AiExplanation",
+                    (object?)result.Explanation ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@AiModelVersion", modelVersion);
+                cmd.Parameters.AddWithValue("@AiAnalyzedAt", DateTime.Now);
+                await cmd.ExecuteNonQueryAsync();
+                return DbResult.Ok;
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "SaveAiAnalysisAsync");
+                return DbResult.Error;
             }
         }
 

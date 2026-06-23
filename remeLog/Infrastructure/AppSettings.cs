@@ -74,6 +74,13 @@ namespace remeLog.Infrastructure
         public static DateTime[] Holidays { get; set; } = Array.Empty<DateTime>();
         [JsonIgnore]
         public static string? PcaReportPath { get; set; }
+        [JsonIgnore]
+        public static string AiIp { get; set; } = string.Empty;
+        [JsonIgnore]
+        public static int PartsHistoryMaxRecords { get; set; } = 5;
+        [JsonIgnore]
+        public static int PartsHistoryMaxDaysBack { get; set; } = 720;
+
 
         /// <summary> Режим отладки </summary>
         public bool DebugMode { get; set; }

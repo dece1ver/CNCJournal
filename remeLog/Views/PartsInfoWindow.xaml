@@ -13,7 +13,7 @@
         xmlns:md="clr-namespace:remeLog.Models"
         mc:Ignorable="d" 
         d:DataContext="{d:DesignInstance Type=vm:PartsInfoWindowViewModel}"
-        Title="{Binding PartsInfo.Machine}" Height="800" Width="1600" 
+        Title="{Binding PartsInfo.Machine}" Height="800" Width="1700" 
         WindowStartupLocation="CenterOwner" 
         WindowState="Maximized" 
         PreviewKeyDown="PartsInfoWindow_PreviewKeyDown">
@@ -860,7 +860,7 @@
                     <GroupBox Header="Первичная проверка" MinWidth="520"
                               Visibility="{Binding CanUserReview,
                        Converter={StaticResource VisibilityConverter}}">
-                        <Grid Margin="2 0">
+                        <Grid Margin="0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -873,19 +873,19 @@
                             </Grid.RowDefinitions>
 
                             <!-- Кнопка "Проверено" -->
-                            <Button Grid.Row="0" Grid.Column="0"
-                                    Margin="0 1 4 1" Padding="8 2"
+                            <Button Grid.Row="0" Grid.Column="0" Width="90"
+                                    Margin="0" Padding="0 -2" Height="17"
                                     Command="{Binding MarkDayOkCommand}"
                                     ToolTip="Сутки проверены, все записи однозначны">
                                 <Button.Content>
                                     <TextBlock>
-                                        <Run Text="✔ Проверено"/>
+                                        <Run Text="Всё ОК"/>
                                     </TextBlock>
                                 </Button.Content>
                                 <Button.Style>
                                     <Style TargetType="Button">
                                         <Setter Property="Background" Value="#E8F5E9"/>
-                                        <Setter Property="BorderBrush"  Value="#A5D6A7"/>
+                                        <!--<Setter Property="BorderBrush"  Value="#A5D6A7"/>-->
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding CurrentDayReview.Decision}" Value="Ok">
                                                 <Setter Property="Background"  Value="#81C784"/>
@@ -899,33 +899,31 @@
                                 </Button.Style>
                                 <Button.Resources>
                                     <Style TargetType="Border">
-                                        <Setter Property="CornerRadius" Value="2"/>
+                                        <Setter Property="CornerRadius" Value="2 0 0 0"/>
                                     </Style>
                                 </Button.Resources>
                             </Button>
 
                             <!-- Кнопка "Эскалация" -->
-                            <Button Grid.Row="0" Grid.Column="1"
-                                    Margin="0 1 6 1" Padding="8 2"
+                            <Button Grid.Row="0" Grid.Column="1" Width="90"
+                                    Margin="-1 0 0 0" Padding="0 -2"  Height="17"
                                     Command="{Binding MarkDayEscalatedCommand}"
                                     ToolTip="Есть неоднозначные строки — передать экспертам">
                                 <Button.Content>
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="Эскалация"/>
                                         <!-- Счётчик помеченных строк — появляется когда есть флаги -->
-                                        <Border Background="#E53935" CornerRadius="8"
-                                                Margin="4 0 0 0" Padding="4 0"
-                                                Visibility="{Binding HasFlaggedParts,
-                                                Converter={StaticResource VisibilityConverter}}">
-                                            <TextBlock Text="{Binding FlaggedPartsCount}"
-                                                       Foreground="White" FontSize="10" FontWeight="Bold"/>
+                                        <Border Background="#E53935" CornerRadius="6"
+                                                Margin="6 0 0 0" Height="13" Width="12" d:Visibility="Visible"
+                                                Visibility="{Binding HasFlaggedParts, Converter={StaticResource VisibilityConverter}}">
+                                            <TextBlock Text="{Binding FlaggedPartsCount}" d:Text="1" Foreground="White" FontSize="8" FontFamily="Consolas" FontWeight="Bold" TextAlignment="Center"/>
                                         </Border>
                                     </StackPanel>
                                 </Button.Content>
                                 <Button.Style>
                                     <Style TargetType="Button">
                                         <Setter Property="Background" Value="#FFF8E1"/>
-                                        <Setter Property="BorderBrush"  Value="#FFE082"/>
+                                        <!--<Setter Property="BorderBrush"  Value="#FFE082"/>-->
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding CurrentDayReview.Decision}" Value="Escalated">
                                                 <Setter Property="Background"  Value="#FFD54F"/>
@@ -939,7 +937,7 @@
                                 </Button.Style>
                                 <Button.Resources>
                                     <Style TargetType="Border">
-                                        <Setter Property="CornerRadius" Value="2"/>
+                                        <Setter Property="CornerRadius" Value="0 2 0 0"/>
                                     </Style>
                                 </Button.Resources>
                             </Button>
@@ -948,10 +946,10 @@
                             <TextBox Grid.Row="0" Grid.Column="2"
                                      Text="{Binding DayReviewComment, UpdateSourceTrigger=PropertyChanged}"
                                      VerticalContentAlignment="Center"
-                                     Padding="4 0"
-                                     FontSize="11"
-                                     ToolTip="Комментарий к решению (причина эскалации, пояснение)&#10;При эскалации рекомендуется заполнить"
-                                     Height="22">
+                                     Margin="4 0 0 0"
+                                     Padding="0 0"
+                                     FontSize="12" Height="17"
+                                     ToolTip="Комментарий к решению (причина эскалации, пояснение)&#10;При эскалации рекомендуется заполнить">
                                 <TextBox.Style>
                                     <Style TargetType="TextBox">
                                         <Setter Property="BorderBrush" Value="#BDBDBD"/>
@@ -961,10 +959,10 @@
                                                 <MultiDataTrigger.Conditions>
                                                     <Condition Binding="{Binding DayReviewComment}" Value=""/>
                                                     <Condition Binding="{Binding CurrentDayReview.Decision}"
-                                           Value="Escalated"/>
+                                                               Value="Escalated"/>
                                                 </MultiDataTrigger.Conditions>
-                                                <Setter Property="BorderBrush" Value="#FFA000"/>
-                                                <Setter Property="BorderThickness" Value="2"/>
+                                                    <Setter Property="BorderBrush" Value="#FFA000"/>
+                                                    <Setter Property="BorderThickness" Value="1"/>
                                             </MultiDataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -991,10 +989,39 @@
                                 </TextBlock.Style>
                             </TextBlock>
 
-                            <!-- Подсказка про флаги строк и про незаписанные изменения -->
-                            <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
-                                       Margin="0 2 0 0" FontSize="10" Foreground="#757575"
-                                       Text="ПКМ по строке → «Проблемная запись» — чтобы отметить конкретные строки перед эскалацией"/>
+                            <!-- Вызов AI -->
+                            <Button Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0 -1 0 0"
+                                    Content="Призвать ИИ к ответу" Height="17"
+                                    Padding="0 -1 0 0"
+                                    Command="{Binding AnalyzeDayCommand}"
+                                    ToolTip="Запустить AI-анализ суток через Ollama">
+                                <Button.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="0 0 2 2"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
+
+                            <!-- Результат AI -->
+                            <Grid Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="3" Margin="4 -1 0 0">
+                                <ProgressBar BorderThickness="0" Height="2" IsIndeterminate="True" Visibility="{Binding AiInProgress, Converter={StaticResource VisibilityConverter}}"/>
+                                <TextBlock Text="{Binding AiResultText}"
+                                           VerticalAlignment="Center"
+                                           Margin="0"
+                                           FontSize="11"
+                                           FontWeight="SemiBold" ToolTip="Дважды кликните по этому тексту, чтобы посмотреть объяснение."
+                                           Visibility="{Binding HasAiResult, Converter={StaticResource VisibilityConverter}}">
+                                    <TextBlock.InputBindings>
+                                        <MouseBinding Gesture="LeftDoubleClick"
+                                                      Command="{Binding ShowAiExplanationCommand}" />
+                                    </TextBlock.InputBindings>
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{Binding AiResultColor}"/>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
                         </Grid>
                     </GroupBox>
 
