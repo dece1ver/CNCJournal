@@ -80,6 +80,7 @@ namespace remeLog.Infrastructure
         public static int PartsHistoryMaxRecords { get; set; } = 5;
         [JsonIgnore]
         public static int PartsHistoryMaxDaysBack { get; set; } = 720;
+        public bool AiThinkingEnabled { get; set; } = false;
 
 
         /// <summary> Режим отладки </summary>

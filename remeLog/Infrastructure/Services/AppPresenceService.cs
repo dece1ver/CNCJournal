@@ -256,6 +256,19 @@ ORDER BY CreatedUtc;";
                             .Task.ConfigureAwait(false);
                         break;
 
+                    case "ForceClose":
+                        await Application.Current.Dispatcher
+                            .InvokeAsync(() => Application.Current.Shutdown())
+                            .Task.ConfigureAwait(false);
+                        break;
+
+                    case "ShowNotification":
+                        await Application.Current.Dispatcher
+                            .InvokeAsync(() => MessageBox.Show(cmd.Payload, "Уведомление",
+                                MessageBoxButton.OK, MessageBoxImage.Information))
+                            .Task.ConfigureAwait(false);
+                        break;
+
                     default:
                         Util.WriteLog($"AppPresenceService: неизвестный тип команды '{cmd.Type}'");
                         break;

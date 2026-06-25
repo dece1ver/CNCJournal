@@ -3,9 +3,12 @@ using remeLog.Infrastructure.remeLog.Infrastructure;
 using remeLog.Models;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,29 +17,41 @@ namespace remeLog.Infrastructure
 {
     public class AiServiceClient
     {
-        private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(180) };
+        private static readonly HttpClient _http = new(new HttpClientHandler { AutomaticDecompression = System.Net.DecompressionMethods.None}) { Timeout = TimeSpan.FromSeconds(240) };
         private readonly string _baseUrl;
 
         public AiServiceClient(string? baseUrl = null)
         {
-            _baseUrl = (baseUrl ?? $"http://{AppSettings.AiIp.GetIpOrDefault()}:5051")
+            _baseUrl = (baseUrl ?? $"http://{AppSettings.AiIp.GetIpOrDefault()}:5050")
                 .TrimEnd('/');
         }
 
         public async Task<AiAnalysisResult> AnalyzeAsync(
-    string machine, DateTime shiftDate, IEnumerable<Part> parts,
-    CancellationToken ct = default)
+            string machine, DateTime shiftDate, IEnumerable<Part> parts,
+            IProgress<string>? thinkingProgress = null,
+            CancellationToken ct = default)
         {
             var partList = parts.ToList();
-
-            var partsHistories = await LoadPartsHistoriesAsync(machine, shiftDate, partList, ct);
-
+            var partsHistories = await LoadPartsHistoriesAsync(
+                machine, shiftDate, partList, ct);
             var request = BuildRequest(machine, shiftDate, partList, partsHistories);
+
+            return AppSettings.Instance.AiThinkingEnabled
+                ? await AnalyzeWithStreamAsync(request, thinkingProgress, ct)
+                : await AnalyzeSimpleAsync(request, thinkingProgress, ct);
+        }
+
+        private async Task<AiAnalysisResult> AnalyzeSimpleAsync(
+            object request, IProgress<string>? thinkingProgress, CancellationToken ct)
+        {
             try
             {
-                var response = await _http.PostAsJsonAsync($"{_baseUrl}/api/analysis", request, ct);
+                thinkingProgress?.Report("думает (немного)");
+                var response = await _http.PostAsJsonAsync(
+                    $"{_baseUrl}/api/analysis", request, ct);
                 response.EnsureSuccessStatusCode();
-                var result = await response.Content.ReadFromJsonAsync<AiAnalysisResult>(cancellationToken: ct);
+                var result = await response.Content
+                    .ReadFromJsonAsync<AiAnalysisResult>(cancellationToken: ct);
                 return result ?? new AiAnalysisResult { Error = "Пустой ответ сервиса" };
             }
             catch (TaskCanceledException)
@@ -45,7 +60,85 @@ namespace remeLog.Infrastructure
             }
             catch (Exception ex)
             {
-                return new AiAnalysisResult { Error = $"Ошибка связи с AI сервисом: {ex.Message}" };
+                return new AiAnalysisResult
+                { Error = $"Ошибка связи с AI сервисом: {ex.Message}" };
+            }
+        }
+
+        private async Task<AiAnalysisResult> AnalyzeWithStreamAsync(
+            object request,
+            IProgress<string>? thinkingProgress,
+            CancellationToken ct)
+        {
+            try
+            {
+                var json = JsonSerializer.Serialize(request);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                using var httpRequest = new HttpRequestMessage(
+                    HttpMethod.Post, $"{_baseUrl}/api/analysis/stream")
+                { Content = content };
+
+                using var response = await _http.SendAsync(
+                    httpRequest, HttpCompletionOption.ResponseHeadersRead, ct);
+                response.EnsureSuccessStatusCode();
+
+                return await Task.Run(async () =>
+                {
+                    using var stream = await response.Content.ReadAsStreamAsync(ct);
+                    using var reader = new StreamReader(stream, Encoding.UTF8,
+                        detectEncodingFromByteOrderMarks: false, bufferSize: 1);
+
+                    AiAnalysisResult? finalResult = null;
+                    string? currentEvent = null;
+
+                    while (!reader.EndOfStream)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var line = await reader.ReadLineAsync();
+                        if (line == null) continue;
+
+                        System.Diagnostics.Debug.WriteLine($"SSE line: [{line}]");
+
+                        if (line.StartsWith("event:"))
+                        {
+                            currentEvent = line["event:".Length..].Trim();
+                            continue;
+                        }
+
+                        if (!line.StartsWith("data:")) continue;
+                        var data = line["data:".Length..].Trim();
+
+                        switch (currentEvent)
+                        {
+                            case "thinking":
+                                var thought = JsonSerializer.Deserialize<string>(data);
+                                if (!string.IsNullOrWhiteSpace(thought))
+                                    thinkingProgress?.Report(thought);
+                                break;
+
+                            case "result":
+                                finalResult = JsonSerializer.Deserialize<AiAnalysisResult>(data);
+                                break;
+
+                            case "error":
+                                return new AiAnalysisResult { Error = data };
+                        }
+
+                        currentEvent = null;
+                    }
+
+                    return finalResult ?? new AiAnalysisResult { Error = "Пустой ответ сервиса" };
+                }, ct);
+            }
+            catch (TaskCanceledException)
+            {
+                return new AiAnalysisResult { Error = "Превышено время ожидания" };
+            }
+            catch (Exception ex)
+            {
+                return new AiAnalysisResult
+                { Error = $"Ошибка связи с AI сервисом: {ex.Message}" };
             }
         }
 
@@ -89,8 +182,6 @@ namespace remeLog.Infrastructure
             var summary = new PartsHistorySummary { RecordsFound = history.Count };
             if (history.Count == 0) return summary;
 
-            // Группируем по дате смены — несколько установок одной детали за сутки
-            // объединяем в одну строку истории
             var byDate = history
                 .GroupBy(e => e.Part.ShiftDate.Date)
                 .OrderByDescending(g => g.Key);
@@ -143,8 +234,8 @@ namespace remeLog.Infrastructure
         }
 
         private static object BuildRequest(
-            string machine, DateTime shiftDate, IEnumerable<Part> parts,
-            Dictionary<(string PartName, string Order), PartsHistorySummary> partsHistories)
+                string machine, DateTime shiftDate, IEnumerable<Part> parts,
+                Dictionary<(string PartName, string Order), PartsHistorySummary> partsHistories)
         {
             var partList = parts.ToList();
             var partContexts = partList.Select(p => BuildPartContext(p, partsHistories)).ToList();
@@ -203,7 +294,7 @@ namespace remeLog.Infrastructure
             {
                 partName = p.PartName,
                 order = p.Order,
-                setupNumber = p.Setup,
+                setup = p.Setup,
 
                 setupRatio = SafeDouble(p.SetupRatio),
                 productionRatio = SafeDouble(p.ProductionRatio),
@@ -280,6 +371,8 @@ namespace remeLog.Infrastructure
                 && string.IsNullOrWhiteSpace(p.MasterComment))
                 s.Add($"Простои {dt:0%} без пояснений");
 
+            
+
             // Время изготовления записано но деталей нет — противоречие в данных
             if (p.ProductionTimeFact > 5 && p.FinishedCount == 0
                 && !string.IsNullOrWhiteSpace(p.MasterMachiningComment) == false)
@@ -327,14 +420,17 @@ namespace remeLog.Infrastructure
         private static bool IsValidRatio(double v) =>
             !double.IsNaN(v) && !double.IsInfinity(v) && v >= 0;
 
-        private static bool OperatorMentionsNormativeIssue(string manual)
+        private static bool OperatorMentionsNormativeIssue(string? comment)
         {
-            if (string.IsNullOrWhiteSpace(manual)) return false;
-            var l = manual.ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(comment)) return false;
+            var l = comment.ToLowerInvariant();
+
+            if ((l.Contains("укладыва") || l.Contains("уложиться")) && l.Contains("норматив"))
+                return false;
+
             return l.Contains("норматив") || l.Contains("не соответствует")
                 || l.Contains("некорректн") || l.Contains("режимы не")
-                || l.Contains("программа не соответ") || l.Contains("скорректировать")
-                || l.Contains("не укладыва");  // "не укладываюсь в норматив"
+                || l.Contains("программа не соответ") || l.Contains("скорректировать");
         }
 
         private static bool OperatorMentionsExcusableReason(string manual)
@@ -360,7 +456,10 @@ namespace remeLog.Infrastructure
         [JsonPropertyName("signals")] public string[] Signals { get; set; } = Array.Empty<string>();
         [JsonPropertyName("explanation")] public string Explanation { get; set; } = "";
         [JsonPropertyName("suggestedReason")] public string SuggestedReason { get; set; } = "";
+        [JsonPropertyName("suggestExcludeFromReports")]
+        public string[] SuggestExcludeFromReports { get; set; } = Array.Empty<string>();
         [JsonPropertyName("error")] public string? Error { get; set; }
+        [JsonPropertyName("promptVersion")] public string? PromptVersion { get; set; }
         public bool HasError => !string.IsNullOrEmpty(Error);
     }
 }

@@ -8,6 +8,7 @@ public class AnalyzeRequest
     public string ShiftDate { get; set; } = "";
     public List<string> Signals { get; set; } = [];
     public List<PartContext> Parts { get; set; } = [];
+    public bool EnableThinking { get; set; } = false;
 }
 
 public class PartContext
@@ -18,18 +19,14 @@ public class PartContext
 
     public double? SetupRatio { get; set; }
     public double? ProductionRatio { get; set; }
-
     public double FinishedCount { get; set; }
     public double SetupTimePlan { get; set; }
     public double SetupTimeFact { get; set; }
     public double SingleProductionTimePlan { get; set; }
     public double ProductionTimeFact { get; set; } 
     public double PartialSetup { get; set; } 
-
     public double MachiningTime { get; set; }
-
     public double? DowntimeRatio { get; set; }
-
     public string OperatorComment { get; set; } = "";
     public string MasterSetupComment { get; set; } = "";
     public string MasterMachiningComment { get; set; } = "";
@@ -68,10 +65,13 @@ public class AnalyzeResponse
     public double Confidence { get; set; }
     public List<string> Signals { get; set; } = [];
     public List<string> DowngradedSignals { get; set; } = [];
+    public List<string> SuggestExcludeFromReports { get; set; } = [];
 
     public string Explanation { get; set; } = "";
+    public string ThinkingProcess { get; set; } = "";
     public string SuggestedReason { get; set; } = "";
     public string? Error { get; set; }
     public bool HasError => !string.IsNullOrEmpty(Error);
+    public string? PromptVersion { get; set; }
 
 }

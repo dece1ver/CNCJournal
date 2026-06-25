@@ -575,6 +575,7 @@ namespace libeLog.Infrastructure.Sql
                 .AddBoolColumn("IsFullyReviewed", false, false)
                 .AddStringColumn("Comment", -1)
                 .AddBoolColumn("AiRequiresReview")
+                .AddBoolColumn("AiThinkingEnabled")
                 .AddDoubleColumn("AiConfidence")
                 .AddStringColumn("AiSignals", -1)
                 .AddStringColumn("AiExplanation", -1)

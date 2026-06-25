@@ -1,6 +1,7 @@
 ﻿using AiService.Models;
 using AiService.Services;
 using Microsoft.AspNetCore.Mvc;
+using System.Text;
 using System.Text.Json;
 
 namespace AiService.Controllers;
@@ -9,6 +10,11 @@ namespace AiService.Controllers;
 [Route("api/[controller]")]
 public class AnalysisController(OllamaService ollama, ILogger<AnalysisController> logger) : ControllerBase
 {
+    private static readonly JsonSerializerOptions _camelCase = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     [HttpPost]
     public async Task<ActionResult<AnalyzeResponse>> Analyze(
         [FromBody] AnalyzeRequest request,
@@ -19,9 +25,10 @@ public class AnalysisController(OllamaService ollama, ILogger<AnalysisController
             var hardRules = HardRuleEvaluator.Evaluate(request);
 
             var prompt = PromptBuilder.Build(request, hardRules);
-            var raw = await ollama.GenerateAsync(prompt, ct);
-            var llmResult = ParseResponse(raw);
+            var thinkCapture = new StringBuilder();
 
+            var (raw, thinking) = await ollama.GenerateAsync(prompt, think: false, thinkingProgress: null, ct: ct);
+            var llmResult = ParseResponse(raw);
             var notDowngraded = hardRules.SoftSignals
                 .Where(s => !llmResult.DowngradedSignals.Contains(s))
                 .ToList();
@@ -51,6 +58,8 @@ public class AnalysisController(OllamaService ollama, ILogger<AnalysisController
                     ? FallbackReason(hardRules, notDowngraded)
                     : llmResult.SuggestedReason,
                 Error = llmResult.Error,
+                SuggestExcludeFromReports = llmResult.SuggestExcludeFromReports,
+                PromptVersion = PromptBuilder.PromptVersion,
             };
 
             var allPartSignals = request.Parts.SelectMany(p => p.Signals);
@@ -75,6 +84,29 @@ public class AnalysisController(OllamaService ollama, ILogger<AnalysisController
                     string.Join(" | ", llmResult.DowngradedSignals));
             }
 
+            if (hardRules.MustEscalate && result.SuggestExcludeFromReports.Count > 0)
+            {
+                var hardPartNames = hardRules.HardSignals
+                    .Select(s =>
+                    {
+                        // Сигналы вида "[PartName] ..."
+                        if (s.StartsWith('['))
+                        {
+                            var end = s.IndexOf(']');
+                            return end > 1 ? s[1..end] : null;
+                        }
+                        return null;
+                    })
+                    .Where(n => n != null)
+                    .ToHashSet()!;
+
+                result.SuggestExcludeFromReports = [.. result.SuggestExcludeFromReports
+                    .Where(entry =>
+                    {
+                        var name = entry.Split('§')[0];
+                        return !hardPartNames.Contains(name);
+                    })];
+            }
             return Ok(result);
         }
         catch (TaskCanceledException)
@@ -86,6 +118,142 @@ public class AnalysisController(OllamaService ollama, ILogger<AnalysisController
             logger.LogError(ex, "Ошибка при анализе {Machine} {Date}", request.Machine, request.ShiftDate);
             return StatusCode(500, new AnalyzeResponse { Error = ex.Message });
         }
+    }
+
+    [HttpPost("stream")]
+    public async Task AnalyzeWithStream(
+    [FromBody] AnalyzeRequest request,
+    CancellationToken ct)
+    {
+        Response.Headers.Append("Content-Type", "text/event-stream");
+        Response.Headers.Append("Cache-Control", "no-cache");
+        Response.Headers.Append("X-Accel-Buffering", "no");
+
+        var bufferingFeature = HttpContext.Features
+            .Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>();
+        bufferingFeature?.DisableBuffering();
+
+        async Task Send(string evt, string data)
+        {
+            await Response.WriteAsync($"event: {evt}\ndata: {data}\n\n", ct);
+            await Response.Body.FlushAsync(ct);
+        }
+
+        logger.LogInformation("Stream-анализ начат: {Machine} {Date}",
+            request.Machine, request.ShiftDate);
+
+        var hardRules = HardRuleEvaluator.Evaluate(request);
+        var prompt = PromptBuilder.Build(request, hardRules);
+
+        logger.LogDebug("Промпт построен, символов: {Len}", prompt.Length);
+
+        var channel = System.Threading.Channels.Channel.CreateBounded<string>(
+            new System.Threading.Channels.BoundedChannelOptions(32)
+            {
+                SingleReader = true,
+                SingleWriter = true,
+                FullMode = System.Threading.Channels.BoundedChannelFullMode.Wait,
+            });
+
+        var lastThought = "";
+        var progress = new Progress<string>(thought =>
+        {
+            if (thought == lastThought) return;
+            lastThought = thought;
+            logger.LogDebug("Think: {T}", thought[..Math.Min(50, thought.Length)]);
+            channel.Writer.TryWrite(thought);
+        });
+
+        string raw;
+        string? thinking;
+
+        try
+        {
+            logger.LogInformation("Отправка в Ollama...");
+
+            var generateTask = ollama.GenerateAsync(prompt, true, progress, ct);
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+            var drainTask = Task.Run(async () =>
+            {
+                await foreach (var thought in channel.Reader.ReadAllAsync(cts.Token))
+                {
+                    logger.LogDebug("Отправка thinking клиенту");
+                    await Send("thinking", JsonSerializer.Serialize(thought));
+                }
+            }, ct);
+
+            // Ждём генерацию
+            (raw, thinking) = await generateTask;
+            logger.LogInformation(
+                "Ollama завершила. response={RLen}, thinking={TLen}",
+                raw.Length, thinking?.Length ?? 0);
+
+            // Закрываем канал и ждём пока drain допишет оставшееся
+            channel.Writer.Complete();
+            await drainTask;
+            logger.LogInformation("Drain завершён");
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogWarning("Отменён: {Machine} {Date}", request.Machine, request.ShiftDate);
+            return;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Ошибка: {Machine} {Date}", request.Machine, request.ShiftDate);
+            await Send("error", JsonSerializer.Serialize(ex.Message));
+            return;
+        }
+
+        var llmResult = ParseResponse(raw);
+
+        logger.LogDebug("ParseResponse: RequiresReview={R}, Error={E}",
+            llmResult.RequiresReview, llmResult.Error ?? "(нет)");
+
+        var notDowngraded = hardRules.SoftSignals
+            .Where(s => !llmResult.DowngradedSignals.Contains(s))
+            .ToList();
+        var requiresReview =
+            hardRules.MustEscalate || notDowngraded.Count > 0 || llmResult.RequiresReview;
+
+        var result = new AnalyzeResponse
+        {
+            RequiresReview = requiresReview,
+            Confidence = hardRules.MustEscalate
+                ? Math.Max(llmResult.Confidence, 0.85) : llmResult.Confidence,
+            Explanation = EnsureExplanation(llmResult, hardRules, notDowngraded),
+            SuggestedReason = string.IsNullOrWhiteSpace(llmResult.SuggestedReason)
+                ? FallbackReason(hardRules, notDowngraded) : llmResult.SuggestedReason,
+            ThinkingProcess = thinking,
+            SuggestExcludeFromReports = llmResult.SuggestExcludeFromReports,
+            Error = llmResult.Error,
+            PromptVersion = PromptBuilder.PromptVersion,
+        };
+
+        if (hardRules.MustEscalate && result.SuggestExcludeFromReports.Count > 0)
+        {
+            var hardPartNames = hardRules.HardSignals
+                .Where(s => s.StartsWith('['))
+                .Select(s => s[1..s.IndexOf(']')])
+                .ToHashSet();
+            result.SuggestExcludeFromReports = [.. result.SuggestExcludeFromReports
+            .Where(e => !hardPartNames.Contains(e.Split('§')[0]))];
+        }
+
+        result.Signals = [.. llmResult.Signals
+        .Concat(request.Signals)
+        .Concat(request.Parts.SelectMany(p => p.Signals))
+        .Concat(hardRules.HardSignals)
+        .Concat(notDowngraded)
+        .Distinct()];
+
+        logger.LogInformation(
+            "Stream-анализ завершён: {Machine} {Date} → RequiresReview={R}, Confidence={C:F2}",
+            request.Machine, request.ShiftDate, result.RequiresReview, result.Confidence);
+
+        await Send("result", JsonSerializer.Serialize(result, _camelCase));
     }
 
     private static string EnsureExplanation(
@@ -145,6 +313,10 @@ public class AnalysisController(OllamaService ollama, ILogger<AnalysisController
                     : [],
                 DowngradedSignals = root.TryGetProperty("downgraded_signals", out var ds) && ds.ValueKind == JsonValueKind.Array
                     ? [.. ds.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => s.Length > 0)]
+                    : [],
+                SuggestExcludeFromReports = root.TryGetProperty("suggest_exclude_from_reports", out var se)
+                    && se.ValueKind == JsonValueKind.Array
+                    ? [.. se.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => s.Length > 0)]
                     : [],
                 Explanation = root.TryGetProperty("explanation", out var ex) ? ex.GetString() ?? "" : "",
                 SuggestedReason = root.TryGetProperty("suggested_reason", out var sr) ? sr.GetString() ?? "" : "",

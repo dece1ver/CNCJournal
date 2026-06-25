@@ -36,6 +36,7 @@ namespace remeLog.ViewModels
         private static readonly SemaphoreSlim semaphoreSlim = new(1, 1);
         private CancellationTokenSource _cancellationTokenSource = new();
         private CancellationTokenSource _wncCancellationTokenSource = new();
+        private CancellationTokenSource? _aiCancellationTokenSource;
         private Dictionary<string, MultiValueEditorWindow> _editors = new();
         private static readonly AiServiceClient _aiClient = new();
         private static bool lockUpdate;
@@ -99,6 +100,9 @@ namespace remeLog.ViewModels
             TogglePartFlagCommand = new LambdaCommand(OnTogglePartFlagExecuted);
             AnalyzeDayCommand = new LambdaCommand(OnAnalyzeDayExecuted, CanAnalyzeDayExecute);
             ShowAiExplanationCommand = new LambdaCommand(OnShowAiExplanationExecuted, CanShowAiExplanationExecute);
+            OpenCommentEditorCommand = new LambdaCommand(OnOpenCommentEditorExecuted);
+            CloseCommentEditorCommand = new LambdaCommand(OnCloseCommentEditorExecuted);
+            CancelCommentEditorCommand = new LambdaCommand(OnCancelCommentEditorExecuted);
 
             CalcFixed = Part.CalcFixed;
             PartsInfo = parts;
@@ -124,6 +128,7 @@ namespace remeLog.ViewModels
             }
             ChipFilters = new ObservableCollection<FilterChip>();
             ChipFilters.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasChipFilters));
+            AiThinkingEnabled = AppSettings.Instance.AiThinkingEnabled;
             OnPropertyChanged(nameof(HasErrors));
             UpdateHasErrors();
             _ = Init();
@@ -236,6 +241,51 @@ namespace remeLog.ViewModels
             set => Set(ref _DayReviewComment, value);
         }
 
+        private string _dayReviewCommentBackup = string.Empty;
+        private bool _IsCommentEditorOpen = false;
+        /// <summary> Открыт ли всплывающий редактор комментария. </summary>
+        public bool IsCommentEditorOpen
+        {
+            get => _IsCommentEditorOpen;
+            set => Set(ref _IsCommentEditorOpen, value);
+        }
+
+        public ICommand OpenCommentEditorCommand { get; private set; } = null!;
+        public ICommand CloseCommentEditorCommand { get; private set; } = null!;
+        public ICommand CancelCommentEditorCommand { get; private set; } = null!;
+
+        private void OnOpenCommentEditorExecuted(object _)
+        {
+            _dayReviewCommentBackup = DayReviewComment;
+            IsCommentEditorOpen = true;
+        }
+
+        private void OnCloseCommentEditorExecuted(object _)
+        {
+            IsCommentEditorOpen = false;
+        }
+
+        private void OnCancelCommentEditorExecuted(object _)
+        {
+            DayReviewComment = _dayReviewCommentBackup;
+            IsCommentEditorOpen = false;
+        }
+
+        private bool _AiThinkingEnabled = false;
+        /// <summary> Использовать размышление в модели. </summary>
+        public bool AiThinkingEnabled
+        {
+            get => _AiThinkingEnabled;
+            set 
+            {
+                if (Set(ref _AiThinkingEnabled, value))
+                {
+                    AppSettings.Instance.AiThinkingEnabled = value;
+                    AppSettings.Save();
+                }    
+            }
+        }
+
         public bool HasUnsavedParts => Parts.Any(p => p.NeedUpdate);
 
         /// <summary> Количество строк, помеченных как проблемные. </summary>
@@ -267,7 +317,7 @@ namespace remeLog.ViewModels
             {
                 if (AiResult == null) return "";
                 if (AiResult.HasError) return $"Ошибка: {AiResult.Error}";
-                var verdict = AiResult.RequiresReview ? "⚠ Требует проверки" : "✔ Всё в порядке";
+                var verdict = AiResult.RequiresReview ? "Требует проверки" : "Всё в порядке";
                 return $"{verdict}  ({AiResult.Confidence:0%})";
             }
         }
@@ -580,6 +630,40 @@ namespace remeLog.ViewModels
             get => _Status;
             set => Set(ref _Status, value);
         }
+
+
+        private string _ThinkingThoughts = string.Empty;
+        /// <summary> Накапливаемые мысли ИИ для отображения в выдвижной панели. </summary>
+        public string ThinkingThoughts
+        {
+            get => _ThinkingThoughts;
+            set
+            {
+                if (Set(ref _ThinkingThoughts, value))
+                {
+                    OnPropertyChanged(nameof(HasThinkingThoughts));
+                    OnPropertyChanged(nameof(IsThoughtPanelVisible));
+                }
+            }
+        }
+
+        /// <summary> Есть ли хотя бы одна мысль. </summary>
+        public bool HasThinkingThoughts => !string.IsNullOrEmpty(ThinkingThoughts);
+
+        private bool _IsThoughtPanelOpen = false;
+        /// <summary> Открыта ли панель размышлений ИИ. </summary>
+        public bool IsThoughtPanelOpen
+        {
+            get => _IsThoughtPanelOpen;
+            set
+            {
+                if (Set(ref _IsThoughtPanelOpen, value))
+                    OnPropertyChanged(nameof(IsThoughtPanelVisible));
+            }
+        }
+
+        /// <summary> Панель видна, если открыта или есть сохранённые мысли. </summary>
+        public bool IsThoughtPanelVisible => AiThinkingEnabled && (IsThoughtPanelOpen || HasThinkingThoughts);
 
 
         private bool _CompactView = false;
@@ -2214,32 +2298,111 @@ namespace remeLog.ViewModels
 
         private async void OnAnalyzeDayExecuted(object _)
         {
+            if (AiInProgress)
+            {
+                _aiCancellationTokenSource?.Cancel();
+                Status = "AI анализ отменён";
+                return;
+            }
+
             var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine
                           ?? PartsInfo.Machine;
 
             AiResult = null;
             var prevStatus = Status;
-            Status = "ИИ думает...";
             AiInProgress = true;
+            ThinkingThoughts = "";
+            IsThoughtPanelOpen = true;
+
+            _aiCancellationTokenSource?.Cancel();
+            _aiCancellationTokenSource?.Dispose();
+            _aiCancellationTokenSource = new CancellationTokenSource();
+            var ct = _aiCancellationTokenSource.Token;
+
+            var progress = new Progress<string>(thought =>
+            {
+                ThinkingThoughts += thought + "\n";
+                Status = "ИИ думает...";
+            });
+
             try
             {
-                var result = await _aiClient.AnalyzeAsync(machine, FromDate.Date, Parts);
+                var result = await _aiClient.AnalyzeAsync(
+                    machine, FromDate.Date, Parts,
+                    thinkingProgress: progress,
+                    ct: ct);
+
+                if (ct.IsCancellationRequested)
+                {
+                    prevStatus = "AI анализ отменён";
+                    return;
+                }
+
                 AiResult = result;
 
-                // Записываем AI-результат в DayReview если он уже есть
                 if (CurrentDayReview != null && !result.HasError)
                 {
                     await Database.SaveAiAnalysisAsync(
-                        CurrentDayReview.Id, result, "qwen3:14b");
+                        CurrentDayReview.Id, result, "qwen3:14b", AiThinkingEnabled);
                     CurrentDayReview.AiRequiresReview = result.RequiresReview;
                     CurrentDayReview.AiConfidence = result.Confidence;
                     CurrentDayReview.AiAnalyzedAt = DateTime.Now;
+                    CurrentDayReview.AiPromptVersion = result.PromptVersion;
+                    CurrentDayReview.AiThinkingEnabled = AiThinkingEnabled;
                 }
+
+                ProcessExcludeFromReportsSuggestions(result);
+            }
+            catch (OperationCanceledException)
+            {
+                prevStatus = "AI анализ отменён";
             }
             finally
             {
                 Status = prevStatus;
                 AiInProgress = false;
+                IsThoughtPanelOpen = false;
+                _aiCancellationTokenSource?.Dispose();
+                _aiCancellationTokenSource = null;
+            }
+        }
+
+        private void ProcessExcludeFromReportsSuggestions(AiAnalysisResult result)
+        {
+            if (result.SuggestExcludeFromReports is not { Length: > 0 }) return;
+
+            foreach (var entry in result.SuggestExcludeFromReports)
+            {
+                var parts = entry.Split('§');
+                if (parts.Length != 3) continue;
+
+                var partName = parts[0];
+                var setupStr = parts[1];
+                var order = parts[2];
+
+                if (!int.TryParse(setupStr, out var setupNumber)) continue;
+
+                var part = Parts.FirstOrDefault(p =>
+                    p.PartName == partName &&
+                    p.Setup == setupNumber &&
+                    p.Order == order);
+
+                if (part == null) continue;
+
+                var message =
+                    $"ИИ предлагает исключить деталь из расчётов:\n\n" +
+                    $"  {partName}  |  М/Л: {order}  |  Уст.{setupNumber}\n\n" +
+                    $"Причина: {result.Explanation}\n\n" +
+                    $"Исключить из отчётов?";
+
+                var answer = MessageBox.Show(
+                    message,
+                    "Исключить из отчётов?",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (answer == MessageBoxResult.Yes)
+                    part.ExcludeFromReports = true;
             }
         }
 

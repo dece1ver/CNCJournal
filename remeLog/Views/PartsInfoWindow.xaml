@@ -764,6 +764,20 @@
             </StatusBar>
             <ProgressBar DockPanel.Dock="Bottom" IsIndeterminate="True"
                  Visibility="{Binding InProgress, Converter={StaticResource VisibilityConverter}, ConverterParameter=h}" Height="2" />
+            <Expander DockPanel.Dock="Bottom"
+                      Header="Размышления ИИ"
+                      IsExpanded="{Binding IsThoughtPanelOpen}"
+                      Visibility="{Binding IsThoughtPanelVisible, Converter={StaticResource VisibilityConverter}}"
+                      Background="#F5F5F5"
+                      BorderBrush="#CCC"
+                      Padding="4">
+                <ScrollViewer x:Name="ThoughtScrollViewer" MaxHeight="120" VerticalScrollBarVisibility="Auto">
+                    <TextBlock Text="{Binding ThinkingThoughts}"
+                               FontSize="11" FontFamily="Consolas"
+                               Padding="4" TextWrapping="Wrap"
+                               SizeChanged="ThoughtTextBlock_SizeChanged"/>
+                </ScrollViewer>
+            </Expander>
             <DockPanel DockPanel.Dock="Bottom">
                 <!--<Button DockPanel.Dock="Right" Content="!" IsEnabled="False" Visibility="{Binding HasErrors, Converter={StaticResource VisibilityConverter}, UpdateSourceTrigger=PropertyChanged, Mode=OneWay}"
                     Foreground="Red" FontWeight="Bold" Background="Transparent" BorderThickness="0">
@@ -859,12 +873,12 @@
                     </GroupBox>
                     <GroupBox Header="Первичная проверка" MinWidth="520"
                               Visibility="{Binding CanUserReview,
-                       Converter={StaticResource VisibilityConverter}}">
+                              Converter={StaticResource VisibilityConverter}}">
                         <Grid Margin="0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="180"/>
+                                <ColumnDefinition Width="160"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
@@ -942,32 +956,64 @@
                                 </Button.Resources>
                             </Button>
 
-                            <!-- Поле комментария -->
-                            <TextBox Grid.Row="0" Grid.Column="2"
-                                     Text="{Binding DayReviewComment, UpdateSourceTrigger=PropertyChanged}"
-                                     VerticalContentAlignment="Center"
-                                     Margin="4 0 0 0"
-                                     Padding="0 0"
-                                     FontSize="12" Height="17"
-                                     ToolTip="Комментарий к решению (причина эскалации, пояснение)&#10;При эскалации рекомендуется заполнить">
-                                <TextBox.Style>
-                                    <Style TargetType="TextBox">
-                                        <Setter Property="BorderBrush" Value="#BDBDBD"/>
-                                        <Style.Triggers>
-                                            <!-- Желтая рамка при эскалации без комментария — напоминание -->
-                                            <MultiDataTrigger>
-                                                <MultiDataTrigger.Conditions>
-                                                    <Condition Binding="{Binding DayReviewComment}" Value=""/>
-                                                    <Condition Binding="{Binding CurrentDayReview.Decision}"
-                                                               Value="Escalated"/>
-                                                </MultiDataTrigger.Conditions>
-                                                    <Setter Property="BorderBrush" Value="#FFA000"/>
-                                                    <Setter Property="BorderThickness" Value="1"/>
-                                            </MultiDataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBox.Style>
-                            </TextBox>
+                            <!-- Поле комментария + кнопка расширенного редактора -->
+                            <Grid Grid.Row="0" Grid.Column="2" x:Name="CommentEditorGrid" Margin="4 0 0 0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
+                                         Text="{Binding DayReviewComment, UpdateSourceTrigger=PropertyChanged}"
+                                         VerticalContentAlignment="Center"
+                                         Padding="0 0"
+                                         FontSize="12" Height="17"
+                                         ToolTip="Комментарий к решению (причина эскалации, пояснение)&#10;При эскалации рекомендуется заполнить">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox">
+                                            <Setter Property="BorderBrush" Value="#BDBDBD"/>
+                                            <Style.Triggers>
+                                                <!-- Желтая рамка при эскалации без комментария — напоминание -->
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding DayReviewComment}" Value=""/>
+                                                        <Condition Binding="{Binding CurrentDayReview.Decision}"
+                                                                   Value="Escalated"/>
+                                                    </MultiDataTrigger.Conditions>
+                                                        <Setter Property="BorderBrush" Value="#FFA000"/>
+                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
+                                <Button Grid.Column="1" Content="✏️" Width="16" Height="17" Padding="0 -1 0 0" Margin="-1 0 0 0"
+                                        FontSize="10"
+                                        Command="{Binding OpenCommentEditorCommand}"
+                                        ToolTip="Открыть редактор комментария"/>
+
+                                <!-- Всплывающий редактор комментария -->
+                                <Popup IsOpen="{Binding IsCommentEditorOpen}"
+                                       PlacementTarget="{Binding ElementName=CommentEditorGrid}"
+                                       Placement="Top" StaysOpen="False"
+                                       PopupAnimation="Slide">
+                                    <Border BorderBrush="#999" BorderThickness="1" Background="White" Padding="8" CornerRadius="3">
+                                        <StackPanel>
+                                            <TextBlock Text="Редактирование комментария" FontWeight="SemiBold" FontSize="13" Margin="0 0 0 6"/>
+                                            <TextBox Text="{Binding DayReviewComment, UpdateSourceTrigger=PropertyChanged}"
+                                                     AcceptsReturn="True" TextWrapping="Wrap"
+                                                     MinWidth="350" MinHeight="180" FontSize="12"
+                                                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                                     Margin="0 0 0 6"/>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                <Button Content="Отмена" Width="70" Margin="0 0 6 0"
+                                                        Command="{Binding CancelCommentEditorCommand}"/>
+                                                <Button Content="Применить" Width="70" IsDefault="True"
+                                                        Command="{Binding CloseCommentEditorCommand}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </Popup>
+                            </Grid>
 
                             <!-- Статус -->
                             <TextBlock Grid.Row="0" Grid.Column="3"
@@ -990,24 +1036,35 @@
                             </TextBlock>
 
                             <!-- Вызов AI -->
-                            <Button Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0 -1 0 0"
-                                    Content="Призвать ИИ к ответу" Height="17"
-                                    Padding="0 -1 0 0"
-                                    Command="{Binding AnalyzeDayCommand}"
-                                    ToolTip="Запустить AI-анализ суток через Ollama">
-                                <Button.Resources>
-                                    <Style TargetType="Border">
-                                        <Setter Property="CornerRadius" Value="0 0 2 2"/>
-                                    </Style>
-                                </Button.Resources>
-                            </Button>
+                            <DockPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2">
+                                <Button Margin="0 -1 0 0"
+                                        Content="Призвать ИИ к ответу" Height="17"
+                                        Padding="0 -1 0 0"
+                                        Command="{Binding AnalyzeDayCommand}"
+                                        ToolTip="Запустить AI-анализ суток через Ollama">
+                                    <Button.Resources>
+                                        <Style TargetType="Border">
+                                            <Setter Property="CornerRadius" Value="0 0 2 2"/>
+                                        </Style>
+                                    </Button.Resources>
+                                </Button>
+                            </DockPanel>
 
                             <!-- Результат AI -->
-                            <Grid Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="3" Margin="4 -1 0 0">
-                                <ProgressBar BorderThickness="0" Height="2" IsIndeterminate="True" Visibility="{Binding AiInProgress, Converter={StaticResource VisibilityConverter}}"/>
+                            <StackPanel Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="3" 
+                                        Margin="4 -1 0 0" Orientation="Horizontal">
+                                <Grid Width="156">
+                                    <CheckBox Content="Сильно много думать" DockPanel.Dock="Left" Visibility="{Binding AiInProgress, Converter={StaticResource InvertedVisibilityConverter}}"
+                                              IsChecked="{Binding AiThinkingEnabled}"
+                                              ToolTip="Включить режим рассуждений (медленнее, иногда точнее и можно почитать мысли)"
+                                              VerticalAlignment="Center"
+                                              Margin="-1 0 0 0"/>
+                                    <ProgressBar BorderThickness="0" Height="2" IsIndeterminate="True" Visibility="{Binding AiInProgress, Converter={StaticResource VisibilityConverter}}"/>
+                                </Grid>
                                 <TextBlock Text="{Binding AiResultText}"
+                                           d:Text="Подумал"
                                            VerticalAlignment="Center"
-                                           Margin="0"
+                                           Margin="9 0 0 0"
                                            FontSize="11"
                                            FontWeight="SemiBold" ToolTip="Дважды кликните по этому тексту, чтобы посмотреть объяснение."
                                            Visibility="{Binding HasAiResult, Converter={StaticResource VisibilityConverter}}">
@@ -1021,7 +1078,7 @@
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
-                            </Grid>
+                            </StackPanel>
                         </Grid>
                     </GroupBox>
 

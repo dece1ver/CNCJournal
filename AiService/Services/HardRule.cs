@@ -154,9 +154,12 @@ public static class HardRuleEvaluator
     {
         if (string.IsNullOrWhiteSpace(comment)) return false;
         var l = comment.ToLowerInvariant();
+
+        if ((l.Contains("укладыва") || l.Contains("уложиться")) && l.Contains("норматив"))
+            return false;
+
         return l.Contains("норматив") || l.Contains("не соответствует")
             || l.Contains("некорректн") || l.Contains("режимы не")
-            || l.Contains("программа не соответ") || l.Contains("скорректировать")
-            || l.Contains("не укладыва");
+            || l.Contains("программа не соответ") || l.Contains("скорректировать");
     }
 }

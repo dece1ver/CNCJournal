@@ -72,6 +72,9 @@ namespace remeLog.Models
         /// <summary>Краткое объяснение AI.</summary>
         public string? AiExplanation { get; set; }
 
+        /// <summary>Был ли включён режим рассуждений.</summary>
+        public bool? AiThinkingEnabled { get; set; }
+
         /// <summary>Версия модели.</summary>
         public string? AiModelVersion { get; set; }
 

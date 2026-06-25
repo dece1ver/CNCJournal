@@ -1761,6 +1761,49 @@ namespace remeLog.Infrastructure
 
             return result;
         }
+
+        /// <summary>
+        /// Отправляет команду другому экземпляру через таблицу remeLog_app_commands.
+        /// </summary>
+        public static async Task SendAppCommandAsync(
+            Guid? targetSessionId, string targetMachine, string? targetUser,
+            string commandType, string? payload)
+        {
+            const string sql = @"
+INSERT INTO remeLog_app_commands
+    (Id, TargetSessionId, TargetApplication, TargetMachine, TargetUser,
+     SenderMachine, SenderUser, CommandType, Payload, CreatedUtc)
+VALUES
+    (@Id, @TargetSessionId, @TargetApplication, @TargetMachine, @TargetUser,
+     @SenderMachine, @SenderUser, @CommandType, @Payload, SYSUTCDATETIME());";
+
+            try
+            {
+                await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await connection.OpenAsync();
+                await using var command = new SqlCommand(sql, connection);
+                command.Parameters.AddWithValue("@Id", Guid.NewGuid());
+                command.Parameters.AddWithValue("@TargetSessionId", (object?)targetSessionId ?? DBNull.Value);
+                command.Parameters.AddWithValue("@TargetApplication", "remeLog");
+                command.Parameters.AddWithValue("@TargetMachine", targetMachine);
+                command.Parameters.AddWithValue("@TargetUser", (object?)targetUser ?? DBNull.Value);
+                command.Parameters.AddWithValue("@SenderMachine", Environment.MachineName);
+                command.Parameters.AddWithValue("@SenderUser", Environment.UserName);
+                command.Parameters.AddWithValue("@CommandType", commandType);
+                command.Parameters.AddWithValue("@Payload", (object?)payload ?? DBNull.Value);
+                await command.ExecuteNonQueryAsync();
+
+                Util.WriteLog($"Отправлена команда '{commandType}' на {targetMachine}" +
+                    (targetUser is not null ? $"\\{targetUser}" : "") +
+                    (payload is not null ? $": {payload}" : ""));
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, $"Ошибка отправки команды '{commandType}' на {targetMachine}");
+                throw;
+            }
+        }
+
         // Сохранить / обновить решение по суткам
 
         /// <summary>
@@ -1841,15 +1884,17 @@ namespace remeLog.Infrastructure
         /// Вызывается после получения ответа от модели.
         /// </summary>
         public static async Task<DbResult> SaveAiAnalysisAsync(
-            int dayReviewId, AiAnalysisResult result, string modelVersion)
+            int dayReviewId, AiAnalysisResult result, string modelVersion, bool thinkingEnabled)
         {
             const string sql = @"
         UPDATE ai_day_reviews
         SET AiRequiresReview = @AiRequiresReview,
+            AiThinkingEnabled = @AiThinkingEnabled,
             AiConfidence     = @AiConfidence,
             AiSignals        = @AiSignals,
             AiExplanation    = @AiExplanation,
             AiModelVersion   = @AiModelVersion,
+            AiPromptVersion   = @AiPromptVersion,
             AiAnalyzedAt     = @AiAnalyzedAt
         WHERE Id = @Id";
             try
@@ -1859,11 +1904,14 @@ namespace remeLog.Infrastructure
                 await using var cmd = new SqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@Id", dayReviewId);
                 cmd.Parameters.AddWithValue("@AiRequiresReview", result.RequiresReview);
+                cmd.Parameters.AddWithValue("@AiThinkingEnabled", thinkingEnabled);
                 cmd.Parameters.AddWithValue("@AiConfidence", result.Confidence);
                 cmd.Parameters.AddWithValue("@AiSignals", JsonSerializer.Serialize(result.Signals, _jsonOpts));
                 cmd.Parameters.AddWithValue("@AiExplanation",
                     (object?)result.Explanation ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@AiModelVersion", modelVersion);
+                cmd.Parameters.AddWithValue("@AiPromptVersion",
+                    (object?)result.PromptVersion ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@AiAnalyzedAt", DateTime.Now);
                 await cmd.ExecuteNonQueryAsync();
                 return DbResult.Ok;
@@ -1886,7 +1934,8 @@ namespace remeLog.Infrastructure
                 SELECT Id, Machine, ShiftDate, ReviewedBy, ReviewedAt,
                        Decision, IsFullyReviewed, Comment,
                        AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
-                       AiModelVersion, AiPromptVersion, AiAnalyzedAt
+                       AiModelVersion, AiPromptVersion, AiAnalyzedAt,
+                       AiThinkingEnabled
                 FROM ai_day_reviews
                 WHERE Machine = @Machine AND ShiftDate = @ShiftDate";
 
@@ -1922,7 +1971,8 @@ namespace remeLog.Infrastructure
                 SELECT Id, Machine, ShiftDate, ReviewedBy, ReviewedAt,
                        Decision, IsFullyReviewed, Comment,
                        AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
-                       AiModelVersion, AiPromptVersion, AiAnalyzedAt
+                       AiModelVersion, AiPromptVersion, AiAnalyzedAt,
+                       AiThinkingEnabled
                 FROM ai_day_reviews
                 WHERE ShiftDate BETWEEN @From AND @To
                 ORDER BY ShiftDate, Machine";
@@ -2053,6 +2103,7 @@ namespace remeLog.Infrastructure
             AiModelVersion = r.IsDBNull(12) ? null : r.GetString(12),
             AiPromptVersion = r.IsDBNull(13) ? null : r.GetString(13),
             AiAnalyzedAt = r.IsDBNull(14) ? null : r.GetDateTime(14),
+            AiThinkingEnabled = r.IsDBNull(15) ? null : r.GetBoolean(15),
         };
 
     }

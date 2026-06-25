@@ -1016,5 +1016,11 @@ namespace remeLog.Views
             }
             return null;
         }
+
+        private void ThoughtTextBlock_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (ThoughtScrollViewer != null)
+                ThoughtScrollViewer.ScrollToBottom();
+        }
     }
 }
