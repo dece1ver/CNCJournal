@@ -1,4 +1,4 @@
-﻿namespace eLog.Infrastructure.Extensions
+namespace eLog.Infrastructure
 {
     public static class Text
     {

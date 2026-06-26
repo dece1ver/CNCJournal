@@ -1,5 +1,4 @@
 ﻿using eLog.Infrastructure;
-using eLog.Infrastructure.Extensions;
 using eLog.Models;
 using eLog.Services.Interfaces;
 using eLog.Views.Windows.Dialogs;
@@ -10,7 +9,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
-using static eLog.Infrastructure.Extensions.Text;
+using static eLog.Infrastructure.Text;
 using static eLog.Infrastructure.Extensions.Util;
 using OperatorsEditWindow = eLog.Views.Windows.Settings.OperatorsEditWindow;
 

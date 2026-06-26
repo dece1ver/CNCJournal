@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
-using static eLog.Infrastructure.Extensions.Text;
+using static eLog.Infrastructure.Text;
 
 namespace eLog.Views.Windows.Dialogs
 {

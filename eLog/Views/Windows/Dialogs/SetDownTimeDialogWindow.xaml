@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:l="clr-namespace:eLog.Views.Windows.Dialogs"
         xmlns:vm="clr-namespace:eLog.ViewModels" 
+        xmlns:inf="clr-namespace:eLog.Infrastructure" 
         xmlns:cmd="clr-namespace:eLog.Infrastructure.Commands" 
         xmlns:ext="clr-namespace:eLog.Infrastructure.Extensions" 
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
@@ -32,7 +33,7 @@
             <Button Grid.Row="0" Grid.Column="0" Margin="0 0 2 2"
                     CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=l:SetDownTimeDialogWindow}}">
                 <Button.Content>
-                    <TextBlock Text="{x:Static ext:Text+DownTimes.CreateNcProgram}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
+                    <TextBlock Text="{x:Static inf:Text+DownTimes.CreateNcProgram}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
                 </Button.Content>
                 <Button.Command>
                     <cmd:SetDownTimeDialogCommand DialogResult="CreateNcProgram"/>
@@ -41,7 +42,7 @@
             <Button Grid.Row="0" Grid.Column="1" Margin="2 0 2 2"
                     CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=l:SetDownTimeDialogWindow}}">
                 <Button.Content>
-                    <TextBlock Text="{x:Static ext:Text+DownTimes.Maintenance}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
+                    <TextBlock Text="{x:Static inf:Text+DownTimes.Maintenance}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
                 </Button.Content>
                 <Button.Command>
                     <cmd:SetDownTimeDialogCommand DialogResult="Maintenance"/>
@@ -50,7 +51,7 @@
             <Button Grid.Row="0" Grid.Column="2" Margin="2 0 2 2"
                     CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=l:SetDownTimeDialogWindow}}">
                 <Button.Content>
-                    <TextBlock Text="{x:Static ext:Text+DownTimes.ToolSearching}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
+                    <TextBlock Text="{x:Static inf:Text+DownTimes.ToolSearching}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
                 </Button.Content>
                 <Button.Command>
                     <cmd:SetDownTimeDialogCommand DialogResult="ToolSearching"/>
@@ -59,7 +60,7 @@
             <Button Grid.Row="0" Grid.Column="3" Margin="2 0 2 2"
                 CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=l:SetDownTimeDialogWindow}}">
                 <Button.Content>
-                    <TextBlock Text="{x:Static ext:Text+DownTimes.ToolChanging}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
+                    <TextBlock Text="{x:Static inf:Text+DownTimes.ToolChanging}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
                 </Button.Content>
                 <Button.Command>
                     <cmd:SetDownTimeDialogCommand DialogResult="ToolChanging"/>
@@ -69,7 +70,7 @@
             <Button Grid.Row="0" Grid.Column="4" Margin="2 0 0 2"
                 CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=l:SetDownTimeDialogWindow}}">
                 <Button.Content>
-                    <TextBlock Text="{x:Static ext:Text+DownTimes.Mentoring}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
+                    <TextBlock Text="{x:Static inf:Text+DownTimes.Mentoring}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
                 </Button.Content>
                 <Button.Command>
                     <cmd:SetDownTimeDialogCommand DialogResult="Mentoring"/>
@@ -86,7 +87,7 @@
             <Button Grid.Row="1" Grid.Column="2" Margin="2 2 2 0"
                     CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=l:SetDownTimeDialogWindow}}">
                 <Button.Content>
-                    <TextBlock Text="{x:Static ext:Text+DownTimes.ContactingDepartments}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
+                    <TextBlock Text="{x:Static inf:Text+DownTimes.ContactingDepartments}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
                 </Button.Content>
                 <Button.Command>
                     <cmd:SetDownTimeDialogCommand DialogResult="ContactingDepartments"/>
@@ -96,7 +97,7 @@
             <Button Grid.Row="1" Grid.Column="3" Margin="2 2 2 0"
                     CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=l:SetDownTimeDialogWindow}}">
                 <Button.Content>
-                    <TextBlock Text="{x:Static ext:Text+DownTimes.FixtureMaking}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
+                    <TextBlock Text="{x:Static inf:Text+DownTimes.FixtureMaking}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
                 </Button.Content>
                 <Button.Command>
                     <cmd:SetDownTimeDialogCommand DialogResult="FixtureMaking"/>
@@ -105,7 +106,7 @@
             <Button Grid.Row="1" Grid.Column="4" Margin="2 2 0 0"
                 CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=l:SetDownTimeDialogWindow}}">
                 <Button.Content>
-                    <TextBlock Text="{x:Static ext:Text+DownTimes.HardwareFailure}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
+                    <TextBlock Text="{x:Static inf:Text+DownTimes.HardwareFailure}" TextWrapping="WrapWithOverflow" HorizontalAlignment="Center" TextAlignment="Center"/>
                 </Button.Content>
                 <Button.Command>
                     <cmd:SetDownTimeDialogCommand DialogResult="HardwareFailure"/>

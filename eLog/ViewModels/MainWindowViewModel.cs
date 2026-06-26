@@ -23,10 +23,10 @@ using System.Windows;
 using System.Windows.Input;
 using static eLog.Infrastructure.Extensions.Util;
 using Application = System.Windows.Application;
-using Database = eLog.Infrastructure.Extensions.Database;
+using Database = eLog.Infrastructure.Database;
 using Machine = eLog.Models.Machine;
 using MessageBox = System.Windows.MessageBox;
-using Text = eLog.Infrastructure.Extensions.Text;
+using Text = eLog.Infrastructure.Text;
 
 namespace eLog.ViewModels
 {

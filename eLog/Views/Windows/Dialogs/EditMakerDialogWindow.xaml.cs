@@ -1,4 +1,5 @@
-﻿using eLog.Infrastructure.Extensions;
+﻿using eLog.Infrastructure;
+using eLog.Infrastructure.Extensions;
 using eLog.Models;
 using libeLog.Models;
 using System.ComponentModel;

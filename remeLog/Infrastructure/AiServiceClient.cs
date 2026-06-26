@@ -22,7 +22,7 @@ namespace remeLog.Infrastructure
 
         public AiServiceClient(string? baseUrl = null)
         {
-            _baseUrl = (baseUrl ?? $"http://{AppSettings.AiIp.GetIpOrDefault()}:5050")
+            _baseUrl = (baseUrl ?? $"http://{AppSettings.AiIp.GetIpOrDefault()}:5051")
                 .TrimEnd('/');
         }
 

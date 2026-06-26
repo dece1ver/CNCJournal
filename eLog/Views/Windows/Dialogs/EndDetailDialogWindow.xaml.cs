@@ -12,7 +12,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
-using Text = eLog.Infrastructure.Extensions.Text;
+using Text = eLog.Infrastructure.Text;
 
 namespace eLog.Views.Windows.Dialogs
 {

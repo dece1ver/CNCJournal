@@ -42,10 +42,10 @@
 
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.102.3" />
-    <PackageReference Include="EPPlus" Version="7.7.1" />
     <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.0-rc5.4" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.2" />
-    <PackageReference Include="NCalcSync" Version="4.3.3" />
+    <PackageReference Include="NCalcSync" Version="6.3.1" />
+    <PackageReference Include="System.IO.Packaging" Version="6.0.2" />
   </ItemGroup>
 
   <ItemGroup>

@@ -36,6 +36,8 @@
 
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.72" />
+    <PackageReference Include="NCalcSync" Version="6.3.1" />
+    <PackageReference Include="System.IO.Packaging" Version="6.0.2" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,6 +1,5 @@
 ﻿using DocumentFormat.OpenXml.Office2019.Drawing.Diagram11;
 using eLog.Infrastructure;
-using eLog.Infrastructure.Extensions;
 using eLog.Models;
 using libeLog.Models;
 using Microsoft.Data.SqlClient;
