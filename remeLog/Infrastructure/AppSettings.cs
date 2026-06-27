@@ -77,6 +77,8 @@ namespace remeLog.Infrastructure
         [JsonIgnore]
         public static string AiIp { get; set; } = string.Empty;
         [JsonIgnore]
+        public static string AiModel { get; set; } = "qwen3:14b";
+        [JsonIgnore]
         public static int PartsHistoryMaxRecords { get; set; } = 5;
         [JsonIgnore]
         public static int PartsHistoryMaxDaysBack { get; set; } = 720;

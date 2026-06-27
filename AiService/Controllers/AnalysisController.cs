@@ -27,7 +27,7 @@ public class AnalysisController(OllamaService ollama, ILogger<AnalysisController
             var prompt = PromptBuilder.Build(request, hardRules);
             var thinkCapture = new StringBuilder();
 
-            var (raw, thinking) = await ollama.GenerateAsync(prompt, think: false, thinkingProgress: null, ct: ct);
+            var (raw, thinking) = await ollama.GenerateAsync(prompt, think: false, thinkingProgress: null, ct: ct, model: request.Model);
             var llmResult = ParseResponse(raw);
             var notDowngraded = hardRules.SoftSignals
                 .Where(s => !llmResult.DowngradedSignals.Contains(s))
@@ -171,7 +171,7 @@ public class AnalysisController(OllamaService ollama, ILogger<AnalysisController
         {
             logger.LogInformation("Отправка в Ollama...");
 
-            var generateTask = ollama.GenerateAsync(prompt, true, progress, ct);
+            var generateTask = ollama.GenerateAsync(prompt, true, progress, ct, model: request.Model);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 

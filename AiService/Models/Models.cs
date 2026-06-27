@@ -9,6 +9,7 @@ public class AnalyzeRequest
     public List<string> Signals { get; set; } = [];
     public List<PartContext> Parts { get; set; } = [];
     public bool EnableThinking { get; set; } = false;
+    public string? Model { get; set; }
 }
 
 public class PartContext

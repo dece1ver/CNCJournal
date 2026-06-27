@@ -59,6 +59,11 @@
                               Command="{Binding EditSerialPartsCommand}" Icon="{StaticResource LookupListItemIcon}"/>
                 </MenuItem>
                 <MenuItem Header="Инструменты">
+                    <MenuItem Header="Пакетный ИИ-анализ"
+                              Command="{Binding ShowBatchAiAnalysisCommand}"
+                              IsEnabled="{Binding IsAdministrator}"
+                              Icon="🤖"
+                              ToolTip="Пакетный ИИ-анализ всех суток-станков с записями в ai_day_reviews"/>
                     <MenuItem Header="Мониторинг"
                               Command="{Binding ShowMonitorCommand}" Icon="{StaticResource AboutIcon}"/>
                     <MenuItem Header="Проверка БД"

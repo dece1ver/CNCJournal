@@ -12,16 +12,20 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
 
     /// <summary>
     /// Отправляет промпт в Ollama, возвращает сырой текст ответа модели.
+    /// Если model не задан — используется модель из appsettings.json (Ollama:Model).
     /// </summary>
     public async Task<(string Response, string? Thinking)> GenerateAsync(
     string prompt,
     bool think = false,
     IProgress<string>? thinkingProgress = null,
-    CancellationToken ct = default)
+    CancellationToken ct = default,
+    string? model = null)
     {
+        var effectiveModel = string.IsNullOrWhiteSpace(model) ? _model : model;
+
         var request = new OllamaGenerateRequest
         {
-            Model = _model,
+            Model = effectiveModel,
             Prompt = prompt,
             Stream = think,
             Think = think,
@@ -36,7 +40,7 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
 
         logger.LogInformation(
             "Отправка в Ollama. Модель: {Model}, think={Think}, символов: {Len}",
-            _model, think, prompt.Length);
+            effectiveModel, think, prompt.Length);
 
         using var httpRequest = new HttpRequestMessage(
             HttpMethod.Post, $"{_baseUrl}/api/generate")

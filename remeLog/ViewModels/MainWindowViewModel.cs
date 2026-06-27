@@ -49,6 +49,7 @@ namespace remeLog.ViewModels
             LoadPartsInfoCommand = new LambdaCommand(OnLoadPartsInfoCommandExecuted, CanLoadPartsInfoCommandExecute);
             ShowLongSetupsCommand = new LambdaCommand(OnShowLongSetupsCommandExecuted, CanShowLongSetupsCommandExecute);
             ShowMonitorCommand = new LambdaCommand(OnShowMonitorCommandExecuted, CanShowMonitorCommandExecute);
+            ShowBatchAiAnalysisCommand = new LambdaCommand(OnShowBatchAiAnalysisCommandExecuted, CanShowBatchAiAnalysisCommandExecute);
             EditOperatorsCommand = new LambdaCommand(OnEditOperatorsCommandExecuted, CanEditOperatorsCommandExecute);
             EditSerialPartsCommand = new LambdaCommand(OnEditSerialPartsCommandExecuted, CanEditSerialPartsCommandExecute);
             ShowAboutCommand = new LambdaCommand(OnShowAboutCommandExecuted, CanShowAboutCommandExecute);
@@ -336,6 +337,20 @@ namespace remeLog.ViewModels
             }
         }
         private bool CanShowMonitorCommandExecute(object p) => !InProgress;
+        #endregion
+
+        #region ShowBatchAiAnalysis
+        public ICommand ShowBatchAiAnalysisCommand { get; }
+        private void OnShowBatchAiAnalysisCommandExecuted(object p)
+        {
+            using (Overlay = new())
+            {
+                var window = new BatchAiAnalysisWindow();
+                window.CenterTo(App.Current.MainWindow);
+                window.Show();
+            }
+        }
+        private bool CanShowBatchAiAnalysisCommandExecute(object p) => !InProgress;
         #endregion
 
         #region ShowAbout

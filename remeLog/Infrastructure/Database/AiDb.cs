@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace remeLog.Infrastructure
@@ -185,6 +186,38 @@ namespace remeLog.Infrastructure
             catch (Exception ex)
             {
                 Util.WriteLog(ex, "GetDayReviewsForPeriodAsync");
+            }
+
+            return result;
+        }
+
+        public static async Task<List<DayReview>> GetAllDayReviewsAsync(CancellationToken ct = default)
+        {
+            var result = new List<DayReview>();
+
+            const string sql = @"
+                SELECT Id, Machine, ShiftDate, ReviewedBy, ReviewedAt,
+                       Decision, IsFullyReviewed, Comment,
+                       AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
+                       AiModelVersion, AiPromptVersion, AiAnalyzedAt,
+                       AiThinkingEnabled
+                FROM ai_day_reviews
+                ORDER BY ShiftDate, Machine";
+
+            try
+            {
+                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await conn.OpenAsync(ct);
+                await using var cmd = new SqlCommand(sql, conn);
+                await using var r = await cmd.ExecuteReaderAsync(ct);
+                while (await r.ReadAsync(ct))
+                {
+                    result.Add(ReadDayReview(r));
+                }
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "GetAllDayReviewsAsync");
             }
 
             return result;

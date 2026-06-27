@@ -2394,7 +2394,7 @@ namespace remeLog.ViewModels
                 if (CurrentDayReview != null && !result.HasError)
                 {
                     await Database.SaveAiAnalysisAsync(
-                        CurrentDayReview.Id, result, "qwen3:14b", AiThinkingEnabled);
+                        CurrentDayReview.Id, result, AppSettings.AiModel, AiThinkingEnabled);
                     CurrentDayReview.AiRequiresReview = result.RequiresReview;
                     CurrentDayReview.AiConfidence = result.Confidence;
                     CurrentDayReview.AiAnalyzedAt = DateTime.Now;

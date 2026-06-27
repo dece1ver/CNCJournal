@@ -375,6 +375,7 @@ namespace libeLog.Infrastructure.Sql
                 .AddSmallDateTimeColumn("Holidays")
                 .AddStringColumn("EngineerComments")
                 .AddStringColumn("AiIp")
+                .AddStringColumn("AiModel")
                 .Build(),
 
             new TableBuilder("cnc_serial_parts")

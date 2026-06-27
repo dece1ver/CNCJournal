@@ -5,7 +5,7 @@ namespace AiService.Services;
 
 public static class PromptBuilder
 {
-    public const string PromptVersion = "2026-06-27-v2";
+    public const string PromptVersion = "2026-06-27-v3";
 
     private const string SystemPrompt = """
     ═══ ROLE ═══
@@ -34,6 +34,14 @@ public static class PromptBuilder
     Разовое изменение времени из-за проблем с инструментом/оборудованием:
       Определение: причина из комбобокса мастера. Одноразовая проблема с инструментом или оборудованием.
       Правило: если мастер конкретизировал в MasterComment (непустой, описывает именно эту проблему, не повтор оператора, не простой) И цифры КПД не противоречат — аномалия объяснена, деталь может быть исключена из отчётов.
+
+    Штучная/длительная работа:
+      Определение: причина из MasterMachiningComment. Длительная одноразовая работа, малая партия.
+      Правило: объясняет аномальный КПД изготовления (< 70% и > 120%) ТОЛЬКО если:
+        а) MachiningTime < 3 мин → FinishedCount ≤ 10
+        б) MachiningTime ≥ 3 мин → FinishedCount ≤ 5
+      Превышение порога → причина указана некорректно → эскалация.
+      MasterComment не требуется. В suggest_exclude_from_reports НЕ добавляется.
 
     Изготовление не по техпроцессу / Некорректные нормативы / Отсутствие нормативов:
       Определение: причины из комбобокса мастера.
@@ -148,6 +156,13 @@ public static class PromptBuilder
           ВСЕ ДА → аномалия объяснена (не эскалируй)
           НЕ ВСЕ → эскалируй
 
+        Штучная/длительная работа:
+          Проверь FinishedCount (MachiningTime — время на деталь, мин/дет):
+            MachiningTime < 3 мин → допустимо ≤ 10 деталей
+            MachiningTime ≥ 3 мин → допустимо ≤ 5 деталей
+          FinishedCount в пределах порога → аномалия объяснена (КПД < 70% или > 120%)
+          FinishedCount превышает порог → причина указана некорректно → эскалируй
+
         Изготовление не по техпроцессу / Некорректные нормативы / Отсутствие нормативов:
           → подтверждение эскалации (не «всё в порядке»)
           Исключение: «Отсутствие нормативов» без М/Л → не эскалация (см. DEFINITIONS)
@@ -225,6 +240,7 @@ public static class PromptBuilder
     • MasterSetupComment НЕ объясняет аномалию изготовления
     • Категория определяется полем, не содержанием: «замена сверла» в MasterMachiningComment — это про изготовление
     • OperatorComment с «Освоение»/«Написание УП» проверяется по истории детали (см. ШАГ 2 п. 2.2)
+    • «Штучная/длительная работа» (MasterMachiningComment) проверяется по FinishedCount и MachiningTime (см. ШАГ 2 п. 2.3)
 
     ═══ CONFLICT PRIORITY ═══
     От высшего к низшему:
@@ -274,6 +290,7 @@ public static class PromptBuilder
     • При простое > 50% требуется SpecifiedDowntimesComment мастера; только OperatorComment недостаточен
     • MasterComment без MasterSetupComment/MasterMachiningComment валиден — оценивай релевантность свободного текста
     • MasterComment при непустом MasterMachiningComment и пустом MasterSetupComment НЕ объясняет наладку. Категория определяется полем комбо, не смыслом текста. Жёсткое правило.
+    • «Штучная/длительная работа» валидна только при малой партии (MachiningTime < 3 мин — ≤ 10 деталей, ≥ 3 мин — ≤ 5). Превышение — причина указана некорректно, эскалируй
     """;
 
     private const string SoftSignalExplanation = """
