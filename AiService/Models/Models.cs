@@ -31,6 +31,8 @@ public class PartContext
     public string MasterSetupComment { get; set; } = "";
     public string MasterMachiningComment { get; set; } = "";
     public string MasterComment { get; set; } = "";
+    public string SpecifiedDowntimesList { get; set; } = "";
+    public string SpecifiedDowntimesComment { get; set; } = "";
 
     public bool NoSetupHappened { get; set; }
     public bool NoProductionHappened { get; set; }

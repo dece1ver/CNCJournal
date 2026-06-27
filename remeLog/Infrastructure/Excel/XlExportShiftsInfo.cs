@@ -48,7 +48,8 @@ namespace remeLog.Infrastructure
 
             ConfigureWorksheetHeader(wsTotal, columns);
 
-            switch (Database.GetShiftsByPeriod(machines, fromDate, toDate, new Shift(ShiftType.All), out var shifts))
+            var shiftsResult = Database.GetShiftsByPeriod(machines, fromDate, toDate, new Shift(ShiftType.All));
+            switch (shiftsResult.Status)
             {
                 case libeLog.Models.DbResult.AuthError:
                     MessageBox.Show("AuthError");
@@ -60,7 +61,7 @@ namespace remeLog.Infrastructure
                     MessageBox.Show("NoConnection");
                     return "";
             }
-            shifts = shifts.OrderBy(s => s.Machine).ToList();
+            var shifts = shiftsResult.Value.OrderBy(s => s.Machine).ToList();
             int row = 3;
             for (DateTime dt = fromDate; dt <= toDate; dt += TimeSpan.FromDays(1))
             {

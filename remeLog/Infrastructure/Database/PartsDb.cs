@@ -1,0 +1,582 @@
+using libeLog.Extensions;
+using libeLog.Infrastructure;
+using libeLog.Models;
+using Microsoft.Data.SqlClient;
+using remeLog.Infrastructure.Extensions;
+using remeLog.Infrastructure.Types;
+using remeLog.Models;
+using remeLog.Models.Reports;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Data;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using static libeLog.Infrastructure.Db.DbHelper;
+using Part = remeLog.Models.Part;
+
+namespace remeLog.Infrastructure
+{
+    public static partial class Database
+    {
+        public static async Task SaveSerialPartAsync(SerialPart part, IProgress<string>? progress = null)
+        {
+            string query = part.Id == 0
+                ? "IF NOT EXISTS (SELECT 1 FROM cnc_serial_parts WHERE PartName = @PartName) " +
+                  "BEGIN INSERT INTO cnc_serial_parts (PartName, YearCount) VALUES (@PartName, @YearCount); END"
+                : "UPDATE cnc_serial_parts SET PartName = @PartName, YearCount = @YearCount WHERE Id = @Id;";
+
+            using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await connection.OpenAsync();
+
+            using var command = new SqlCommand(query, connection);
+            command.Parameters.AddWithValue("@PartName", part.PartName);
+            command.Parameters.AddWithValue("@YearCount", part.YearCount);
+            if (part.Id != 0)
+                command.Parameters.AddWithValue("@Id", part.Id);
+
+            progress?.Report($"Сохранение детали '{part.PartName}'...");
+            await command.ExecuteNonQueryAsync();
+            progress?.Report($"Деталь '{part.PartName}' успешно сохранена.");
+        }
+
+        public static async Task SaveSerialPartsAsync(IEnumerable<SerialPart> partNames, IProgress<string>? progress = null)
+        {
+            progress?.Report("Сохранение серийных деталей в БД...");
+            foreach (var part in partNames)
+            {
+                await SaveSerialPartAsync(part, progress);
+            }
+            progress?.Report("Сохранение серийных деталей завершено.");
+        }
+
+        public static async Task DeleteSerialPartAsync(int partId, IProgress<string>? progress = null)
+        {
+            const string query = "DELETE FROM cnc_serial_parts WHERE Id = @Id;";
+
+            using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await connection.OpenAsync();
+
+            using var command = new SqlCommand(query, connection);
+            command.Parameters.AddWithValue("@Id", partId);
+
+            progress?.Report($"Удаление детали с Id = {partId} из БД...");
+            int rowsAffected = await command.ExecuteNonQueryAsync();
+
+            if (rowsAffected > 0)
+            {
+                progress?.Report("Деталь успешно удалена.");
+            }
+            else
+            {
+                progress?.Report("Деталь с указанным Id не найдена.");
+            }
+        }
+
+        public async static Task<List<Part>> ReadPartsWithConditions(string conditions, CancellationToken cancellationToken)
+        {
+            List<Part> parts = new();
+            await Task.Run(async () =>
+            {
+                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                {
+                    await connection.OpenAsync(cancellationToken);
+                    string query = $"SELECT * FROM Parts WHERE {conditions} ORDER BY StartSetupTime ASC;";
+                    using (SqlCommand command = new(query, connection))
+                    {
+                        await FillPartsAsync(parts, command, cancellationToken);
+                    }
+                }
+            }, cancellationToken);
+            return parts;
+        }
+
+        public async static Task<ObservableCollection<Part>> ReadPartsByShiftDateAndMachine(DateTime fromDate, DateTime toDate, string machine, CancellationToken cancellationToken)
+        {
+            ObservableCollection<Part> parts = new();
+            using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+            {
+                connection.Open();
+
+                string query = "SELECT * FROM Parts WHERE ShiftDate BETWEEN @FromDate AND @ToDate AND Machine = @Machine ORDER BY StartSetupTime ASC;";
+                using (SqlCommand command = new(query, connection))
+                {
+                    command.Parameters.AddWithValue("@FromDate", fromDate);
+                    command.Parameters.AddWithValue("@ToDate", toDate);
+                    command.Parameters.AddWithValue("@Machine", machine);
+
+                    await parts.FillPartsAsync(command, cancellationToken);
+                }
+            }
+            return parts;
+        }
+
+        public async static Task<ObservableCollection<Part>> ReadPartsByShiftDate(DateTime fromDate, DateTime toDate, CancellationToken cancellationToken)
+        {
+            ObservableCollection<Part> parts = new();
+            using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+            {
+                connection.Open();
+
+                string query = "SELECT * FROM Parts WHERE ShiftDate BETWEEN @FromDate AND @ToDate ORDER BY StartSetupTime ASC;";
+                using (SqlCommand command = new(query, connection))
+                {
+                    command.Parameters.AddWithValue("@FromDate", fromDate);
+                    command.Parameters.AddWithValue("@ToDate", toDate);
+
+                    await parts.FillPartsAsync(command, cancellationToken);
+                }
+            }
+            return parts;
+        }
+
+        public async static Task<ObservableCollection<Part>> ReadPartsByGuids(IEnumerable<Guid> guids, CancellationToken cancellationToken)
+        {
+            ObservableCollection<Part> parts = new();
+
+            if (guids == null || !guids.Any())
+                return parts;
+
+            const int chunkSize = 2000;
+
+            var chunks = guids
+                .Select((guid, index) => new { guid, index })
+                .GroupBy(x => x.index / chunkSize)
+                .Select(g => g.Select(x => x.guid).ToList());
+
+            using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await connection.OpenAsync(cancellationToken);
+
+            foreach (var chunk in chunks)
+            {
+                var parameters = chunk.Select((_, index) => $"@p{index}").ToArray();
+                var query = $"SELECT * FROM Parts WHERE Guid IN ({string.Join(", ", parameters)}) ORDER BY StartSetupTime ASC;";
+
+                using var command = new SqlCommand(query, connection);
+
+                for (int i = 0; i < chunk.Count; i++)
+                {
+                    command.Parameters.AddWithValue(parameters[i], chunk[i]);
+                }
+
+                await parts.FillPartsAsync(command, cancellationToken);
+            }
+
+            return parts;
+        }
+
+        public async static Task<ObservableCollection<Part>> ReadPartsByPartNameAndOrder(string[] partNames, string[] orders, CancellationToken cancellationToken)
+        {
+            ObservableCollection<Part> parts = new();
+            using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+            {
+                connection.Open();
+
+                string query = "SELECT * FROM Parts WHERE PartName IN ('" + string.Join("','", partNames) + "') AND [Order] IN ('" + string.Join("','", orders) + "')";
+                using (SqlCommand command = new(query, connection))
+                {
+                    await parts.FillPartsAsync(command, cancellationToken);
+                }
+            }
+            return parts;
+        }
+
+        public async static Task<DbResult<string>> UpdatePartAsync(this Part part)
+        {
+            try
+            {
+                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                {
+                    await connection.OpenAsync();
+                    string updateQuery = "UPDATE Parts SET " +
+                        "Machine = @Machine, " +
+                        "Shift = @Shift, " +
+                        "ShiftDate = @ShiftDate, " +
+                        "Operator = @Operator, " +
+                        "PartName = @PartName, " +
+                        "[Order] = @Order, " +
+                        "Setup = @Setup, " +
+                        "FinishedCount = @FinishedCount, " +
+                        "TotalCount = @TotalCount, " +
+                        "StartSetupTime = @StartSetupTime, " +
+                        "StartMachiningTime = @StartMachiningTime, " +
+                        "EndMachiningTime = @EndMachiningTime, " +
+                        "SetupTimeFact = @SetupTimeFact, " +
+                        "SetupTimePlan = @SetupTimePlan, " +
+                        "SetupTimePlanForReport = @SetupTimePlanForReport, " +
+                        "SingleProductionTimePlan = @SingleProductionTimePlan, " +
+                        "ProductionTimeFact = @ProductionTimeFact, " +
+                        "MachiningTime = @MachiningTime, " +
+                        "SetupDowntimes = @SetupDowntimes, " +
+                        "MachiningDowntimes = @MachiningDowntimes, " +
+                        "PartialSetupTime = @PartialSetupTime, " +
+                        "CreateNcProgramTime = @CreateNcProgramTime, " +
+                        "MaintenanceTime = @MaintenanceTime, " +
+                        "ToolSearchingTime = @ToolSearchingTime, " +
+                        "ToolChangingTime = @ToolChangingTime, " +
+                        "MentoringTime = @MentoringTime, " +
+                        "ContactingDepartmentsTime = @ContactingDepartmentsTime, " +
+                        "FixtureMakingTime = @FixtureMakingTime, " +
+                        "HardwareFailureTime = @HardwareFailureTime, " +
+                        "SpecialDowntimeTime = @SpecialDowntimeTime, " +
+                        "OperatorComment = @OperatorComment, " +
+                        "MasterSetupComment = @MasterSetupComment, " +
+                        "MasterMachiningComment = @MasterMachiningComment, " +
+                        "SpecifiedDowntimesComment = @SpecifiedDowntimesComment, " +
+                        "UnspecifiedDowntimeComment = @UnspecifiedDowntimeComment, " +
+                        "MasterComment = @MasterComment, " +
+                        "FixedSetupTimePlan = @FixedSetupTimePlan, " +
+                        "FixedProductionTimePlan = @FixedProductionTimePlan, " +
+                        "EngineerComment = @EngineerComment, " +
+                        "ExcludeFromReports = @ExcludeFromReports, " +
+                        "LongSetupReasonComment = @LongSetupReasonComment, " +
+                        "LongSetupFixComment = @LongSetupFixComment, " +
+                        "LongSetupEngeneerComment = @LongSetupEngeneerComment, " +
+                        "ExcludedOperationsTime = @ExcludedOperationsTime, " +
+                        "IncreaseReason = @IncreaseReason, " +
+                        "DefectiveCount = @DefectiveCount " +
+                        "WHERE Guid = @Guid";
+                    using (SqlCommand cmd = new(updateQuery, connection))
+                    {
+                        cmd.Parameters.AddWithValue("@Guid", part.Guid);
+                        cmd.Parameters.AddWithValue("@Machine", part.Machine);
+                        cmd.Parameters.AddWithValue("@Shift", part.Shift);
+                        cmd.Parameters.AddWithValue("@ShiftDate", part.ShiftDate);
+                        cmd.Parameters.AddWithValue("@Operator", part.Operator);
+                        cmd.Parameters.AddWithValue("@PartName", part.PartName);
+                        cmd.Parameters.AddWithValue("@Order", part.Order);
+                        cmd.Parameters.AddWithValue("@Setup", part.Setup);
+                        cmd.Parameters.AddWithValue("@FinishedCount", part.FinishedCount);
+                        cmd.Parameters.AddWithValue("@TotalCount", part.TotalCount);
+                        cmd.Parameters.AddWithValue("@StartSetupTime", part.StartSetupTime);
+                        cmd.Parameters.AddWithValue("@StartMachiningTime", part.StartMachiningTime);
+                        cmd.Parameters.AddWithValue("@SetupTimeFact", part.SetupTimeFact);
+                        cmd.Parameters.AddWithValue("@EndMachiningTime", part.EndMachiningTime);
+                        cmd.Parameters.AddWithValue("@SetupTimePlan", part.SetupTimePlan);
+                        cmd.Parameters.AddWithValue("@SetupTimePlanForReport", part.SetupTimePlanForReport);
+                        cmd.Parameters.AddWithValue("@SingleProductionTimePlan", part.SingleProductionTimePlan);
+                        cmd.Parameters.AddWithValue("@ProductionTimeFact", part.ProductionTimeFact);
+                        cmd.Parameters.AddWithValue("@MachiningTime", part.MachiningTime.Ticks);
+                        cmd.Parameters.AddWithValue("@SetupDowntimes", part.SetupDowntimes);
+                        cmd.Parameters.AddWithValue("@MachiningDowntimes", part.MachiningDowntimes);
+                        cmd.Parameters.AddWithValue("@PartialSetupTime", part.PartialSetupTime);
+                        cmd.Parameters.AddWithValue("@CreateNcProgramTime", part.CreateNcProgramTime);
+                        cmd.Parameters.AddWithValue("@MaintenanceTime", part.MaintenanceTime);
+                        cmd.Parameters.AddWithValue("@ToolSearchingTime", part.ToolSearchingTime);
+                        cmd.Parameters.AddWithValue("@ToolChangingTime", part.ToolChangingTime);
+                        cmd.Parameters.AddWithValue("@MentoringTime", part.MentoringTime);
+                        cmd.Parameters.AddWithValue("@ContactingDepartmentsTime", part.ContactingDepartmentsTime);
+                        cmd.Parameters.AddWithValue("@FixtureMakingTime", part.FixtureMakingTime);
+                        cmd.Parameters.AddWithValue("@HardwareFailureTime", part.HardwareFailureTime);
+                        cmd.Parameters.AddWithValue("@SpecialDowntimeTime", part.SpecialDowntimeTime);
+                        cmd.Parameters.AddWithValue("@OperatorComment", part.OperatorComment);
+                        cmd.Parameters.AddWithValue("@MasterSetupComment", part.MasterSetupComment);
+                        cmd.Parameters.AddWithValue("@MasterMachiningComment", part.MasterMachiningComment);
+                        cmd.Parameters.AddWithValue("@SpecifiedDowntimesComment", part.SpecifiedDowntimesComment);
+                        cmd.Parameters.AddWithValue("@UnspecifiedDowntimeComment", part.UnspecifiedDowntimesComment);
+                        cmd.Parameters.AddWithValue("@MasterComment", part.MasterComment);
+                        cmd.Parameters.AddWithValue("@FixedSetupTimePlan", part.FixedSetupTimePlan);
+                        cmd.Parameters.AddWithValue("@FixedProductionTimePlan", part.FixedProductionTimePlan);
+                        cmd.Parameters.AddWithValue("@EngineerComment", part.EngineerComment);
+                        cmd.Parameters.AddWithValue("@ExcludeFromReports", part.ExcludeFromReports);
+                        cmd.Parameters.AddWithValue("@LongSetupReasonComment", part.LongSetupReasonComment);
+                        cmd.Parameters.AddWithValue("@LongSetupFixComment", part.LongSetupFixComment);
+                        cmd.Parameters.AddWithValue("@LongSetupEngeneerComment", part.LongSetupEngeneerComment);
+                        cmd.Parameters.AddWithValue("@ExcludedOperationsTime", part.ExcludedOperationsTime);
+                        cmd.Parameters.AddWithValue("@IncreaseReason", part.IncreaseReason);
+                        cmd.Parameters.AddWithValue("@DefectiveCount", part.DefectiveCount);
+
+                        var execureResult = await cmd.ExecuteNonQueryAsync();
+                    }
+                    await connection.CloseAsync();
+                    return DbResult<string>.Ok("OK");
+                }
+            }
+            catch (SqlException sqlEx)
+            {
+                switch (sqlEx.Number)
+                {
+                    case 18456:
+                        var authMessage = $"Ошибка №{sqlEx.Number}:\nОшибка авторизации.";
+                        Util.WriteLog(sqlEx, authMessage);
+                        return DbResult<string>.Fail(DbResult.AuthError, authMessage);
+                    default:
+                        var sqlExMessage = $"Ошибка №{sqlEx.Number}:";
+                        Util.WriteLog(sqlEx, sqlExMessage);
+                        return DbResult<string>.Fail(DbResult.Error, sqlExMessage);
+                }
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex);
+                return DbResult<string>.FailWithError(ex.Message);
+            }
+                }
+
+        static async Task FillPartsAsync(this ICollection<Part> parts, SqlCommand command, CancellationToken cancellationToken)
+        {
+            using (SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken))
+            {
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var guid = await reader.GetFieldValueAsync<Guid>(0, cancellationToken);
+                    var machine = await reader.GetFieldValueAsync<string>(1, cancellationToken);
+                    var shift = await reader.GetFieldValueAsync<string>(2, cancellationToken);
+                    var shiftDate = await reader.GetFieldValueAsync<DateTime>(3, cancellationToken);
+                    var @operator = await reader.GetFieldValueAsync<string>(4, cancellationToken);
+                    var partName = await reader.GetFieldValueAsync<string>(5, cancellationToken);
+                    var order = await reader.GetFieldValueAsync<string>(6, cancellationToken);
+                    var setup = await reader.GetFieldValueAsync<int>(7, cancellationToken);
+                    var finishedCount = await reader.GetFieldValueAsync<double>(8, cancellationToken);
+                    var totalCount = await reader.GetFieldValueAsync<int>(9, cancellationToken);
+                    var startSetupTime = await reader.GetFieldValueAsync<DateTime>(10, cancellationToken);
+                    var startMachiningTime = await reader.GetFieldValueAsync<DateTime>(11, cancellationToken);
+                    var setupTimeFact = await reader.GetFieldValueAsync<double>(12, cancellationToken);
+                    var endMachiningTime = await reader.GetFieldValueAsync<DateTime>(13, cancellationToken);
+                    var setupTimePlan = await reader.GetFieldValueAsync<double>(14, cancellationToken);
+                    var setupTimePlanForReport = await reader.GetFieldValueAsync<double>(15, cancellationToken);
+                    var singleProductionTimePlan = await reader.GetFieldValueAsync<double>(16, cancellationToken);
+                    var productionTimeFact = await reader.GetFieldValueAsync<double>(17, cancellationToken);
+                    var machiningTime = await reader.GetFieldValueAsync<long>(18, cancellationToken);
+                    var setupDowntimes = await reader.GetFieldValueAsync<double>(19, cancellationToken);
+                    var machiningDowntimes = await reader.GetFieldValueAsync<double>(20, cancellationToken);
+                    var partialSetupTime = await reader.GetFieldValueAsync<double>(21, cancellationToken);
+                    var createNcProgramTime = await reader.GetFieldValueAsync<double>(22, cancellationToken);
+                    var maintenanceTime = await reader.GetFieldValueAsync<double>(23, cancellationToken);
+                    var toolSearchingTime = await reader.GetFieldValueAsync<double>(24, cancellationToken);
+                    var toolChangingTime = await reader.GetFieldValueAsync<double>(25, cancellationToken);
+                    var mentoringTime = await reader.GetFieldValueAsync<double>(26, cancellationToken);
+                    var contactiongDepartmentsTime = await reader.GetFieldValueAsync<double>(27, cancellationToken);
+                    var fixtureMakingTime = await reader.GetFieldValueAsync<double>(28, cancellationToken);
+                    var hardwareFailureTime = await reader.GetFieldValueAsync<double>(29, cancellationToken);
+                    var operatorComment = await reader.GetFieldValueAsync<string>(30, cancellationToken);
+                    var masterSetupComment = await reader.GetValueOrDefaultAsync(31, "", cancellationToken);
+                    var masterMachiningComment = await reader.GetValueOrDefaultAsync(32, "", cancellationToken);
+                    var specifiedDowntimesComment = await reader.GetValueOrDefaultAsync(33, "", cancellationToken);
+                    var unspecifiedDowntimesComment = await reader.GetValueOrDefaultAsync(34, "", cancellationToken);
+                    var masterComment = await reader.GetValueOrDefaultAsync(35, "", cancellationToken);
+                    var fixedSetupTimePlan = await reader.GetValueOrDefaultAsync(36, 0.0, cancellationToken);
+                    var fixedMachineTimePlan = await reader.GetValueOrDefaultAsync(37, 0.0, cancellationToken);
+                    var engineerComment = await reader.GetValueOrDefaultAsync(38, "", cancellationToken);
+                    var excludeFromReports = await reader.GetValueOrDefaultAsync(39, false, cancellationToken);
+                    var longSetupReasonComment = await reader.GetValueOrDefaultAsync(40, "", cancellationToken);
+                    var longSetupFixComment = await reader.GetValueOrDefaultAsync(41, "", cancellationToken);
+                    var longSetupEngeneerComment = await reader.GetValueOrDefaultAsync(42, "", cancellationToken);
+                    var excludedOperationsTime = await reader.GetValueOrDefaultAsync(43, 0.0, cancellationToken);
+                    var increaseReason = await reader.GetValueOrDefaultAsync(44, "", cancellationToken);
+
+                    var defectiveCount = await reader.GetValueOrDefaultAsync(46, 0, cancellationToken);
+                    var specialDowntime = await reader.GetValueOrDefaultAsync(47, 0.0, cancellationToken);
+
+                    Part part = new(
+                        guid,
+                        machine,
+                        shift,
+                        shiftDate,
+                        @operator,
+                        partName,
+                        order,
+                        setup,
+                        finishedCount,
+                        defectiveCount,
+                        totalCount,
+                        startSetupTime,
+                        startMachiningTime,
+                        setupTimeFact,
+                        endMachiningTime,
+                        setupTimePlan,
+                        setupTimePlanForReport,
+                        singleProductionTimePlan,
+                        productionTimeFact,
+                        TimeSpan.FromTicks(machiningTime),
+                        setupDowntimes,
+                        machiningDowntimes,
+                        partialSetupTime,
+                        createNcProgramTime,
+                        maintenanceTime,
+                        toolSearchingTime,
+                        toolChangingTime,
+                        mentoringTime,
+                        contactiongDepartmentsTime,
+                        fixtureMakingTime,
+                        hardwareFailureTime,
+                        specialDowntime,
+                        operatorComment,
+                        masterSetupComment,
+                        masterMachiningComment,
+                        specifiedDowntimesComment,
+                        unspecifiedDowntimesComment,
+                        masterComment,
+                        fixedSetupTimePlan,
+                        fixedMachineTimePlan,
+                        engineerComment,
+                        excludeFromReports,
+                        longSetupReasonComment,
+                        longSetupFixComment,
+                        longSetupEngeneerComment,
+                        excludedOperationsTime,
+                        increaseReason);
+                    parts.Add(part);
+                }
+            }
+        }
+
+        public async static Task<List<PartsHistoryEntry>> ReadPartsHistoryAsync(
+            string partName, string order, string machine, DateTime beforeDate,
+            int maxRecords, int maxDaysBack, CancellationToken cancellationToken)
+        {
+            using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await connection.OpenAsync(cancellationToken);
+
+            var partsSql =
+                "SELECT TOP (@MaxRecords) * " +
+                "FROM Parts " +
+                "WHERE PartName = @PartName " +
+                "  AND [Order] = @Order " +
+                "  AND Machine = @Machine " +
+                "  AND ShiftDate < @BeforeDate " +
+                "  AND ShiftDate >= @MinDate " +
+                "ORDER BY ShiftDate DESC, StartSetupTime DESC;";
+
+            var parts = new List<Part>();
+            using (var cmd = new SqlCommand(partsSql, connection))
+            {
+                cmd.Parameters.AddWithValue("@MaxRecords", maxRecords);
+                cmd.Parameters.AddWithValue("@PartName", partName);
+                cmd.Parameters.AddWithValue("@Order", order);
+                cmd.Parameters.AddWithValue("@Machine", machine);
+                cmd.Parameters.AddWithValue("@BeforeDate", beforeDate.Date);
+                cmd.Parameters.AddWithValue("@MinDate", beforeDate.Date.AddDays(-maxDaysBack));
+                await FillPartsAsync(parts, cmd, cancellationToken);
+            }
+
+            if (parts.Count == 0)
+                return new List<PartsHistoryEntry>();
+
+            var uniqueDates = parts
+                .Select(p => p.ShiftDate.Date)
+                .Distinct()
+                .ToList();
+
+            var dateParams = uniqueDates
+                .Select((_, i) => "@d" + i)
+                .ToArray();
+
+            var reviewSql =
+                "SELECT ShiftDate, Decision, Comment, AiExplanation " +
+                "FROM ai_day_reviews " +
+                "WHERE Machine = @Machine " +
+                "  AND ShiftDate IN (" + string.Join(", ", dateParams) + ");";
+
+            var reviews = new Dictionary<DateTime, (string Decision, string? Comment, string? AiExplanation)>();
+            using (var cmd = new SqlCommand(reviewSql, connection))
+            {
+                cmd.Parameters.AddWithValue("@Machine", machine);
+                for (int i = 0; i < uniqueDates.Count; i++)
+                    cmd.Parameters.AddWithValue(dateParams[i], uniqueDates[i]);
+
+                using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var date = reader.GetDateTime(0).Date;
+                    var decision = reader.GetString(1);
+                    var comment = reader.IsDBNull(2) ? null : reader.GetString(2);
+                    var aiExpl = reader.IsDBNull(3) ? null : reader.GetString(3);
+                    reviews[date] = (decision, comment, aiExpl);
+                }
+            }
+
+            var result = new List<PartsHistoryEntry>();
+            foreach (var p in parts)
+            {
+                reviews.TryGetValue(p.ShiftDate.Date, out var review);
+                result.Add(new PartsHistoryEntry
+                {
+                    Part = p,
+                    AnalystDecision = review.Decision,
+                    AnalystComment = review.Comment,
+                    AiExplanation = review.AiExplanation,
+                });
+            }
+            return result;
+        }
+
+        public static DbResult<List<string>> ReadMasters()
+        {
+            var masters = new List<string>();
+            try
+            {
+                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                {
+                    connection.Open();
+                    string query = $"SELECT FullName FROM masters WHERE IsActive = 1 ORDER BY FullName ASC";
+                    using (SqlCommand command = new(query, connection))
+                    {
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                masters.Add(reader.GetString(0));
+                            }
+                        }
+                    }
+                }
+                return DbResult<List<string>>.Ok(masters);
+            }
+            catch (SqlException sqlEx)
+            {
+                switch (sqlEx.Number)
+                {
+                    case 18456:
+                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
+                        return DbResult<List<string>>.Fail(DbResult.AuthError, "Ошибка авторизации.");
+                    default:
+                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
+                        return DbResult<List<string>>.Fail(DbResult.Error, $"Ошибка №{sqlEx.Number}:");
+                }
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex);
+                return DbResult<List<string>>.FailWithError(ex.Message);
+            }
+        }
+
+        public static DbResult<bool> DeletePart(this Part part)
+        {
+            try
+            {
+                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                {
+                    connection.Open();
+                    string query = $"DELETE FROM parts WHERE GUID = @Guid";
+                    using (SqlCommand command = new(query, connection))
+                    {
+                        command.Parameters.AddWithValue("Guid", part.Guid);
+                        command.ExecuteNonQuery();
+                    }
+                }
+                return DbResult<bool>.Ok(true);
+            }
+            catch (SqlException sqlEx)
+            {
+                switch (sqlEx.Number)
+                {
+                    case 18456:
+                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
+                        return DbResult<bool>.Fail(DbResult.AuthError, "Ошибка авторизации.");
+                    default:
+                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
+                        return DbResult<bool>.Fail(DbResult.Error, $"Ошибка №{sqlEx.Number}:");
+                }
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex);
+                return DbResult<bool>.FailWithError(ex.Message);
+            }
+        }
+    }
+}

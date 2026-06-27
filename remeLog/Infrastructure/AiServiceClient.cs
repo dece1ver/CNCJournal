@@ -1,5 +1,4 @@
 ﻿using libeLog.Extensions;
-using remeLog.Infrastructure.remeLog.Infrastructure;
 using remeLog.Models;
 using System;
 using System.Collections.Generic;
@@ -312,6 +311,8 @@ namespace remeLog.Infrastructure
                 masterSetupComment = p.MasterSetupComment ?? string.Empty,
                 masterMachiningComment = p.MasterMachiningComment ?? string.Empty,
                 masterComment = p.MasterComment ?? string.Empty,
+                specifiedDowntimesList = GetSpecifiedDowntimesList(p.OperatorComment),
+                specifiedDowntimesComment = p.SpecifiedDowntimesComment ?? string.Empty,
 
                 noManualOperatorComment = string.IsNullOrWhiteSpace(manualComment),
                 noSetupHappened = noSetup,
@@ -412,6 +413,18 @@ namespace remeLog.Infrastructure
             if (string.IsNullOrWhiteSpace(comment)) return "";
             var idx = comment.IndexOf("Отмеченные простои", StringComparison.OrdinalIgnoreCase);
             return idx > 0 ? comment[..idx].Trim() : comment.Trim();
+        }
+
+        /// <summary>
+        /// Авто-сгенерированный перечень отмеченных простоев — текст ОТ авто-раздела
+        /// "Отмеченные простои:" до конца исходного комментария оператора.
+        /// Содержит причины простоев с пометками [н] (в наладке) / [и] (в изготовлении).
+        /// </summary>
+        private static string GetSpecifiedDowntimesList(string? comment)
+        {
+            if (string.IsNullOrWhiteSpace(comment)) return "";
+            var idx = comment.IndexOf("Отмеченные простои", StringComparison.OrdinalIgnoreCase);
+            return idx > 0 ? comment[idx..].Trim() : "";
         }
 
         private static double? SafeDouble(double v) =>

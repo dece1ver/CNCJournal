@@ -46,8 +46,8 @@ namespace remeLog.Infrastructure
                 tempParts.Add(p);
             }
 
-            var (res, machines) = Database.ReadMachines();
-            Database.GetShiftsByPeriod(machines, fromDate, toDate, shift, out List<ShiftInfo> shifts);
+            var machinesResult = Database.ReadMachines(); var machines = machinesResult.Value ?? new List<string>();
+            var shiftsResult = Database.GetShiftsByPeriod(machines, fromDate, toDate, shift); var shifts = shiftsResult.Value ?? new List<ShiftInfo>();
             var totalDays = Util.GetWorkDaysBeetween(fromDate, toDate);
             double totalWorkedMinutes;
 

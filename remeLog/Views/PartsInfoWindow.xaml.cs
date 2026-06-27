@@ -609,6 +609,37 @@ namespace remeLog.Views
             }
         }
 
+        private void CopyToClipboard_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem item) return;
+            var contextMenu = FindVisualParent<ContextMenu>(item);
+            if (contextMenu?.PlacementTarget is TextBlock textBlock && !string.IsNullOrEmpty(textBlock.Text))
+                Clipboard.SetText(textBlock.Text);
+        }
+
+        private void CopyAiResult_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem item) return;
+            var contextMenu = FindVisualParent<ContextMenu>(item);
+            if (contextMenu?.PlacementTarget is FrameworkElement target
+                && target.DataContext is PartsInfoWindowViewModel vm)
+            {
+                var text = vm.AiResultFormatted;
+                if (!string.IsNullOrEmpty(text))
+                    Clipboard.SetText(text);
+            }
+        }
+
+        private void CopyAiResultFromPopup_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement element && element.DataContext is PartsInfoWindowViewModel vm)
+            {
+                var text = vm.AiResultFormatted;
+                if (!string.IsNullOrEmpty(text))
+                    Clipboard.SetText(text);
+            }
+        }
+
         private void OnVariantClick(object sender, RoutedEventArgs e)
         {
             if (sender is not MenuItem item) return;

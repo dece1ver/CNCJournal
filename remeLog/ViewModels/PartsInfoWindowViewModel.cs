@@ -19,6 +19,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -103,6 +104,7 @@ namespace remeLog.ViewModels
             OpenCommentEditorCommand = new LambdaCommand(OnOpenCommentEditorExecuted);
             CloseCommentEditorCommand = new LambdaCommand(OnCloseCommentEditorExecuted);
             CancelCommentEditorCommand = new LambdaCommand(OnCancelCommentEditorExecuted);
+            CloseAiExplanationPopupCommand = new LambdaCommand(_ => IsAiExplanationPopupOpen = false);
 
             CalcFixed = Part.CalcFixed;
             PartsInfo = parts;
@@ -162,7 +164,7 @@ namespace remeLog.ViewModels
 
         async Task Init()
         {
-            var (_, machineFilters) = await Database.ReadMachinesAsync();
+            var (_, machineFilters, _) = await Database.ReadMachinesAsync();
             _MachineFilters = machineFilters.ToObservableCollection();
             _MachineFilters.CollectionChanged += MachineFiltersSource_CollectionChanged!;
             foreach (var machineFilter in MachineFilters)
@@ -176,7 +178,6 @@ namespace remeLog.ViewModels
             lockUpdate = false;
 
             await LoadPartsAsync();
-            await LoadDayReviewAsync();
         }
 
         private void Part_PropertyChanged(object sender, PropertyChangedEventArgs e)
@@ -254,6 +255,16 @@ namespace remeLog.ViewModels
         public ICommand CloseCommentEditorCommand { get; private set; } = null!;
         public ICommand CancelCommentEditorCommand { get; private set; } = null!;
 
+        private bool _IsAiExplanationPopupOpen;
+        /// <summary> Открыт ли popup с результатом ИИ-анализа. </summary>
+        public bool IsAiExplanationPopupOpen
+        {
+            get => _IsAiExplanationPopupOpen;
+            set => Set(ref _IsAiExplanationPopupOpen, value);
+        }
+
+        public ICommand CloseAiExplanationPopupCommand { get; private set; } = null!;
+
         private void OnOpenCommentEditorExecuted(object _)
         {
             _dayReviewCommentBackup = DayReviewComment;
@@ -305,6 +316,7 @@ namespace remeLog.ViewModels
                     OnPropertyChanged(nameof(HasAiResult));
                     OnPropertyChanged(nameof(AiResultText));
                     OnPropertyChanged(nameof(AiResultColor));
+                    OnPropertyChanged(nameof(AiResultFormatted));
                 }
             }
         }
@@ -329,6 +341,45 @@ namespace remeLog.ViewModels
             { RequiresReview: true } => "#F57F17",
             _ => "#2E7D32",
         };
+
+        public string AiResultFormatted
+        {
+            get
+            {
+                if (AiResult == null) return "";
+                if (AiResult.HasError) return $"Ошибка: {AiResult.Error}";
+
+                var sb = new StringBuilder();
+                var verdict = AiResult.RequiresReview ? "Требует проверки" : "Всё в порядке";
+                sb.AppendLine($"Оценка ИИ: {verdict}");
+                sb.AppendLine($"Уверенность: {AiResult.Confidence:P0}");
+                if (!string.IsNullOrEmpty(AiResult.PromptVersion))
+                    sb.AppendLine($"Версия промпта: {AiResult.PromptVersion}");
+                if (CurrentDayReview?.AiModelVersion != null)
+                    sb.AppendLine($"Версия модели: {CurrentDayReview.AiModelVersion}");
+                if (CurrentDayReview?.AiAnalyzedAt != null)
+                    sb.AppendLine($"Проанализировано: {CurrentDayReview.AiAnalyzedAt:dd.MM.yyyy HH:mm:ss}");
+
+                if (!string.IsNullOrEmpty(AiResult.Explanation))
+                    sb.AppendLine($"{Environment.NewLine}Объяснение:{Environment.NewLine}{AiResult.Explanation}");
+
+                if (AiResult.Signals.Length > 0)
+                {
+                    sb.AppendLine($"{Environment.NewLine}Основные признаки:");
+                    foreach (var s in AiResult.Signals)
+                        sb.AppendLine($"  • {s}");
+                }
+
+                if (AiResult.SuggestExcludeFromReports.Length > 0)
+                {
+                    sb.AppendLine($"{Environment.NewLine}Предложено исключить из отчётов:");
+                    foreach (var e in AiResult.SuggestExcludeFromReports)
+                        sb.AppendLine($"  • {e}");
+                }
+
+                return sb.ToString().TrimEnd();
+            }
+        }
 
 
         /// <summary>
@@ -1924,7 +1975,8 @@ namespace remeLog.ViewModels
             if (p is Part part && part == SelectedPart
                 && MessageBox.Show($"Удалить деталь: {part.PartName}?\nДанное действие невозможно отменить.", "Удаление информации", MessageBoxButton.YesNo, MessageBoxImage.Exclamation) == MessageBoxResult.Yes)
             {
-                switch (Database.DeletePart(part))
+                var deleteResult = Database.DeletePart(part);
+                switch (deleteResult.Status)
                 {
                     case DbResult.Ok:
                         _ = LoadPartsAsync();
@@ -1956,17 +2008,17 @@ namespace remeLog.ViewModels
             
             foreach (var part in Parts.Where(p => p.NeedUpdate))
             {
-                var (res, mess) = await part.UpdatePartAsync();
-                switch (res)
+                var updateResult = await part.UpdatePartAsync();
+                switch (updateResult.Status)
                 {
                     case DbResult.Ok:
                         part.NeedUpdate = false;
                         break;
                     case DbResult.AuthError:
-                        MessageBox.Show(mess);
+                        MessageBox.Show(updateResult.Error);
                         break;
                     case DbResult.Error:
-                        MessageBox.Show(mess);
+                        MessageBox.Show(updateResult.Error);
                         break;
                 }
             }
@@ -2309,7 +2361,6 @@ namespace remeLog.ViewModels
                           ?? PartsInfo.Machine;
 
             AiResult = null;
-            var prevStatus = Status;
             AiInProgress = true;
             ThinkingThoughts = "";
             IsThoughtPanelOpen = true;
@@ -2321,7 +2372,7 @@ namespace remeLog.ViewModels
 
             var progress = new Progress<string>(thought =>
             {
-                ThinkingThoughts += thought + "\n";
+                ThinkingThoughts += thought;
                 Status = "ИИ думает...";
             });
 
@@ -2334,7 +2385,7 @@ namespace remeLog.ViewModels
 
                 if (ct.IsCancellationRequested)
                 {
-                    prevStatus = "AI анализ отменён";
+                    Status = "ИИ анализ отменён";
                     return;
                 }
 
@@ -2350,16 +2401,15 @@ namespace remeLog.ViewModels
                     CurrentDayReview.AiPromptVersion = result.PromptVersion;
                     CurrentDayReview.AiThinkingEnabled = AiThinkingEnabled;
                 }
-
+                Status = "ИИ подумал";
                 ProcessExcludeFromReportsSuggestions(result);
             }
             catch (OperationCanceledException)
             {
-                prevStatus = "AI анализ отменён";
+                Status = "ИИ анализ отменён";
             }
             finally
             {
-                Status = prevStatus;
                 AiInProgress = false;
                 IsThoughtPanelOpen = false;
                 _aiCancellationTokenSource?.Dispose();
@@ -2414,16 +2464,9 @@ namespace remeLog.ViewModels
         #region ShowAiExplanation
         public ICommand ShowAiExplanationCommand { get; private set; } = null!;
 
-        private async void OnShowAiExplanationExecuted(object _)
+        private void OnShowAiExplanationExecuted(object _)
         {
-            
-            if (AiResult is { } aiResult)
-            {
-                MessageBox.Show($"{aiResult.Explanation}\n" +
-                    $"{(aiResult.Signals.Length > 0 ? $"\nОсновные признаки:\n{string.Join('\n', aiResult.Signals)}" : "")}", 
-                    "ИИ подумал", 
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-            }
+            IsAiExplanationPopupOpen = true;
         }
 
         private bool CanShowAiExplanationExecute(object _) =>
@@ -2498,7 +2541,6 @@ namespace remeLog.ViewModels
                 InProgress = false;
                 await LoadDayReviewAsync();
                 LoadExistingFlags();
-                AiResult = null;
                 return true;
             }
             catch (OperationCanceledException)
@@ -2525,7 +2567,6 @@ namespace remeLog.ViewModels
         /// <summary>
         /// Собирает строку запроса
         /// </summary>
-        /// <returns></returns>
         private string BuildConditions()
         {
             var sb = new StringBuilder();
@@ -3094,6 +3135,29 @@ namespace remeLog.ViewModels
                           ?? PartsInfo.Machine;
 
             CurrentDayReview = await Database.GetDayReviewAsync(machine, FromDate.Date);
+
+            if (CurrentDayReview?.HasAiResult == true)
+            {
+                string[]? signals = null;
+                if (CurrentDayReview.AiSignals != null)
+                {
+                    try { signals = JsonSerializer.Deserialize<string[]>(CurrentDayReview.AiSignals) ?? Array.Empty<string>(); }
+                    catch { signals = Array.Empty<string>(); }
+                }
+
+                AiResult = new AiAnalysisResult
+                {
+                    RequiresReview = CurrentDayReview.AiRequiresReview ?? false,
+                    Confidence = CurrentDayReview.AiConfidence ?? 0,
+                    Signals = signals ?? Array.Empty<string>(),
+                    Explanation = CurrentDayReview.AiExplanation ?? string.Empty,
+                    PromptVersion = CurrentDayReview.AiPromptVersion,
+                };
+            }
+            else
+            {
+                AiResult = null;
+            }
 
             DayReviewComment = CurrentDayReview?.Comment ?? string.Empty;
         }

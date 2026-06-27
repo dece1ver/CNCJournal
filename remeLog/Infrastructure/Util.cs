@@ -390,9 +390,10 @@ namespace remeLog.Infrastructure
 
         public static async Task<string> SearchInWindchill(string searchQuery, CancellationToken cancellationToken)
         {
-            var dbResult = Database.GetWncConfig(out var wncConfig);
+            var wncResult = Database.GetWncConfig();
+            var wncConfig = wncResult.Value;
             Util.Debug(wncConfig);
-            if (dbResult != DbResult.Ok || wncConfig == null)
+            if (wncResult.Status != DbResult.Ok || wncConfig == null)
             {
                 throw new Exception("Не удалось получить конфигурацию Windchill");
             }
@@ -405,7 +406,9 @@ namespace remeLog.Infrastructure
         public static List<WncObject> ExtractWncObjects(string inputString)
         {
             var objects = new List<WncObject>();
-            if (Database.GetWncConfig(out var wncConfig) != DbResult.Ok)
+            var wncResultConfig = Database.GetWncConfig();
+            var wncConfig = wncResultConfig.Value;
+            if (wncResultConfig.Status != DbResult.Ok)
             {
                 MessageBox.Show("Не удалось выполнить поиск в Windchill из-за ошибки");
                 return objects;

@@ -4,8 +4,6 @@ using System.Collections.Generic;
 
 namespace remeLog.Infrastructure
 {
-    namespace remeLog.Infrastructure
-    {
         /// <summary>
         /// Одна прошлая смена той же детали (PartName+Order+Machine)
         /// с данными производства и решением аналитика.
@@ -47,5 +45,4 @@ namespace remeLog.Infrastructure
             public bool HasHistory => RecordsFound > 0;
             public List<PartsHistoryLine> Lines { get; set; } = new List<PartsHistoryLine>();
         }
-    }
 }

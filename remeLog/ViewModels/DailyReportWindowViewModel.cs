@@ -28,26 +28,29 @@ namespace remeLog.ViewModels
             _NightMasterComment = string.Empty;
             _CurrentMaster = string.Empty;
             _Masters = new List<string>();
-            if (_Masters.ReadMasters() is not libeLog.Models.DbResult.Ok)
+            var mastersResult = Database.ReadMasters();
+            if (!mastersResult.IsOk)
             {
                 MessageBox.Show("Не удалось получить список мастеров.");
+            }
+            else
+            {
+                _Masters = mastersResult.Value!;
             }
             
             _Title = $"Суточный отчет за {_ShiftDate:dd.MM.yyyy} по станку {_Machine} (новый)";
 
-            var readDayDbResult = Database.ReadShiftInfo(new ShiftInfo(ShiftDate, ShiftType.Day, _Machine), out var dbDayShfts);
-            switch (readDayDbResult)
+            var readDayDbResult = Database.ReadShiftInfo(new ShiftInfo(ShiftDate, ShiftType.Day, _Machine));
+            if (!readDayDbResult.IsOk)
             {
-                case not libeLog.Models.DbResult.Ok:
-                    MessageBox.Show("Не удалось получить доступ к дневным сменам в базе данных, внесение новой информации может привести к потере изначальных данных.", 
-                        "Сообщите разработчику.", 
-                        MessageBoxButton.OK, 
-                        MessageBoxImage.Warning); ;
-                    break;
+                MessageBox.Show("Не удалось получить доступ к дневным сменам в базе данных, внесение новой информации может привести к потере изначальных данных.", 
+                    "Сообщите разработчику.", 
+                    MessageBoxButton.OK, 
+                    MessageBoxImage.Warning); ;
             }
+            var dbDayShfts = readDayDbResult.Value;
             if (dbDayShfts is { Count: 1})
             {
-                // делать ли отдельное поле для читаемого простоя из бд на случай разницы?
                 var shift = dbDayShfts.First();
                 _CurrentMaster = shift.Master;
                 _DayDowntimesReason = shift.DowntimesComment;
@@ -76,19 +79,17 @@ namespace remeLog.ViewModels
                 }
                 Title = Title.Replace("(новый)","(редактирование)");
             }
-            var readNightDbResult = Database.ReadShiftInfo(new ShiftInfo(ShiftDate, ShiftType.Night, _Machine), out var dbNightShfts);
-            switch (readNightDbResult)
+            var readNightDbResult = Database.ReadShiftInfo(new ShiftInfo(ShiftDate, ShiftType.Night, _Machine));
+            if (!readNightDbResult.IsOk)
             {
-                case not libeLog.Models.DbResult.Ok:
-                    MessageBox.Show("Не удалось получить доступ к ночным сменам в базе данных, внесение новой информации может привести к потере изначальных данных.", 
-                        "Сообщите разработчику.", 
-                        MessageBoxButton.OK, 
-                        MessageBoxImage.Warning); ;
-                    break;
+                MessageBox.Show("Не удалось получить доступ к ночным сменам в базе данных, внесение новой информации может привести к потере изначальных данных.", 
+                    "Сообщите разработчику.", 
+                    MessageBoxButton.OK, 
+                    MessageBoxImage.Warning); ;
             }
+            var dbNightShfts = readNightDbResult.Value;
             if (dbNightShfts is { Count: 1 })
             {
-                // делать ли отдельное поле для читаемого простоя из бд на случай разницы?
                 var shift = dbNightShfts.First();
                 _CurrentMaster = shift.Master;
                 _NightDowntimesReason = shift.DowntimesComment;
@@ -489,7 +490,7 @@ namespace remeLog.ViewModels
             var dayShift = new ShiftInfo(null, ShiftDate, ShiftType.Day, Machine, CurrentMaster, UnspecifiedDayDowntimes, DayDowntimesReason, DayMasterComment, IsChecked, DayGiverWorkplaceCleaned, DayGiverFailures, DayGiverExtraneousNoises, DayGiverLiquidLeaks, DayGiverToolBreakage, DayGiverCoolantConcentration, DayRecieverWorkplaceCleaned, DayRecieverFailures, DayRecieverExtraneousNoises, DayRecieverLiquidLeaks, DayRecieverToolBreakage, DayRecieverCoolantConcentration);
             var nightShift = new ShiftInfo(null, ShiftDate, ShiftType.Night, Machine, CurrentMaster, UnspecifiedNightDowntimes, NightDowntimesReason, NightMasterComment, IsChecked, NightGiverWorkplaceCleaned, NightGiverFailures, NightGiverExtraneousNoises, NightGiverLiquidLeaks, NightGiverToolBreakage, NightGiverCoolantConcentration, NightRecieverWorkplaceCleaned, NightRecieverFailures, NightRecieverExtraneousNoises, NightRecieverLiquidLeaks, NightRecieverToolBreakage, NightRecieverCoolantConcentration);
             var dayWriteResult = Database.WriteShiftInfo(dayShift);
-            switch (dayWriteResult)
+            switch (dayWriteResult.Status)
             {
                 case libeLog.Models.DbResult.Ok:
                     Status = "Информация о дневной смене записана.";
@@ -505,9 +506,9 @@ namespace remeLog.ViewModels
                     break;
             }
             var nightWriteResult = Database.WriteShiftInfo(nightShift);
-            switch (nightWriteResult)
+            switch (nightWriteResult.Status)
             {
-                case libeLog.Models.DbResult.Ok when dayWriteResult is libeLog.Models.DbResult.Ok:
+                case libeLog.Models.DbResult.Ok when dayWriteResult.Status is libeLog.Models.DbResult.Ok:
                     Status = "Информация о сменах записана.";
                     break;
                 case libeLog.Models.DbResult.Ok:

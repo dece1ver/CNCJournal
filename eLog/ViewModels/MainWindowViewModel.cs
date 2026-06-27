@@ -1223,7 +1223,7 @@ namespace eLog.ViewModels
         {
             ProgressBarVisibility = Visibility.Visible;
             Status = $"Запись в БД: [{partName}]";
-            var writeResult = part.Id == -1 ? await Database.WritePartAsync(part) : await Database.UpdatePartAsync(part);
+            var writeResult = part.Id == -1 ? await part.WritePartAsync() : await part.UpdatePartAsync();
             switch (writeResult)
             {
                 case DbResult.Ok:

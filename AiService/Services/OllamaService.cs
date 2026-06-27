@@ -39,35 +39,29 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
             _model, think, prompt.Length);
 
         using var httpRequest = new HttpRequestMessage(
-            HttpMethod.Post,
-            $"{_baseUrl}/api/generate")
+            HttpMethod.Post, $"{_baseUrl}/api/generate")
         {
             Content = JsonContent.Create(request)
         };
 
         using var response = await _http.SendAsync(
-            httpRequest,
-            HttpCompletionOption.ResponseHeadersRead,
-            ct);
+            httpRequest, HttpCompletionOption.ResponseHeadersRead, ct);
 
         response.EnsureSuccessStatusCode();
 
         if (!think)
         {
-            var result = await response.Content.ReadFromJsonAsync<OllamaGenerateResponse>(
-                cancellationToken: ct);
-
+            var result = await response.Content
+                .ReadFromJsonAsync<OllamaGenerateResponse>(cancellationToken: ct);
             var text = result?.Response ?? "";
-
             logger.LogInformation("Ответ без think. Символов: {Len}", text.Length);
             logger.LogDebug("Сырой ответ: {Raw}", text);
-
             return (text, null);
         }
 
         var fullResponse = new StringBuilder();
         var thinkBuffer = new StringBuilder();
-        var lastReported = "";
+        var lastReportedLen = 0;
 
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream, Encoding.UTF8);
@@ -77,17 +71,12 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
             ct.ThrowIfCancellationRequested();
 
             var line = await reader.ReadLineAsync(ct);
-
-            if (line is null)
-                break;
-
-            if (line.Length == 0)
-                continue;
+            if (line is null) break;
+            if (line.Length == 0) continue;
 
             logger.LogTrace("Chunk: {Chunk}", line);
 
             OllamaStreamChunk? chunk;
-
             try
             {
                 chunk = JsonSerializer.Deserialize<OllamaStreamChunk>(line);
@@ -98,8 +87,7 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
                 continue;
             }
 
-            if (chunk == null)
-                continue;
+            if (chunk == null) continue;
 
             if (!string.IsNullOrEmpty(chunk.Thinking))
             {
@@ -107,24 +95,41 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
 
                 if (thinkingProgress != null)
                 {
-                    var sentence = ExtractLastCompleteSentence(thinkBuffer.ToString());
-
-                    if (!string.IsNullOrWhiteSpace(sentence) &&
-                        sentence != lastReported)
+                    var currentLen = thinkBuffer.Length;
+                    if (currentLen > lastReportedLen)
                     {
-                        lastReported = sentence;
-                        thinkingProgress.Report(sentence);
+                        var delta = thinkBuffer.ToString(lastReportedLen,
+                                           currentLen - lastReportedLen);
+                        var lastChar = delta[^1];
+
+                        // Репортим по границе слова/пунктуации или когда накопилось ≥10 символов
+                        if (lastChar is ' ' or '\n' or '\r' or ',' or '.' or '!'
+                                     or '?' or ':' or ';' or '-'
+                            || delta.Length >= 10)
+                        {
+                            lastReportedLen = currentLen;
+                            logger.LogDebug("Think delta [{L}]: [{D}]", delta.Length, delta);
+                            thinkingProgress.Report(delta);
+                        }
                     }
                 }
             }
 
             if (!string.IsNullOrEmpty(chunk.Response))
-            {
                 fullResponse.Append(chunk.Response);
-            }
 
             if (chunk.Done)
+            {
+                // Сбрасываем остаток буфера если что-то не репортнули
+                if (thinkingProgress != null && thinkBuffer.Length > lastReportedLen)
+                {
+                    var tail = thinkBuffer.ToString(lastReportedLen,
+                                   thinkBuffer.Length - lastReportedLen);
+                    if (!string.IsNullOrWhiteSpace(tail))
+                        thinkingProgress.Report(tail);
+                }
                 break;
+            }
         }
 
         var raw = fullResponse.ToString();
@@ -132,53 +137,10 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
 
         logger.LogInformation(
             "Ответ с think. Символов response: {RLen}, thinking: {TLen}",
-            raw.Length,
-            thinking?.Length ?? 0);
-
+            raw.Length, thinking?.Length ?? 0);
         logger.LogDebug("Сырой ответ: {Raw}", raw);
 
         return (raw, thinking);
-    }
-
-    private static string ExtractLastCompleteSentence(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return "";
-
-        var content = text.Trim();
-        if (content.Length == 0) return "";
-
-        for (int i = content.Length - 1; i >= 1; i--)
-        {
-            char c = content[i];
-            if (c is not ('.' or '?' or '!')) continue;
-
-            if (c == '.' && char.IsDigit(content[i - 1])) continue;
-
-            bool atEnd = i == content.Length - 1;
-            bool beforeSpace = i < content.Length - 1 &&
-                               content[i + 1] is ' ' or '\n' or '\r';
-            if (!atEnd && !beforeSpace) continue;
-
-            int sentStart = i - 1;
-            while (sentStart > 0)
-            {
-                char prev = content[sentStart - 1];
-                if (prev is '.' or '?' or '!' or '\n') break;
-                if (prev == '.' && sentStart >= 2 &&
-                    char.IsDigit(content[sentStart - 2]))
-                {
-                    sentStart--;
-                    continue;
-                }
-                sentStart--;
-            }
-
-            var sentence = content[sentStart..i].Trim();
-            if (sentence.Length > 15 && !sentence.StartsWith('{'))
-                return sentence;
-        }
-
-        return "";
     }
 
     private class OllamaStreamChunk

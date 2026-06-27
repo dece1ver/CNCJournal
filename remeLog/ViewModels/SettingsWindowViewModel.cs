@@ -313,7 +313,7 @@ namespace remeLog.ViewModels
                 ConnectionString.Status = Status.Sync;
                 ConnectionString.Tip = Constants.StatusTips.Checking;
                 var res = ConnectionString.Value.CheckDbConnection();
-                switch (res.result)
+                switch (res.Status)
                 {
                     case DbResult.Ok:
                         ConnectionString.Status = Status.Ok;
@@ -325,7 +325,7 @@ namespace remeLog.ViewModels
                         ConnectionString.Status = Status.Error;
                         break;
                 }
-                ConnectionString.Tip = res.message;
+                ConnectionString.Tip = res.Error ?? res.Value ?? "";
             });
         }
     }

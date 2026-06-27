@@ -611,10 +611,10 @@ namespace remeLog.ViewModels
                     Util.WriteLog($"[LoadParts] Справочники (параллельно): {(sw.Elapsed - t1).TotalMilliseconds:F0} ms"); 
 #endif
 
-                    var (mr, machines) = machinesTask.Result;
-                    var (dr, downtimes) = downtimeTask.Result;
-                    var (sr, setup) = setupTask.Result;
-                    var (cr, machining) = machiningTask.Result;
+                    var machinesResult = machinesTask.Result; var mr = machinesResult.Status; var machines = machinesResult.Value ?? new List<string>();
+                    var downtimeResult = downtimeTask.Result; var dr = downtimeResult.Status; var downtimes = downtimeResult.Value ?? new List<string>();
+                    var setupResult = setupTask.Result; var sr = setupResult.Status; var setup = setupResult.Value ?? new List<(string, bool)>();
+                    var machiningResult = machiningTask.Result; var cr = machiningResult.Status; var machining = machiningResult.Value ?? new List<(string, bool)>();
 
                     if (mr != DbResult.Ok) { ShowDbError(mr, "список станков"); return; }
                     if (dr != DbResult.Ok) { ShowDbError(dr, "причины простоев"); return; }
@@ -647,15 +647,15 @@ namespace remeLog.ViewModels
                                 bool dayExist = false;
                                 bool nightExist = false;
 
-                                if (Database.ReadShiftInfo(new ShiftInfo(ToDate, ShiftType.Day, machine), out var dayShifts) is DbResult.Ok
-                                    && dayShifts.Count > 0 && dayShifts[0].Master != "")
+                                if (Database.ReadShiftInfo(new ShiftInfo(ToDate, ShiftType.Day, machine)) is { IsOk: true, Value: var dayShifts }
+                                    && dayShifts is { Count: > 0 } && dayShifts[0].Master != "")
                                 {
                                     dayExist = true;
                                     dayChecked = dayShifts.Any(s => s.IsChecked);
                                 }
 
-                                if (Database.ReadShiftInfo(new ShiftInfo(ToDate, ShiftType.Night, machine), out var nightShifts) is DbResult.Ok
-                                    && nightShifts.Count > 0 && nightShifts[0].Master != "")
+                                if (Database.ReadShiftInfo(new ShiftInfo(ToDate, ShiftType.Night, machine)) is { IsOk: true, Value: var nightShifts }
+                                    && nightShifts is { Count: > 0 } && nightShifts[0].Master != "")
                                 {
                                     nightExist = true;
                                     nightChecked = nightShifts.Any(s => s.IsChecked);
@@ -677,14 +677,11 @@ namespace remeLog.ViewModels
                     }, cancellationToken);
 
                     var totalShiftsTask = Task.Run(() =>
-                    {
                         Database.GetShiftsByPeriod(machinesCopy, FromDate, ToDate,
-                            new Shift(ShiftType.All), out var shifts);
-                        return shifts;
-                    }, cancellationToken);
+                            new Shift(ShiftType.All)), cancellationToken);
 
                     await Task.WhenAll(reportStatesTask, totalShiftsTask);
-                    _totalShifts = totalShiftsTask.Result;
+                    _totalShifts = totalShiftsTask.Result.Value ?? new List<ShiftInfo>();
                     var reportStates = reportStatesTask.Result;
 
 #if DEBUG
