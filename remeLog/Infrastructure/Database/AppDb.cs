@@ -99,5 +99,59 @@ VALUES
                 throw;
             }
         }
+
+        public static async Task SendAppCommandToAllAsync(
+            List<AppPresence> targets, string commandType, string? payload)
+        {
+            const string sql = @"
+INSERT INTO remeLog_app_commands
+    (Id, TargetSessionId, TargetApplication, TargetMachine, TargetUser,
+     SenderMachine, SenderUser, CommandType, Payload, CreatedUtc)
+VALUES
+    (@Id, @TargetSessionId, @TargetApplication, @TargetMachine, @TargetUser,
+     @SenderMachine, @SenderUser, @CommandType, @Payload, SYSUTCDATETIME());";
+
+            try
+            {
+                await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await connection.OpenAsync();
+                await using var transaction = connection.BeginTransaction();
+
+                foreach (var target in targets)
+                {
+                    await using var command = new SqlCommand(sql, connection, transaction);
+                    command.Parameters.AddWithValue("@Id", Guid.NewGuid());
+                    command.Parameters.AddWithValue("@TargetSessionId", (object?)target.SessionId ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@TargetApplication", "remeLog");
+                    command.Parameters.AddWithValue("@TargetMachine", target.MachineName);
+                    command.Parameters.AddWithValue("@TargetUser", target.UserName);
+                    command.Parameters.AddWithValue("@SenderMachine", Environment.MachineName);
+                    command.Parameters.AddWithValue("@SenderUser", Environment.UserName);
+                    command.Parameters.AddWithValue("@CommandType", commandType);
+                    command.Parameters.AddWithValue("@Payload", (object?)payload ?? DBNull.Value);
+                    await command.ExecuteNonQueryAsync();
+                }
+
+                await transaction.CommitAsync();
+
+                Util.WriteLog($"Отправлена команда '{commandType}' на {targets.Count} экземпляров" +
+                    (payload is not null ? $": {payload}" : ""));
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, $"Ошибка массовой отправки команды '{commandType}'");
+                throw;
+            }
+        }
+
+        public static async Task<int> GetPendingCommandCountAsync()
+        {
+            const string sql = "SELECT COUNT(*) FROM remeLog_app_commands WHERE ProcessedUtc IS NULL;";
+
+            await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(sql, connection);
+            return (int)(await command.ExecuteScalarAsync())!;
+        }
     }
 }

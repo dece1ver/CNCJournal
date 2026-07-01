@@ -21,7 +21,7 @@ namespace remeLog.Infrastructure
 
         public AiServiceClient(string? baseUrl = null)
         {
-            _baseUrl = (baseUrl ?? $"http://{AppSettings.AiIp.GetIpOrDefault()}:5050")
+            _baseUrl = (baseUrl ?? $"http://{AppSettings.AiIp.GetIpOrDefault()}:5051")
                 .TrimEnd('/');
         }
 
@@ -225,6 +225,7 @@ namespace remeLog.Infrastructure
                     AnalystDecision = entry.AnalystDecision,
                     AnalystComment = entry.AnalystComment,
                     AiExplanation = entry.AiExplanation,
+                    AiFeedback = entry.AiFeedback,
                     HasUnexplainedLowEfficiency = hasLowEfficiency,
                 });
             }
@@ -278,10 +279,11 @@ namespace remeLog.Infrastructure
                         : "б/н",
                     finishedCount = (int)l.FinishedCount,
                     analystDecision = l.AnalystDecision ?? "не проверено",
-                    analystComment = l.AnalystComment,
-                    aiExplanation = l.AiExplanation,
-                    hasUnexplainedLowEfficiency = l.HasUnexplainedLowEfficiency,
-                }).ToList();
+analystComment = l.AnalystComment,
+                     aiExplanation = l.AiExplanation,
+                     aiFeedback = l.AiFeedback,
+                     hasUnexplainedLowEfficiency = l.HasUnexplainedLowEfficiency,
+                 }).ToList();
 
                 partsHistoryObj = new
                 {

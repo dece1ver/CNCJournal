@@ -1091,6 +1091,15 @@
                                         </ContextMenu>
                                     </TextBlock.ContextMenu>
                                 </TextBlock>
+                                <!-- Бейдж авто-вердикта совпадения ИИ и аналитика -->
+                                <Border Margin="6 0 0 0" Padding="4 1"
+                                        Background="{Binding AiVerdictColor}"
+                                        Visibility="{Binding HasAiVerdict, Converter={StaticResource VisibilityConverter}}"
+                                        ToolTip="Автоматический вердикт: совпало ли решение ИИ с решением аналитика"
+                                        CornerRadius="2">
+                                    <TextBlock Text="{Binding AiVerdictText}"
+                                               FontSize="10" FontWeight="SemiBold" Foreground="White"/>
+                                </Border>
                             </StackPanel>
 
                             <!-- Всплывающий результат ИИ-анализа -->
@@ -1105,6 +1114,14 @@
                                                  IsReadOnly="True" TextWrapping="Wrap"
                                                  MinWidth="350" MaxHeight="300" FontSize="12"
                                                  VerticalScrollBarVisibility="Auto"
+                                                 Margin="0 0 0 6"/>
+                                        <TextBlock Text="Коррекция на ИИ (оставьте примечание, если ИИ ошибся)"
+                                                   FontSize="11" Foreground="#757575" Margin="0 0 0 2"/>
+                                        <TextBox Text="{Binding AiFeedbackText, UpdateSourceTrigger=PropertyChanged}"
+                                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                                 MinWidth="350" MinHeight="50" MaxHeight="120" FontSize="12"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 ToolTip="Комментарий аналитика наpastый ИИ-анализ.&#10;Сохраняется вместе с решением (Всё ОК / Эскалация) и&#10;прокидывается в ИИ-промпт для будущих анализов."
                                                  Margin="0 0 0 6"/>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                             <Button Content="Копировать" Width="90" Margin="0 0 6 0" Click="CopyAiResultFromPopup_Click"/>

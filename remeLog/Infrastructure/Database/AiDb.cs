@@ -29,7 +29,8 @@ namespace remeLog.Infrastructure
                         ReviewedAt      = @ReviewedAt,
                         Decision        = @Decision,
                         IsFullyReviewed = @IsFullyReviewed,
-                        Comment         = @Comment
+                        Comment         = @Comment,
+                        AiFeedback      = @AiFeedback
                     WHERE Machine = @Machine AND ShiftDate = @ShiftDate;
 
                     SELECT @id = Id FROM ai_day_reviews
@@ -39,10 +40,10 @@ namespace remeLog.Infrastructure
                 BEGIN
                     INSERT INTO ai_day_reviews
                         (Machine, ShiftDate, ReviewedBy, ReviewedAt,
-                         Decision, IsFullyReviewed, Comment)
+                         Decision, IsFullyReviewed, Comment, AiFeedback)
                     VALUES
                         (@Machine, @ShiftDate, @ReviewedBy, @ReviewedAt,
-                         @Decision, @IsFullyReviewed, @Comment);
+                         @Decision, @IsFullyReviewed, @Comment, @AiFeedback);
 
                     SET @id = SCOPE_IDENTITY();
                 END
@@ -63,6 +64,8 @@ namespace remeLog.Infrastructure
                 cmd.Parameters.AddWithValue("@IsFullyReviewed", review.IsFullyReviewed);
                 cmd.Parameters.AddWithValue("@Comment",
                     string.IsNullOrEmpty(review.Comment) ? DBNull.Value : review.Comment);
+                cmd.Parameters.AddWithValue("@AiFeedback",
+                    string.IsNullOrEmpty(review.AiFeedback) ? DBNull.Value : review.AiFeedback);
 
                 var scalar = await cmd.ExecuteScalarAsync();
                 int newId = Convert.ToInt32(scalar);
@@ -131,7 +134,7 @@ namespace remeLog.Infrastructure
                        Decision, IsFullyReviewed, Comment,
                        AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
                        AiModelVersion, AiPromptVersion, AiAnalyzedAt,
-                       AiThinkingEnabled
+                       AiThinkingEnabled, AiFeedback, AiVerdict
                 FROM ai_day_reviews
                 WHERE Machine = @Machine AND ShiftDate = @ShiftDate";
 
@@ -163,7 +166,7 @@ namespace remeLog.Infrastructure
                        Decision, IsFullyReviewed, Comment,
                        AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
                        AiModelVersion, AiPromptVersion, AiAnalyzedAt,
-                       AiThinkingEnabled
+                       AiThinkingEnabled, AiFeedback, AiVerdict
                 FROM ai_day_reviews
                 WHERE ShiftDate BETWEEN @From AND @To
                 ORDER BY ShiftDate, Machine";
@@ -200,7 +203,7 @@ namespace remeLog.Infrastructure
                        Decision, IsFullyReviewed, Comment,
                        AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
                        AiModelVersion, AiPromptVersion, AiAnalyzedAt,
-                       AiThinkingEnabled
+                       AiThinkingEnabled, AiFeedback, AiVerdict
                 FROM ai_day_reviews
                 ORDER BY ShiftDate, Machine";
 
@@ -316,6 +319,8 @@ namespace remeLog.Infrastructure
             AiPromptVersion = r.IsDBNull(13) ? null : r.GetString(13),
             AiAnalyzedAt = r.IsDBNull(14) ? null : r.GetDateTime(14),
             AiThinkingEnabled = r.IsDBNull(15) ? null : r.GetBoolean(15),
+            AiFeedback = r.IsDBNull(16) ? null : r.GetString(16),
+            AiVerdict = r.IsDBNull(17) ? null : r.GetString(17),
         };
     }
 }

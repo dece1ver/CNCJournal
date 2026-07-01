@@ -15,6 +15,7 @@ namespace remeLog.Infrastructure
             public string? AnalystDecision { get; init; }
             public string? AnalystComment { get; init; }
             public string? AiExplanation { get; init; }
+            public string? AiFeedback { get; init; }
         }
 
         /// <summary>
@@ -31,6 +32,7 @@ namespace remeLog.Infrastructure
             public string? AnalystDecision { get; init; }
             public string? AnalystComment { get; init; }
             public string? AiExplanation { get; init; }
+            public string? AiFeedback { get; init; }
             /// <summary>
             /// Хотя бы одна запись смены имела КПД изготовления &lt; 70%
             /// без комментария мастера — повторение этого флага сигнализирует

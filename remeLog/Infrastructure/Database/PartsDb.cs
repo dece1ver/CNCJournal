@@ -465,12 +465,12 @@ namespace remeLog.Infrastructure
                 .ToArray();
 
             var reviewSql =
-                "SELECT ShiftDate, Decision, Comment, AiExplanation " +
+                "SELECT ShiftDate, Decision, Comment, AiExplanation, AiFeedback " +
                 "FROM ai_day_reviews " +
                 "WHERE Machine = @Machine " +
                 "  AND ShiftDate IN (" + string.Join(", ", dateParams) + ");";
 
-            var reviews = new Dictionary<DateTime, (string Decision, string? Comment, string? AiExplanation)>();
+            var reviews = new Dictionary<DateTime, (string Decision, string? Comment, string? AiExplanation, string? AiFeedback)>();
             using (var cmd = new SqlCommand(reviewSql, connection))
             {
                 cmd.Parameters.AddWithValue("@Machine", machine);
@@ -484,7 +484,8 @@ namespace remeLog.Infrastructure
                     var decision = reader.GetString(1);
                     var comment = reader.IsDBNull(2) ? null : reader.GetString(2);
                     var aiExpl = reader.IsDBNull(3) ? null : reader.GetString(3);
-                    reviews[date] = (decision, comment, aiExpl);
+                    var aiFb = reader.IsDBNull(4) ? null : reader.GetString(4);
+                    reviews[date] = (decision, comment, aiExpl, aiFb);
                 }
             }
 
@@ -498,6 +499,7 @@ namespace remeLog.Infrastructure
                     AnalystDecision = review.Decision,
                     AnalystComment = review.Comment,
                     AiExplanation = review.AiExplanation,
+                    AiFeedback = review.AiFeedback,
                 });
             }
             return result;

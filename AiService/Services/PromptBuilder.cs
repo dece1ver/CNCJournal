@@ -5,7 +5,7 @@ namespace AiService.Services;
 
 public static class PromptBuilder
 {
-    public const string PromptVersion = "2026-06-27-v3";
+    public const string PromptVersion = "2026-07-01-v1";
 
     private const string SystemPrompt = """
     ═══ ROLE ═══
@@ -17,11 +17,16 @@ public static class PromptBuilder
 
     ═══ DEFINITIONS ═══
 
-    б/н — наладка отсутствовала (NoSetupHappened = true). КПД наладки не рассчитывается (null, отображается «б/н»). Это не низкий КПД.
+    б/н — наладка отсутствовала (NoSetupHappened = true): факт наладки в эту смену = 0, КПД не рассчитывается (null).
+      Это не низкий КПД и НЕ означает, что норматива наладки нет — SetupTimePlan (план) остаётся валидным
+      для проверки превышения частичной наладки (см. 2.1).
 
     б/и — изготовление отсутствовало (NoProductionHappened = true). КПД изготовления не рассчитывается (null, отображается «б/и»). Это не низкий КПД.
 
     partialSetup — частичная наладка (PartialSetup > 0). Наладка начата в предыдущей смене, завершена в текущей. Норма.
+      Норматив наладки = SetupTimePlan (поле «план» из строки «Наладка: план=Nмин»), в минутах.
+      Аномалия если PartialSetup > 1.2 × SetupTimePlan. КПД=б/н не отменяет норматив — Plan остаётся валидным.
+      Единственное валидное объяснение превышения — MasterSetupComment = «Освоение» с подтверждением историей.
 
     Освоение:
       Определение: деталь впервые на этом станке (MasterSetupComment = «Освоение»).
@@ -32,8 +37,13 @@ public static class PromptBuilder
       Без MasterSetupComment = «Освоение» (только OperatorComment) — достоверность ниже.
 
     Разовое изменение времени из-за проблем с инструментом/оборудованием:
-      Определение: причина из комбобокса мастера. Одноразовая проблема с инструментом или оборудованием.
-      Правило: если мастер конкретизировал в MasterComment (непустой, описывает именно эту проблему, не повтор оператора, не простой) И цифры КПД не противоречат — аномалия объяснена, деталь может быть исключена из отчётов.
+      Определение: причина из MasterMachiningComment. Одноразовая проблема с инструментом или оборудованием.
+      Правило: MasterComment непустой, конкретно описывает именно эту проблему (не повтор оператора, не простой)
+        И цифры КПД не противоречат (71% — логично, 5% — сомнительно) — аномалия объяснена,
+        деталь может быть исключена из отчётов (см. 2.6 Триггер 1).
+      ВАЖНО: «Разовое изменение» и «Штучная/длительная работа» — РАЗНЫЕ причины. Не смешивай правила:
+        • «Разовое изменение» — проверка MasterComment + КПД. Пороги FinishedCount НЕ применимы.
+        • «Штучная/длительная работа» — проверка FinishedCount по MachiningTime-порогам (см. ниже).
 
     Штучная/длительная работа:
       Определение: причина из MasterMachiningComment. Длительная одноразовая работа, малая партия.
@@ -86,13 +96,24 @@ public static class PromptBuilder
       2.1 Определи аномалии:
         • КПД наладки < 70% или > 200%
         • КПД изготовления < 70% или > 120%
-        • Частичная наладка > 1.2x норматива
+        • Частичная наладка > 1.2 × SetupTimePlan
+          (SetupTimePlan = «план» из «Наладка: план=Nмин», PartialSetup = «частичная=Nмин»).
+          КПД наладки б/н НЕ отменяет проверку — норматив Plan валиден.
         • Простои > 30%
-        Не аномалии: б/н, б/и, partialSetup, finishedCount=0 при NoProductionHappened,
+        Не аномалии: б/н, б/и, finishedCount=0 при NoProductionHappened,
         plan=0 без других аномалий, machiningTime < плана, machiningTime≈0 при NoProductionHappened.
+        (partialSetup сам по себе — норма; аномалия только при превышении 1.2 × SetupTimePlan.)
         ВАЖНО: КПД 70-120% не освобождает от проверки остальных признаков.
 
       2.2 Аномалии НАЛАДКИ (КПД наладки, частичная наладка)
+        ВАЖНО для превышения частичной наладки (> 1.2 × SetupTimePlan):
+          Норматив = SetupTimePlan (из строки «Наладка: план=Nмин»). Не гадай — возьми число прямо из контекста.
+          Частичная наладка = PartialSetup (из «частичная=Nмин»). Аномалия если PartialSetup > 1.2 × SetupTimePlan.
+          КПД наладки б/н НЕ отменяет эту проверку — Plan валиден независимо от того, была ли наладка в смену.
+          Единственное валидное объяснение — MasterSetupComment = «Освоение» с подтверждением историей.
+          Любые другие причины (Разовое изменение, MasterMachiningComment, OperatorComment,
+          MasterComment без MasterSetupComment) НЕ объясняют превышение → эскалируй.
+
         Для объяснения используются ТОЛЬКО: MasterSetupComment, MasterComment, OperatorComment.
         MasterMachiningComment НЕ ПРИНИМАЕТСЯ — жёсткое правило, модель не может его отменить.
 
@@ -153,6 +174,7 @@ public static class PromptBuilder
         Разовое изменение времени из-за проблем с инструментом/оборудованием:
           а) MasterComment непустой, конкретно описывает снижение производственного времени (не повтор оператора, не простой)
           б) КПД не противоречит (60% — логично; 5% — сомнительно)
+          Пороги FinishedCount НЕ применимы — это правило «Штучной/длительной работы» (ниже), не этой причины.
           ВСЕ ДА → аномалия объяснена (не эскалируй)
           НЕ ВСЕ → эскалируй
 
@@ -200,6 +222,7 @@ public static class PromptBuilder
         Если MasterSetupComment ИЛИ MasterMachiningComment = «Разовое изменение времени из-за проблем с инструментом/оборудованием»:
           а) MasterComment непустой, конкретно описывает снижение именно наладочного/производственного времени (соответственно полю)
           б) КПД не противоречит (60% — логично; 5% — сомнительно)
+          Пороги FinishedCount НЕ проверяются — те применимы только к «Штучной/длительной работе» в 2.3.
           ВСЕ ДА → добавь деталь в suggest_exclude_from_reports: «PartName§SetupNumber§Order» (§ разделитель)
           НЕ ВСЕ → suggest_exclude_from_reports для этой детали пуст
 
@@ -241,6 +264,8 @@ public static class PromptBuilder
     • Категория определяется полем, не содержанием: «замена сверла» в MasterMachiningComment — это про изготовление
     • OperatorComment с «Освоение»/«Написание УП» проверяется по истории детали (см. ШАГ 2 п. 2.2)
     • «Штучная/длительная работа» (MasterMachiningComment) проверяется по FinishedCount и MachiningTime (см. ШАГ 2 п. 2.3)
+    • «Разовое изменение» (MasterMachiningComment) проверяется по MasterComment + КПД; пороги FinishedCount НЕ применимы
+    • explanation — обычное человеческое описание, без имён переменных полей (SetupTimePlan, PartialSetup, MasterMachiningComment, AiRequiresReview и т.п.)
 
     ═══ CONFLICT PRIORITY ═══
     От высшего к низшему:
@@ -269,6 +294,11 @@ public static class PromptBuilder
       "explanation": "1-2 предложения — ОБЯЗАТЕЛЬНО непустое",
       "suggested_reason": "3-7 слов — ОБЯЗАТЕЛЬНО непустое"
     }
+    ‼️ explanation и suggested_reason — обычное человеческое описание на русском.
+       БЕЗ имён переменных или полей (не «SetupTimePlan», «PartialSetup», «MasterMachiningComment»,
+       «AiRequiresReview» и т.п.).
+       Пиши конкретикой: «частичная наладка 155 мин превышает норматив 86 мин более чем в 1.2 раза»,
+       «КПД изготовления 71% объяснён заменой сверла на менее производительную». Не вставляй ASCII-формулы.
     Формат suggest_exclude_from_reports: «PartName§SetupNumber§Order».
     - PartName — точное название из «▸ Деталь: «...»», без сокращений и без артиклей
     - SetupNumber — только цифра из «Уст. №N» (без префикса)
@@ -291,6 +321,10 @@ public static class PromptBuilder
     • MasterComment без MasterSetupComment/MasterMachiningComment валиден — оценивай релевантность свободного текста
     • MasterComment при непустом MasterMachiningComment и пустом MasterSetupComment НЕ объясняет наладку. Категория определяется полем комбо, не смыслом текста. Жёсткое правило.
     • «Штучная/длительная работа» валидна только при малой партии (MachiningTime < 3 мин — ≤ 10 деталей, ≥ 3 мин — ≤ 5). Превышение — причина указана некорректно, эскалируй
+    • Частичная наладка > 1.2 × SetupTimePlan: норматив наладки = «план» из «Наладка: план=Nмин», не гадай. Единственное объяснение — «Освоение» в MasterSetupComment с подтверждением историей. MasterMachiningComment, OperatorComment, «Разовое изменение» НЕ объясняют превышение.
+    • КПД наладки б/н НЕ означает, что норматива наладки нет. «план=Nмин» — это SetupTimePlan, валидный для проверки превышения частичной наладки (> 1.2 × Plan).
+    • «Разовое изменение» и «Штучная/длительная работа» — разные причины MasterMachiningComment. Пороги FinishedCount (≤ 10 при MachiningTime < 3 мин, ≤ 5 при ≥ 3 мин) применимы ТОЛЬКО к «Штучной/длительной работе». Для «Разового изменения» — проверка MasterComment + КПД.
+    • explanation и suggested_reason — обычное человеческое описание на русском, БЕЗ имён переменных полей (SetupTimePlan, PartialSetup, MasterMachiningComment, AiRequiresReview, FinishedCount и т.п.).
     """;
 
     private const string SoftSignalExplanation = """
@@ -431,6 +465,15 @@ public static class PromptBuilder
                         && line.AnalystDecision == "escalated")
                     {
                         sb.AppendLine($"      AI тогда: {line.AiExplanation}");
+                    }
+
+                    // Коррекция аналитика на прошлый ИИ-анализ —
+                    // показываем только для эскалированных смен, когда аналитик
+                    // не согласился с ИИ и оставил пояснение (AiFeedback).
+                    if (!string.IsNullOrWhiteSpace(line.AiFeedback)
+                        && line.AnalystDecision == "escalated")
+                    {
+                        sb.AppendLine($"      Коррекция аналитика: {line.AiFeedback}");
                     }
                 }
             }

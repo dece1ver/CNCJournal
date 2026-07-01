@@ -59,6 +59,7 @@ public class PartsHistoryLineDto
     public string AnalystDecision { get; set; } = "";
     public string? AnalystComment { get; set; }
     public string? AiExplanation { get; set; }
+    public string? AiFeedback { get; set; }
     public bool HasUnexplainedLowEfficiency { get; set; }
 }
 

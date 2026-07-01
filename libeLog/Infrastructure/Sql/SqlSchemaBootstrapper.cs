@@ -583,6 +583,17 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("AiModelVersion", 50)
                 .AddStringColumn("AiPromptVersion", 50)
                 .AddDateTimeColumn("AiAnalyzedAt")
+                .AddStringColumn("AiFeedback", -1)
+                .AddComputedColumn("AiVerdict",
+                    @"CASE
+                        WHEN AiAnalyzedAt IS NULL THEN N'не анализировалось'
+                        WHEN (Decision = N'ok' AND AiRequiresReview = 0)
+                          OR (Decision = N'escalated' AND AiRequiresReview = 1) THEN N'совпадение'
+                        WHEN Decision = N'ok'        AND AiRequiresReview = 1 THEN N'ИИ лишний флаг'
+                        WHEN Decision = N'escalated' AND AiRequiresReview = 0 THEN N'ИИ пропустил'
+                        ELSE N'?'
+                    END",
+                    persisted: true)
                 .AddIndex(new[] { "ShiftDate" }, name: "IX_ai_day_reviews_date")
                 .Build(),
 

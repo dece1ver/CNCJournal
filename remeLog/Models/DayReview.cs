@@ -84,6 +84,20 @@ namespace remeLog.Models
         /// <summary>Время анализа AI.</summary>
         public DateTime? AiAnalyzedAt { get; set; }
 
+        /// <summary>
+        /// Коррекция аналитика на результат ИИ-анализа (free-text).
+        /// Записывается аналитиком, прокидывается в промпт для будущих анализов
+        /// при AiVerdict != «совпадение».
+        /// </summary>
+        public string? AiFeedback { get; set; }
+
+        /// <summary>
+        /// Автоматический вердикт совпадения ИИ и аналитика (computed в БД).
+        /// Значения: «совпадение» / «AI пропустил» / «AI лишний флаг» /
+        /// «не анализировалось». Read-only — never written by app.
+        /// </summary>
+        public string? AiVerdict { get; set; }
+
         // Вспомогательные свойства
 
         public bool HasAiResult => AiAnalyzedAt.HasValue;

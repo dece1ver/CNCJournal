@@ -24,10 +24,34 @@ namespace remeLog.ViewModels
             set => Set(ref _selectedInstance, value);
         }
 
+        private int _pendingCommandCount;
+        public int PendingCommandCount
+        {
+            get => _pendingCommandCount;
+            set => Set(ref _pendingCommandCount, value);
+        }
+
+        private bool _inProgress;
+        public bool InProgress
+        {
+            get => _inProgress;
+            set => Set(ref _inProgress, value);
+        }
+
+        private bool _allSelected;
+        public bool AllSelected
+        {
+            get => _allSelected;
+            set => Set(ref _allSelected, value);
+        }
+
         public ObservableCollection<AppPresence> Instances { get; } = new();
 
         public LambdaCommand ForceCloseCommand { get; }
         public LambdaCommand ShowNotificationCommand { get; }
+        public LambdaCommand ForceCloseSelectedCommand { get; }
+        public LambdaCommand NotifySelectedCommand { get; }
+        public LambdaCommand ToggleAllCommand { get; }
 
         public ActiveInstancesViewModel()
         {
@@ -87,6 +111,90 @@ namespace remeLog.ViewModels
                     }
                 },
                 _ => SelectedInstance?.IsOnline == true);
+
+            ForceCloseSelectedCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var targets = Instances.Where(i => i.IsOnline && i.IsSelected).ToList();
+                        if (targets.Count == 0)
+                        {
+                            MessageBox.Show("Нет выбранных онлайн-экземпляров.", "Информация",
+                                MessageBoxButton.OK, MessageBoxImage.Information);
+                            return;
+                        }
+
+                        var result = MessageBox.Show(
+                            $"Принудительно закрыть {targets.Count} выбранный(х) экземпляр(ов)?",
+                            "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                        if (result != MessageBoxResult.Yes) return;
+
+                        InProgress = true;
+                        await Database.SendAppCommandToAllAsync(
+                            targets, "ForceClose", null).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке команды ForceClose выбранным");
+                        MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                    finally
+                    {
+                        await App.Current.Dispatcher.InvokeAsync(() => InProgress = false);
+                    }
+                },
+                _ => Instances.Any(i => i.IsOnline && i.IsSelected));
+
+            NotifySelectedCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var targets = Instances.Where(i => i.IsOnline && i.IsSelected).ToList();
+                        if (targets.Count == 0)
+                        {
+                            MessageBox.Show("Нет выбранных онлайн-экземпляров.", "Информация",
+                                MessageBoxButton.OK, MessageBoxImage.Information);
+                            return;
+                        }
+
+                        var dialog = new UserInputDialogWindow(
+                            "Уведомление", "Введите текст уведомления:");
+                        dialog.Owner = Application.Current.MainWindow;
+                        if (dialog.ShowDialog() != true) return;
+
+                        var text = dialog.UserInput;
+                        if (string.IsNullOrWhiteSpace(text)) return;
+
+                        InProgress = true;
+                        await Database.SendAppCommandToAllAsync(
+                            targets, "ShowNotification", text).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке команды ShowNotification выбранным");
+                        MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                    finally
+                    {
+                        await App.Current.Dispatcher.InvokeAsync(() => InProgress = false);
+                    }
+                },
+                _ => Instances.Any(i => i.IsOnline && i.IsSelected));
+
+            ToggleAllCommand = LambdaCommand.Create(_ =>
+            {
+                var newState = !AllSelected;
+                foreach (var instance in Instances)
+                {
+                    if (instance.IsOnline)
+                        instance.IsSelected = newState;
+                }
+                AllSelected = newState;
+            });
         }
 
         private async Task PollLoopAsync()
@@ -98,15 +206,22 @@ namespace remeLog.ViewModels
                 try
                 {
                     var items = await Database.ReadActiveInstancesAsync();
+                    var pendingCount = await Database.GetPendingCommandCountAsync();
 
                     await App.Current.Dispatcher.InvokeAsync(() =>
                     {
                         var selected = SelectedInstance;
+                        var selectedIds = new System.Collections.Generic.HashSet<Guid>(
+                            Instances.Where(i => i.IsSelected).Select(i => i.SessionId));
 
                         Instances.Clear();
 
                         foreach (var item in items)
+                        {
+                            if (selectedIds.Contains(item.SessionId))
+                                item.IsSelected = true;
                             Instances.Add(item);
+                        }
 
                         if (selected is not null)
                         {
@@ -114,6 +229,9 @@ namespace remeLog.ViewModels
                                 i => i.SessionId == selected.SessionId);
                         }
 
+                        PendingCommandCount = pendingCount;
+                        AllSelected = Instances.Count > 0
+                            && Instances.Where(i => i.IsOnline).All(i => i.IsSelected);
                         CommandManager.InvalidateRequerySuggested();
                     });
                 }

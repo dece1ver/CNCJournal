@@ -19,7 +19,7 @@ namespace AiService
             var app = builder.Build();
             app.MapControllers();
 
-            app.Run("http://0.0.0.0:5050");
+            app.Run("http://0.0.0.0:5051");
         }
     }
 }

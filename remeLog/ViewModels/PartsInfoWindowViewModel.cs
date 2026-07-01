@@ -230,6 +230,9 @@ namespace remeLog.ViewModels
                     OnPropertyChanged(nameof(DayReviewStatusText));
                     OnPropertyChanged(nameof(DayReviewStatusColor));
                     OnPropertyChanged(nameof(IsDayReviewed));
+                    OnPropertyChanged(nameof(AiVerdictText));
+                    OnPropertyChanged(nameof(AiVerdictColor));
+                    OnPropertyChanged(nameof(HasAiVerdict));
                 }
             }
         }
@@ -241,6 +244,32 @@ namespace remeLog.ViewModels
             get => _DayReviewComment;
             set => Set(ref _DayReviewComment, value);
         }
+
+        private string _AiFeedbackText = string.Empty;
+        /// <summary> Коррекция аналитика на результат ИИ-анализа (AiFeedback). </summary>
+        public string AiFeedbackText
+        {
+            get => _AiFeedbackText;
+            set => Set(ref _AiFeedbackText, value);
+        }
+        private string _aiFeedbackBackup = string.Empty;
+
+        /// <summary> Авто-вердикт совпадения ИИ и аналитика из БД (computed). </summary>
+        public string? AiVerdictText => CurrentDayReview?.AiVerdict;
+
+        /// <summary> Цвет бейджа AiVerdict. </summary>
+        public string AiVerdictColor => (CurrentDayReview?.AiVerdict) switch
+        {
+            "совпадение"            => "#2E7D32",  // зелёный
+            "ИИ пропустил"          => "#C62828",  // красный
+            "ИИ лишний флаг"        => "#F57F17",  // оранжевый
+            "не анализировалось"    => "#757575",  // серый
+            _                       => "Transparent",
+        };
+
+        /// <summary> Есть ли вердикт (для видимости бейджа). </summary>
+        public bool HasAiVerdict => !string.IsNullOrWhiteSpace(CurrentDayReview?.AiVerdict)
+                                    && CurrentDayReview!.AiVerdict != "не анализировалось";
 
         private string _dayReviewCommentBackup = string.Empty;
         private bool _IsCommentEditorOpen = false;
@@ -2022,6 +2051,10 @@ namespace remeLog.ViewModels
                         break;
                 }
             }
+
+            if (CurrentDayReview != null)
+                await SaveDayReviewInternalAsync(CurrentDayReview.Decision, CurrentDayReview.IsFullyReviewed);
+
             _ = LoadPartsAsync();
         }
         private static bool CanUpdatePartsCommandExecute(object p) => true;
@@ -2395,11 +2428,9 @@ namespace remeLog.ViewModels
                 {
                     await Database.SaveAiAnalysisAsync(
                         CurrentDayReview.Id, result, AppSettings.AiModel, AiThinkingEnabled);
-                    CurrentDayReview.AiRequiresReview = result.RequiresReview;
-                    CurrentDayReview.AiConfidence = result.Confidence;
-                    CurrentDayReview.AiAnalyzedAt = DateTime.Now;
-                    CurrentDayReview.AiPromptVersion = result.PromptVersion;
-                    CurrentDayReview.AiThinkingEnabled = AiThinkingEnabled;
+                    var refreshed = await Database.GetDayReviewAsync(machine, FromDate.Date);
+                    if (refreshed != null)
+                        CurrentDayReview = refreshed;
                 }
                 Status = "ИИ подумал";
                 ProcessExcludeFromReportsSuggestions(result);
@@ -3063,6 +3094,7 @@ namespace remeLog.ViewModels
                 isFullyReviewed: isFullyReviewed,
                 comment: DayReviewComment
             );
+            review.AiFeedback = AiFeedbackText;
 
             Status = "Сохранение решения...";
             var (result, dayReviewId, message) = await Database.SaveDayReviewAsync(review);
@@ -3160,6 +3192,7 @@ namespace remeLog.ViewModels
             }
 
             DayReviewComment = CurrentDayReview?.Comment ?? string.Empty;
+            AiFeedbackText = CurrentDayReview?.AiFeedback ?? string.Empty;
         }
 
         /// <summary>
