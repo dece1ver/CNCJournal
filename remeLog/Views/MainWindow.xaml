@@ -8,7 +8,7 @@
         xmlns:vm="clr-namespace:remeLog.ViewModels" d:DataContext="{d:DesignInstance Type=vm:MainWindowViewModel}"
         xmlns:cnt="clr-namespace:remeLog.Views.Controls"
         mc:Ignorable="d"
-        Title="Отчеты электронного журнала" Height="704" Width="1080" WindowStartupLocation="CenterScreen" ResizeMode="CanResizeWithGrip" Loaded="Window_Loaded" Unloaded="Window_Unloaded" Closing="Window_Closing">
+        Title="{Binding WindowTitle}" Height="704" Width="1080" WindowStartupLocation="CenterScreen" ResizeMode="CanResizeWithGrip" Loaded="Window_Loaded" Unloaded="Window_Unloaded" Closing="Window_Closing">
     <Window.DataContext>
         <vm:MainWindowViewModel/>
     </Window.DataContext>
@@ -54,14 +54,16 @@
                     <MenuItem Header="Длительные наладки"
                               Command="{Binding ShowLongSetupsCommand}" Icon="{StaticResource HistoryLayersIcon}"/>
                     <MenuItem Header="Операторы"
-                              Command="{Binding EditOperatorsCommand}" Icon="{StaticResource OperatorsIcon}"/>
+                              Command="{Binding EditOperatorsCommand}" Icon="{StaticResource OperatorsIcon}"
+                              IsEnabled="{Binding HasFeatureAdvancedEdit}"/>
                     <MenuItem Header="Серийные детали"
-                              Command="{Binding EditSerialPartsCommand}" Icon="{StaticResource LookupListItemIcon}"/>
+                              Command="{Binding EditSerialPartsCommand}" Icon="{StaticResource LookupListItemIcon}"
+                              IsEnabled="{Binding HasFeatureAdvancedEdit}"/>
                 </MenuItem>
                 <MenuItem Header="Инструменты">
                     <MenuItem Header="Пакетный ИИ-анализ"
                               Command="{Binding ShowBatchAiAnalysisCommand}"
-                              IsEnabled="{Binding IsAdministrator}"
+                              IsEnabled="{Binding HasFeatureAi}"
                               Icon="🤖"
                               ToolTip="Пакетный ИИ-анализ всех суток-станков с записями в ai_day_reviews"/>
                     <MenuItem Header="Мониторинг"
@@ -70,7 +72,7 @@
                               Command="{Binding UpdateDatabaseCommand}" Icon="{StaticResource SyncIcon}"/>
                     <MenuItem Header="Активные экземпляры"
                               Command="{Binding ShowActiveInstancesCommand}"
-                              IsEnabled="{Binding IsAdministrator}"
+                              IsEnabled="{Binding HasFeatureInstances}"
                               Icon="{StaticResource OperatorsIcon}"
                               ToolTip="Просмотр запущенных экземпляров приложения"/>
                 </MenuItem>
@@ -270,7 +272,13 @@
                             <TextBlock FontSize="14" Text="{Binding ReportsSummary}" FontFamily="Consolas" Foreground="#303030"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock FontSize="14" Text="{Binding CheckedSummary}" FontFamily="Consolas" Foreground="#303030"/>
+                            <TextBlock FontSize="14" Text="{Binding CheckedSummary}" FontFamily="Consolas" Foreground="#303030"
+                                       Cursor="Hand" ToolTip="Открыть календарь ТО">
+                                <TextBlock.InputBindings>
+                                    <MouseBinding MouseAction="LeftDoubleClick"
+                                                  Command="{Binding DataContext.OpenMachineInspectionCalendarCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                </TextBlock.InputBindings>
+                            </TextBlock>
                         </StackPanel>
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Margin="12 0"
@@ -279,7 +287,13 @@
                             <TextBlock FontSize="14" Text="{Binding ReportsSummaryForPeriod}" FontFamily="Consolas" Foreground="#303030"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock FontSize="14" Text="{Binding CheckedSummaryForPeriod}" FontFamily="Consolas" Foreground="#303030"/>
+                            <TextBlock FontSize="14" Text="{Binding CheckedSummaryForPeriod}" FontFamily="Consolas" Foreground="#303030"
+                                       Cursor="Hand" ToolTip="Открыть календарь ТО">
+                                <TextBlock.InputBindings>
+                                    <MouseBinding MouseAction="LeftDoubleClick"
+                                                  Command="{Binding DataContext.OpenMachineInspectionCalendarCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                </TextBlock.InputBindings>
+                            </TextBlock>
                         </StackPanel>
                     </StackPanel>
                 </DockPanel>

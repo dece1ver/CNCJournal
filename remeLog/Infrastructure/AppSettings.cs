@@ -51,6 +51,9 @@ namespace remeLog.Infrastructure
         [JsonIgnore]
         public List<string> UnspecifiedDowntimesReasons = new();
         [JsonIgnore]
+        public static RemeLogFeature EnabledFeatures { get; set; } = RemeLogFeature.None;
+
+        [JsonIgnore]
         public static double MaxSetupLimit { get; set; } = 2;
         [JsonIgnore]
         public static Dictionary<string, double> MaxSetupLimits { get; set; } = new();
@@ -83,6 +86,8 @@ namespace remeLog.Infrastructure
         [JsonIgnore]
         public static int PartsHistoryMaxDaysBack { get; set; } = 720;
         public bool AiThinkingEnabled { get; set; } = false;
+
+        public List<string> MachineInspectionCalendarSelectedMachines { get; set; } = new();
 
 
         /// <summary> Режим отладки </summary>

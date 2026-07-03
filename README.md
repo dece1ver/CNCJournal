@@ -178,6 +178,52 @@ INSERT INTO cnc_remelog_config (max_setup_limit, long_setup_limit)
 VALUES (1.5, 240);
 ```
 
+#### <ins>cnc_remelog_feature_permissions</ins> (фичи приложения remeLog для не-администраторов)
+
+Позволяет дать пользователю доступ к отдельным функциям без добавления в список администраторов.
+Администраторы (таблица `cnc_remelog_config`, колонка `Administrators`) имеют доступ ко всем фичам всегда.
+
+- UserName: имя Windows-пользователя
+- EnabledFeatures: битовая маска (INT) включённых фич
+
+Значения флагов:
+| Фича | Бит | INT | Описание |
+|------|-----|-----|----------|
+| Ai | `1 << 0` | 1 | Использование ИИ для суточного и пакетного анализа |
+| AdvancedEdit | `1 << 1` | 2 | Редактирование серийных деталей, нормативов и операторов |
+| Instances | `1 << 2` | 4 | Работа с другими экземплярами remeLog |
+
+Примеры SQL-запросов:
+```sql
+-- Дать пользователю user1 только Ai
+INSERT INTO cnc_remelog_feature_permissions (UserName, EnabledFeatures)
+VALUES ('user1', 1);
+
+-- Дать пользователю user2 Ai + Instances (1 + 4 = 5)
+INSERT INTO cnc_remelog_feature_permissions (UserName, EnabledFeatures)
+VALUES ('user2', 5);
+
+-- Дать пользователю user3 все фичи (1 + 2 + 4 = 7)
+INSERT INTO cnc_remelog_feature_permissions (UserName, EnabledFeatures)
+VALUES ('user3', 7);
+
+-- Обновить фичи пользователю user1 (только AdvancedEdit)
+UPDATE cnc_remelog_feature_permissions
+SET EnabledFeatures = 2
+WHERE UserName = 'user1';
+
+-- Удалить все фичи пользователя user1
+DELETE FROM cnc_remelog_feature_permissions
+WHERE UserName = 'user1';
+```
+
+Фичи также можно активировать через аргумент запуска `--features` (работает для любого пользователя):
+```
+remeLog.exe --features=Ai,Instances
+remeLog.exe --features=all
+```
+Значения из БД и аргументов запуска комбинируются (OR).
+
 #### <ins>cnc_wnc_cfg</ins> (настройки Windchill)
 Если вы ~~вдруг~~ используете Windchill, то можно искать чертежи и модели из интерфейса remeLog, для этого нужны следующие настройки.
 

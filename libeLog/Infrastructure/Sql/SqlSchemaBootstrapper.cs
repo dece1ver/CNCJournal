@@ -378,6 +378,13 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("AiModel")
                 .Build(),
 
+            new TableBuilder("cnc_remelog_feature_permissions")
+                .AddIdColumn()
+                .AddStringColumn("UserName", 255, false)
+                .AddIntColumn("EnabledFeatures", false, 0)
+                .AddCompositeUnique("UserName")
+                .Build(),
+
             new TableBuilder("cnc_serial_parts")
                 .AddIdColumn()
                 .AddStringColumn("PartName", 255, false)

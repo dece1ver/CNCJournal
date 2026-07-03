@@ -2,6 +2,7 @@
 using libeLog.Base;
 using libeLog.Models;
 using remeLog.Infrastructure;
+using remeLog.Infrastructure.Types;
 using remeLog.Views;
 using System;
 using System.Collections.Generic;
@@ -145,8 +146,7 @@ namespace remeLog.ViewModels
         public ICommand DeletePartCommand { get; }
         private void OnDeletePartCommandExecuted(object p)
         {
-            if (Util.IsNotAppAdmin(() => ShowMessage("Нет прав на выполнение операции")))
-                return;
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { ShowMessage("Нет прав на выполнение операции"); return; }
             if (p is not SerialPart serialPart) 
                 return; 
             if (MessageBox.Show(
@@ -238,7 +238,7 @@ namespace remeLog.ViewModels
         public ICommand RenameOperationCommand { get; }
         private void OnRenameOperationCommandExecuted(object p)
         {
-            if (Util.IsNotAppAdmin(() => ShowMessage("Нет прав на выполнение операции"))) return;
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { ShowMessage("Нет прав на выполнение операции"); return; }
 
             if (p is FrameworkElement fe && fe.DataContext is CncOperation cncOperation)
             {
@@ -272,8 +272,7 @@ namespace remeLog.ViewModels
         public ICommand DeleteOperationCommand { get; }
         private void OnDeleteOperationCommandExecuted(object p)
         {
-            if (Util.IsNotAppAdmin(() => ShowMessage("Нет прав на выполнение операции")))
-                return;
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { ShowMessage("Нет прав на выполнение операции"); return; }
 
             if (p is FrameworkElement fe && fe.DataContext is CncOperation cncOperation)
             {
@@ -298,8 +297,7 @@ namespace remeLog.ViewModels
         public ICommand DeleteSetupCommand { get; }
         private void OnDeleteSetupCommandExecuted(object p)
         {
-            if (Util.IsNotAppAdmin(() => ShowMessage("Нет прав на выполнение операции")))
-                return;
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { ShowMessage("Нет прав на выполнение операции"); return; }
 
             if (p is FrameworkElement fe && fe.DataContext is CncSetup cncSetup)
             {
@@ -324,8 +322,7 @@ namespace remeLog.ViewModels
         public ICommand SetNewSetupNormativeCommand { get; }
         private void OnSetNewSetupNormativeCommandExecuted(object p)
         {
-            if (Util.IsNotAppAdmin(() => ShowMessage("Нет прав на выполнение операции")))
-                return;
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { ShowMessage("Нет прав на выполнение операции"); return; }
 
             if (p is FrameworkElement fe && fe.DataContext is CncSetup cncSetup)
             {
@@ -360,8 +357,7 @@ namespace remeLog.ViewModels
 
         private void OnSetNewProductionNormativeCommandExecuted(object p)
         {
-            if (Util.IsNotAppAdmin(() => ShowMessage("Нет прав на выполнение операции")))
-                return;
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { ShowMessage("Нет прав на выполнение операции"); return; }
 
             if (p is FrameworkElement fe && fe.DataContext is CncSetup cncSetup)
             {
@@ -395,8 +391,7 @@ namespace remeLog.ViewModels
         public ICommand RemoveNormativeCommand { get; }
         private async void OnRemoveNormativeCommandExecuted(object p)
         {
-            if (Util.IsNotAppAdmin(() => ShowMessage("Нет прав на выполнение операции")))
-                return;
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { ShowMessage("Нет прав на выполнение операции"); return; }
 
             if (p is FrameworkElement fe && fe.DataContext is NormativeEntry normative)
             {
@@ -422,8 +417,7 @@ namespace remeLog.ViewModels
 
         public void MoveOperation(CncOperation targetOperation, bool isAbove)
         {
-            if (Util.IsNotAppAdmin(() => ShowMessage("Нет прав на выполнение операции")))
-                return;
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { ShowMessage("Нет прав на выполнение операции"); return; }
 
             if (DraggedOperation == null || targetOperation == null) return;
 

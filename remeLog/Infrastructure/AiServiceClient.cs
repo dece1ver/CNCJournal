@@ -21,7 +21,7 @@ namespace remeLog.Infrastructure
 
         public AiServiceClient(string? baseUrl = null)
         {
-            _baseUrl = (baseUrl ?? $"http://{AppSettings.AiIp.GetIpOrDefault()}:5051")
+            _baseUrl = (baseUrl ?? $"http://{AppSettings.AiIp.GetIpOrDefault()}:5050")
                 .TrimEnd('/');
         }
 
@@ -339,11 +339,10 @@ analystComment = l.AnalystComment,
                 && machMins > p.SingleProductionTimePlan * 1.2)
                 s.Add($"Машинное время {machMins:0.#}мин > штучного норматива {p.SingleProductionTimePlan:0.#}мин ({machMins / p.SingleProductionTimePlan:0%})");
 
-            // Частичная наладка существенно превышает норматив наладки (> 2×)
-            // Небольшое превышение нормально, очень большое — подозрительно
+            // КПД частичной наладки < 70%
             if (p.PartialSetupTime > 0 && p.SetupTimePlan > 0
-                && p.PartialSetupTime > p.SetupTimePlan * 2.0)
-                s.Add($"Частичная наладка {p.PartialSetupTime:0}мин > 2× норматива наладки {p.SetupTimePlan:0}мин");
+                && p.PartialSetupTime > p.SetupTimePlan / 0.695)
+                s.Add($"КПД частичной наладки {p.SetupTimePlan / p.PartialSetupTime:0%} < 70% (план {p.SetupTimePlan:0}мин, факт {p.PartialSetupTime:0}мин)");
 
             // Оператор сообщает о проблеме с нормативом (жёсткое правило!)
             if (OperatorMentionsNormativeIssue(manualComment))

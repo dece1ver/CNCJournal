@@ -2,6 +2,7 @@
 using libeLog;
 using libeLog.Base;
 using remeLog.Infrastructure;
+using remeLog.Infrastructure.Types;
 using remeLog.Models;
 using remeLog.Views;
 using System;
@@ -67,6 +68,7 @@ namespace remeLog.ViewModels
         public ICommand SaveOperatorsCommand { get; }
         private async void OnSaveOperatorsCommandExecuted(object p)
         {
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { Status = "Нет прав на выполнение операции"; return; }
             if (string.IsNullOrEmpty(AppSettings.Instance.ConnectionString))
             {
                 Status = "Операторы не могут быть сохранены т.к. строка подключения не настроена";

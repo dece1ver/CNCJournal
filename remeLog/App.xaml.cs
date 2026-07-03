@@ -1,10 +1,12 @@
 ﻿using libeLog.Extensions;
 using remeLog.Infrastructure;
 using remeLog.Infrastructure.Services;
+using remeLog.Infrastructure.Types;
 using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -339,8 +341,28 @@ namespace remeLog
         [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Auto)]
         private static extern IntPtr LoadLibrary(string lpFileName);
 
+        private static void ParseFeatureArgs(string[] args)
+        {
+            var featureArg = args.FirstOrDefault(a => a.StartsWith("--features=", StringComparison.OrdinalIgnoreCase));
+            if (featureArg == null) return;
+
+            var value = featureArg["--features=".Length..];
+            if (value.Equals("all", StringComparison.OrdinalIgnoreCase))
+            {
+                AppSettings.EnabledFeatures = RemeLogFeature.Ai | RemeLogFeature.AdvancedEdit | RemeLogFeature.Instances;
+                return;
+            }
+
+            foreach (var name in value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (Enum.TryParse<RemeLogFeature>(name, true, out var feature))
+                    AppSettings.EnabledFeatures |= feature;
+            }
+        }
+
         protected override void OnStartup(StartupEventArgs e)
         {
+            ParseFeatureArgs(e.Args);
             base.OnStartup(e);
             ConfigureCulture();
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;

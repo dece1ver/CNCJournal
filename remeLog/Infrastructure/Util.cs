@@ -8,6 +8,7 @@ using libeLog.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using remeLog.Infrastructure.Services;
+using remeLog.Infrastructure.Types;
 using remeLog.Infrastructure.Winnum.Data;
 using remeLog.Models;
 using System;
@@ -570,7 +571,7 @@ namespace remeLog.Infrastructure
         /// </returns>
         public static bool IsAppAdmin(Action? action = null)
         {
-            var isAdmin = AppSettings.Administrators.Contains(Environment.UserName);
+            var isAdmin = AppSettings.Administrators.Contains(Environment.UserName, StringComparer.OrdinalIgnoreCase);
             if (isAdmin)
                 action?.Invoke();
             return isAdmin;
@@ -587,10 +588,20 @@ namespace remeLog.Infrastructure
         /// </returns>
         public static bool IsNotAppAdmin(Action? action = null)
         {
-            bool notPrivileged = !AppSettings.Administrators.Contains(Environment.UserName);
+            bool notPrivileged = !AppSettings.Administrators.Contains(Environment.UserName, StringComparer.OrdinalIgnoreCase);
             if (notPrivileged)
                 action?.Invoke();
             return notPrivileged;
+        }
+
+        /// <summary>
+        /// Проверяет, имеет ли текущий пользователь доступ к указанной фиче.
+        /// Администраторы имеют доступ ко всем фичам.
+        /// </summary>
+        public static bool HasFeature(RemeLogFeature feature)
+        {
+            if (IsAppAdmin()) return true;
+            return AppSettings.EnabledFeatures.HasFlag(feature);
         }
     }
 }

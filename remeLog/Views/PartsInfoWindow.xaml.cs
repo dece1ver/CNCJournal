@@ -725,7 +725,7 @@ namespace remeLog.Views
         private void OnSetValueClick(object sender, RoutedEventArgs e)
         {
             if (sender is not MenuItem item) return;
-            if (Util.IsNotAppAdmin(() => MessageBox.Show("Нет прав на выполнение операции", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error))) return;
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { MessageBox.Show("Нет прав на выполнение операции", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error); return; }
             string value = item.Tag?.ToString() ?? string.Empty;
 
             if (Keyboard.FocusedElement is DataGridCell cell)

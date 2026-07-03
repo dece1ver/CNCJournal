@@ -1,0 +1,303 @@
+using libeLog;
+using libeLog.Base;
+using libeLog.Extensions;
+using libeLog.Models;
+using remeLog.Infrastructure;
+using remeLog.Infrastructure.Types;
+using remeLog.Models;
+using remeLog.Views;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Input;
+
+namespace remeLog.ViewModels
+{
+    internal class MachineInspectionCalendarViewModel : ViewModel, IDisposable
+    {
+        private DateTime _FromDate;
+        private DateTime _ToDate;
+        private ObservableCollection<MachineFilter> _MachineFilters = new();
+        private ObservableCollection<MachineInspectionCalendarDayRow> _Days = new();
+        private List<string> _AllMachines = new();
+        private string _Statistics = string.Empty;
+        private readonly PeriodicTimer _refreshTimer = new(TimeSpan.FromSeconds(10));
+        private CancellationTokenSource _cts = new();
+
+        public MachineInspectionCalendarViewModel(DateTime fromDate, DateTime toDate)
+        {
+            _FromDate = fromDate;
+            _ToDate = toDate;
+            ShowAllMachinesCommand = LambdaCommand.Create(_ => ExecuteShowAll());
+            HideAllMachinesCommand = LambdaCommand.Create(_ => ExecuteHideAll());
+            InvertMachinesCommand = LambdaCommand.Create(_ => ExecuteInvert());
+            OpenPartsInfoCommand = LambdaCommand.Create(OnOpenPartsInfo, _ => true);
+            _ = InitializeAsync();
+        }
+
+        public DateTime FromDate
+        {
+            get => _FromDate;
+            set => Set(ref _FromDate, value);
+        }
+
+        public DateTime ToDate
+        {
+            get => _ToDate;
+            set => Set(ref _ToDate, value);
+        }
+
+        public ObservableCollection<MachineFilter> MachineFilters
+        {
+            get => _MachineFilters;
+            set => Set(ref _MachineFilters, value);
+        }
+
+        public ObservableCollection<MachineInspectionCalendarDayRow> Days
+        {
+            get => _Days;
+            set => Set(ref _Days, value);
+        }
+
+        public List<string> AllMachines
+        {
+            get => _AllMachines;
+            set => Set(ref _AllMachines, value);
+        }
+
+        public string Statistics
+        {
+            get => _Statistics;
+            set => Set(ref _Statistics, value);
+        }
+
+        public string PeriodTitle => $"Календарь ТО: {FromDate:dd.MM.yyyy} - {ToDate:dd.MM.yyyy}";
+
+        public ICommand ShowAllMachinesCommand { get; }
+        public ICommand HideAllMachinesCommand { get; }
+        public ICommand InvertMachinesCommand { get; }
+        public ICommand OpenPartsInfoCommand { get; }
+
+        public void Dispose()
+        {
+            _cts.Cancel();
+            _cts.Dispose();
+            _refreshTimer.Dispose();
+        }
+
+        private void ExecuteShowAll()
+        {
+            foreach (var mf in MachineFilters) mf.Filter = true;
+            RefreshFilter();
+        }
+
+        private void ExecuteHideAll()
+        {
+            foreach (var mf in MachineFilters) mf.Filter = false;
+            RefreshFilter();
+        }
+
+        private void ExecuteInvert()
+        {
+            foreach (var mf in MachineFilters) mf.Filter = !mf.Filter;
+            RefreshFilter();
+        }
+
+        private void OnOpenPartsInfo(object? p)
+        {
+            if (p is not MachineInspectionCalendarCell cell) return;
+
+            var partsInfo = new CombinedParts(cell.Machine, cell.Date, cell.Date);
+            var window = new PartsInfoWindow(partsInfo)
+            {
+                Owner = Application.Current.MainWindow
+            };
+            window.Show();
+        }
+
+        private void RefreshFilter()
+        {
+            SaveFilter();
+            UpdateStatistics();
+            OnPropertyChanged(nameof(FilteredMachines));
+            OnPropertyChanged(nameof(Days));
+        }
+
+        public List<string> FilteredMachines =>
+            MachineFilters.Where(m => m.Filter).Select(m => m.Machine).ToList();
+
+        private void SaveFilter()
+        {
+            AppSettings.Instance.MachineInspectionCalendarSelectedMachines =
+                MachineFilters.Where(m => m.Filter).Select(m => m.Machine).ToList();
+            AppSettings.Save();
+        }
+
+        private void UpdateStatistics()
+        {
+            var selectedMachines = MachineFilters.Where(m => m.Filter).ToList();
+            var total = selectedMachines.Count;
+            var checkedCount = 0;
+
+            foreach (var day in Days)
+            {
+                foreach (var cell in day.Cells)
+                {
+                    if (selectedMachines.Any(m => m.Machine == cell.Machine) && cell.IsChecked)
+                    {
+                        checkedCount++;
+                    }
+                }
+            }
+
+            var totalCells = total * Days.Count;
+            Statistics = totalCells > 0
+                ? $"Проверено: {checkedCount:00}/{totalCells:00} ({(Convert.ToDouble(checkedCount) / totalCells):0.#%})"
+                : $"Проверено: 00/00";
+        }
+
+        private async Task InitializeAsync()
+        {
+            try
+            {
+                var (status, machineFilters, _) = await Database.ReadMachinesAsync();
+                if (status != DbResult.Ok || machineFilters == null) return;
+
+                var savedMachines = AppSettings.Instance.MachineInspectionCalendarSelectedMachines ?? new List<string>();
+
+                foreach (var mf in machineFilters)
+                {
+                    mf.Filter = savedMachines.Count == 0 || savedMachines.Contains(mf.Machine);
+                    mf.PropertyChanged += (_, _) =>
+                    {
+                        SaveFilter();
+                        UpdateStatistics();
+                        OnPropertyChanged(nameof(FilteredMachines));
+                        OnPropertyChanged(nameof(Days));
+                    };
+                }
+
+                _MachineFilters = machineFilters.ToObservableCollection();
+                OnPropertyChanged(nameof(MachineFilters));
+                OnPropertyChanged(nameof(FilteredMachines));
+
+                _AllMachines = machineFilters.Select(m => m.Machine).ToList();
+                OnPropertyChanged(nameof(AllMachines));
+
+                await ReloadShiftsAsync();
+                StartRefreshLoop();
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex);
+                MessageBox.Show($"Ошибка загрузки данных: {ex.Message}", "Ошибка",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void StartRefreshLoop()
+        {
+            _ = Task.Run(async () =>
+            {
+                while (!_cts.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await _refreshTimer.WaitForNextTickAsync(_cts.Token);
+                        await App.Current.Dispatcher.InvokeAsync(async () => await ReloadShiftsAsync());
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex);
+                    }
+                }
+            }, _cts.Token);
+        }
+
+        private async Task ReloadShiftsAsync()
+        {
+            var machines = _AllMachines;
+            if (machines.Count == 0) return;
+
+            var shiftsResult = await Task.Run(() =>
+                Database.GetShiftsByPeriod(machines, FromDate, ToDate, new Shift(ShiftType.All)));
+
+            if (!shiftsResult.IsOk || shiftsResult.Value == null) return;
+
+            var shifts = shiftsResult.Value;
+            var shiftLookup = shifts.ToLookup(s => (s.Machine, s.ShiftDate.Date));
+
+            var days = new List<MachineInspectionCalendarDayRow>();
+            for (var current = FromDate; current <= ToDate; current = current.AddDays(1))
+            {
+                if (AppSettings.Holidays.Contains(current.Date)) continue;
+                var cells = new ObservableCollection<MachineInspectionCalendarCell>();
+                foreach (var machine in machines)
+                {
+                    var dayShift = shiftLookup[(machine, current)]
+                        .FirstOrDefault(s => s.Shift == "День");
+                    var nightShift = shiftLookup[(machine, current)]
+                        .FirstOrDefault(s => s.Shift == "Ночь");
+
+                    bool hasShift = dayShift != null || nightShift != null;
+                    bool isChecked = (dayShift?.IsChecked == true) && (nightShift?.IsChecked == true);
+
+                    cells.Add(new MachineInspectionCalendarCell
+                    {
+                        Machine = machine,
+                        Date = current,
+                        HasShift = hasShift,
+                        IsChecked = isChecked
+                    });
+                }
+
+                var dow = current.DayOfWeek switch
+                {
+                    DayOfWeek.Monday => "Понедельник",
+                    DayOfWeek.Tuesday => "Вторник",
+                    DayOfWeek.Wednesday => "Среда",
+                    DayOfWeek.Thursday => "Четверг",
+                    DayOfWeek.Friday => "Пятница",
+                    DayOfWeek.Saturday => "Суббота",
+                    DayOfWeek.Sunday => "Воскресенье",
+                    _ => ""
+                };
+
+                days.Add(new MachineInspectionCalendarDayRow
+                {
+                    Date = current,
+                    DayOfWeekShort = dow,
+                    Cells = cells
+                });
+            }
+
+            _Days = days.ToObservableCollection();
+            OnPropertyChanged(nameof(Days));
+            UpdateStatistics();
+        }
+    }
+
+    internal class MachineInspectionCalendarCell
+    {
+        public string Machine { get; set; } = string.Empty;
+        public DateTime Date { get; set; }
+        public bool IsChecked { get; set; }
+        public bool HasShift { get; set; }
+    }
+
+    internal class MachineInspectionCalendarDayRow
+    {
+        public DateTime Date { get; set; }
+        public string DayOfWeekShort { get; set; } = string.Empty;
+        public string DateDisplay => $"{Date:dd.MM}";
+        public ObservableCollection<MachineInspectionCalendarCell> Cells { get; set; } = new();
+    }
+}

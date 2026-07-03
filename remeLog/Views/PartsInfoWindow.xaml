@@ -517,7 +517,7 @@
             </DataGridTextColumn.ElementStyle>
         </DataGridTextColumn>
 
-        <DataGridTemplateColumn x:Key="MasterSetupCommentColumn" Header="Невыполнение норматива наладки" Width="110">
+        <DataGridTemplateColumn x:Key="MasterSetupCommentColumn" Header="Отклонения в наладке" Width="110">
             <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate>
                     <TextBlock Text="{Binding MasterSetupComment, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" 
@@ -541,7 +541,7 @@
             </DataGridTextColumn.ElementStyle>
         </DataGridTextColumn>
 
-        <DataGridTemplateColumn x:Key="MasterMachiningCommentColumn" Header="Невыполнение норматива изготовления" Width="110">
+        <DataGridTemplateColumn x:Key="MasterMachiningCommentColumn" Header="Отклонения в изготовлении" Width="110">
             <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate>
                     <TextBlock Text="{Binding MasterMachiningComment, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" 

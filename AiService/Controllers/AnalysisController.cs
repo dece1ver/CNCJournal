@@ -8,7 +8,7 @@ namespace AiService.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AnalysisController(OllamaService ollama, ILogger<AnalysisController> logger) : ControllerBase
+public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilder, ILogger<AnalysisController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions _camelCase = new()
     {
@@ -24,7 +24,7 @@ public class AnalysisController(OllamaService ollama, ILogger<AnalysisController
         {
             var hardRules = HardRuleEvaluator.Evaluate(request);
 
-            var prompt = PromptBuilder.Build(request, hardRules);
+            var prompt = promptBuilder.Build(request, hardRules);
             var thinkCapture = new StringBuilder();
 
             var (raw, thinking) = await ollama.GenerateAsync(prompt, think: false, thinkingProgress: null, ct: ct, model: request.Model);
@@ -59,7 +59,7 @@ public class AnalysisController(OllamaService ollama, ILogger<AnalysisController
                     : llmResult.SuggestedReason,
                 Error = llmResult.Error,
                 SuggestExcludeFromReports = llmResult.SuggestExcludeFromReports,
-                PromptVersion = PromptBuilder.PromptVersion,
+                PromptVersion = promptBuilder.PromptVersion,
             };
 
             var allPartSignals = request.Parts.SelectMany(p => p.Signals);
@@ -143,7 +143,7 @@ public class AnalysisController(OllamaService ollama, ILogger<AnalysisController
             request.Machine, request.ShiftDate);
 
         var hardRules = HardRuleEvaluator.Evaluate(request);
-        var prompt = PromptBuilder.Build(request, hardRules);
+        var prompt = promptBuilder.Build(request, hardRules);
 
         logger.LogDebug("Промпт построен, символов: {Len}", prompt.Length);
 
@@ -229,7 +229,7 @@ public class AnalysisController(OllamaService ollama, ILogger<AnalysisController
             ThinkingProcess = thinking,
             SuggestExcludeFromReports = llmResult.SuggestExcludeFromReports,
             Error = llmResult.Error,
-            PromptVersion = PromptBuilder.PromptVersion,
+            PromptVersion = promptBuilder.PromptVersion,
         };
 
         if (hardRules.MustEscalate && result.SuggestExcludeFromReports.Count > 0)

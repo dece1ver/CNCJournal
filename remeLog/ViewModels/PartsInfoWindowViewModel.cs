@@ -382,10 +382,10 @@ namespace remeLog.ViewModels
                 var verdict = AiResult.RequiresReview ? "Требует проверки" : "Всё в порядке";
                 sb.AppendLine($"Оценка ИИ: {verdict}");
                 sb.AppendLine($"Уверенность: {AiResult.Confidence:P0}");
-                if (!string.IsNullOrEmpty(AiResult.PromptVersion))
-                    sb.AppendLine($"Версия промпта: {AiResult.PromptVersion}");
-                if (CurrentDayReview?.AiModelVersion != null)
-                    sb.AppendLine($"Версия модели: {CurrentDayReview.AiModelVersion}");
+                //if (!string.IsNullOrEmpty(AiResult.PromptVersion))
+                //    sb.AppendLine($"Версия промпта: {AiResult.PromptVersion}");
+                //if (CurrentDayReview?.AiModelVersion != null)
+                //    sb.AppendLine($"Версия модели: {CurrentDayReview.AiModelVersion}");
                 if (CurrentDayReview?.AiAnalyzedAt != null)
                     sb.AppendLine($"Проанализировано: {CurrentDayReview.AiAnalyzedAt:dd.MM.yyyy HH:mm:ss}");
 
@@ -420,7 +420,7 @@ namespace remeLog.ViewModels
             && PartsInfo.Machine != "Все станки"
             && MachineFilters.Count(f => f.Filter) == 1;
 
-        public bool CanUserReview => IsSingleMachineSingleDay && AppSettings.Administrators.Contains(Environment.UserName);
+        public bool CanUserReview => IsSingleMachineSingleDay && Util.HasFeature(RemeLogFeature.Ai);
 
         /// <summary> true — решение по суткам уже зафиксировано. </summary>
         public bool IsDayReviewed => CurrentDayReview != null;
@@ -1945,8 +1945,11 @@ namespace remeLog.ViewModels
 
             var serialPart = SerialParts.FirstOrDefault(sp => sp.PartName.NormalizedPartNameWithoutComments() == SelectedPart?.PartName.NormalizedPartNameWithoutComments());
             if (serialPart == null) return;
-            if (Util.IsNotAppAdmin(() => MessageBox.Show("Нет прав на выполнение операции", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error)))
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit))
+            {
+                MessageBox.Show("Нет прав на выполнение операции", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
+            }
             if (!serialPart.Operations.Any())
             {
                 MessageBox.Show(

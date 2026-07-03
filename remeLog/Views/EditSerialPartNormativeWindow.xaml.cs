@@ -2,6 +2,7 @@
 using libeLog;
 using libeLog.Models;
 using remeLog.Infrastructure;
+using remeLog.Infrastructure.Types;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -124,8 +125,7 @@ namespace remeLog.Views
 
         private void OnSetNewProductionNormativeCommandExecuted(object p)
         {
-            if (Util.IsNotAppAdmin(() => ShowMessage("Нет прав на выполнение операции")))
-                return;
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { ShowMessage("Нет прав на выполнение операции"); return; }
 
             if (p is FrameworkElement fe && fe.DataContext is CncSetup cncSetup)
             {
@@ -160,8 +160,7 @@ namespace remeLog.Views
         public ICommand RemoveNormativeCommand { get; }
         private async void OnRemoveNormativeCommandExecuted(object p)
         {
-            if (Util.IsNotAppAdmin(() => ShowMessage("Нет прав на выполнение операции")))
-                return;
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { ShowMessage("Нет прав на выполнение операции"); return; }
 
             if (p is FrameworkElement fe && fe.DataContext is NormativeEntry normative)
             {

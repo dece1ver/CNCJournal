@@ -305,6 +305,12 @@ namespace remeLog.Infrastructure
             foreach (var (name, coeff) in limits)
                 AppSettings.MaxSetupLimits[name] = coeff;
 
+            var featureRow = await conn.QueryFirstOrDefaultAsync<(string UserName, int EnabledFeatures)>(
+                "SELECT UserName, EnabledFeatures FROM cnc_remelog_feature_permissions WHERE UserName = @UserName",
+                new { UserName = Environment.UserName });
+            if (featureRow.UserName != null)
+                AppSettings.EnabledFeatures |= (RemeLogFeature)featureRow.EnabledFeatures;
+
             AppSettings.Save();
         }
     }

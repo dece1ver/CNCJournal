@@ -63,6 +63,7 @@ namespace remeLog.ViewModels
             SetSpecificMonthCommand = new LambdaCommand(OnSetSpecificMonthCommandExecuted, CanSetSpecificMonthCommandExecute);
             SetSpecificYearCommand = new LambdaCommand(OnSetSpecificYearCommandExecuted, CanSetSpecificYearCommandExecute);
             ShowActiveInstancesCommand = new LambdaCommand(OnShowActiveInstancesCommandExecuted, CanShowActiveInstancesCommandExecute);
+            OpenMachineInspectionCalendarCommand = new LambdaCommand(OnOpenMachineInspectionCalendarCommandExecuted, CanOpenMachineInspectionCalendarCommandExecute);
             _Machines = new();
             if (AppSettings.Instance.InstantUpdateOnMainWindow) { _ = LoadPartsAsync(true); }
             //var backgroundWorker = new Thread(BackgroundWorker) { IsBackground = true };
@@ -171,6 +172,27 @@ namespace remeLog.ViewModels
         public bool IsAdministrator =>
             AppSettings.Administrators.Contains(Environment.UserName, StringComparer.OrdinalIgnoreCase);
 
+        public bool HasFeatureAi => Util.HasFeature(RemeLogFeature.Ai);
+        public bool HasFeatureAdvancedEdit => Util.HasFeature(RemeLogFeature.AdvancedEdit);
+        public bool HasFeatureInstances => Util.HasFeature(RemeLogFeature.Instances);
+
+        public string WindowTitle
+        {
+            get
+            {
+                var title = "Отчеты электронного журнала";
+                if (!Util.IsAppAdmin() && AppSettings.EnabledFeatures != RemeLogFeature.None)
+                {
+                    var flags = new List<string>();
+                    if (HasFeatureAi) flags.Add("Ai");
+                    if (HasFeatureAdvancedEdit) flags.Add("AdvancedEdit");
+                    if (HasFeatureInstances) flags.Add("Instances");
+                    title += $" [{string.Join(", ", flags)}]";
+                }
+                return title;
+            }
+        }
+
         public bool IsSingleShift => FromDate == ToDate;
         public bool IsSingleWorkingShift => IsSingleShift && !AppSettings.Holidays.Contains(ToDate);
 
@@ -263,7 +285,7 @@ namespace remeLog.ViewModels
                 editOperatorsWindow.ShowDialog();
             }
         }
-        private bool CanEditOperatorsCommandExecute(object p) => !InProgress;
+        private bool CanEditOperatorsCommandExecute(object p) => !InProgress && HasFeatureAdvancedEdit;
         #endregion
 
         #region EditSerialParts
@@ -277,7 +299,7 @@ namespace remeLog.ViewModels
                 editSerialPartsWindow.ShowDialog();
             }
         }
-        private bool CanEditSerialPartsCommandExecute(object p) => !InProgress;
+        private bool CanEditSerialPartsCommandExecute(object p) => !InProgress && HasFeatureAdvancedEdit;
         #endregion
 
         #region LoadPartsInfo
@@ -350,7 +372,7 @@ namespace remeLog.ViewModels
                 window.Show();
             }
         }
-        private bool CanShowBatchAiAnalysisCommandExecute(object p) => !InProgress;
+        private bool CanShowBatchAiAnalysisCommandExecute(object p) => !InProgress && HasFeatureAi;
         #endregion
 
         #region ShowAbout
@@ -359,7 +381,18 @@ namespace remeLog.ViewModels
         {
             using (Overlay = new())
             {
-                MessageBox.Show($"Тут могла быть ваша реклама.\n\n\t{App.CreateUniqueEventName()}", "О программе", MessageBoxButton.OK, MessageBoxImage.Information);
+                var features = new List<string>();
+                if (HasFeatureAi) features.Add("Ai");
+                if (HasFeatureAdvancedEdit) features.Add("AdvancedEdit");
+                if (HasFeatureInstances) features.Add("Instances");
+                var featuresText = features.Count > 0 ? string.Join(", ", features) : "—";
+                if (IsAdministrator) featuresText = "Все (администратор)";
+
+                var version = App.CreateUniqueEventName();
+                var msg = $"Пользователь: {Environment.UserName}\n" +
+                          $"Активные фичи: {featuresText}\n" +
+                          $"Версия: {version}";
+                MessageBox.Show(msg, "О программе", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
         private bool CanShowAboutCommandExecute(object p) => !InProgress;
@@ -535,7 +568,21 @@ namespace remeLog.ViewModels
             }
         }
 
-        private bool CanShowActiveInstancesCommandExecute(object p) => IsAdministrator && !InProgress;
+        private bool CanShowActiveInstancesCommandExecute(object p) => HasFeatureInstances && !InProgress;
+        #endregion
+
+        #region OpenMachineInspectionCalendar
+        public ICommand OpenMachineInspectionCalendarCommand { get; }
+        private void OnOpenMachineInspectionCalendarCommandExecuted(object p)
+        {
+            var vm = new MachineInspectionCalendarViewModel(FromDate, ToDate);
+            var window = new MachineInspectionCalendarWindow(vm)
+            {
+                Owner = Application.Current.MainWindow
+            };
+            window.Show();
+        }
+        private bool CanOpenMachineInspectionCalendarCommandExecute(object p) => !InProgress;
         #endregion
         #endregion
 
@@ -610,6 +657,10 @@ namespace remeLog.ViewModels
                     Status = "Обновление настроек...";
                     await Util.UpdateAppSettingsAsync();
                     OnPropertyChanged(nameof(IsAdministrator));
+                    OnPropertyChanged(nameof(HasFeatureAi));
+                    OnPropertyChanged(nameof(HasFeatureAdvancedEdit));
+                    OnPropertyChanged(nameof(HasFeatureInstances));
+                    OnPropertyChanged(nameof(WindowTitle));
                     Util.WriteLog($"[LoadParts] UpdateAppSettings: {(sw.Elapsed - t0).TotalMilliseconds:F0} ms");
 
                     // Справочники
@@ -641,6 +692,10 @@ namespace remeLog.ViewModels
                     AppSettings.Instance.SetupReasons = setup;
                     AppSettings.Instance.MachiningReasons = machining;
                     OnPropertyChanged(nameof(IsAdministrator));
+                    OnPropertyChanged(nameof(HasFeatureAi));
+                    OnPropertyChanged(nameof(HasFeatureAdvancedEdit));
+                    OnPropertyChanged(nameof(HasFeatureInstances));
+                    OnPropertyChanged(nameof(WindowTitle));
 
                     var t5 = sw.Elapsed;
                     Status = "Получение статусов отчётов...";
