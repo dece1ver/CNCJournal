@@ -1645,7 +1645,8 @@
                             BorderThickness="1"
                             CornerRadius="3"
                             Margin="2 1"
-                            Padding="5 2">
+                            Padding="5 2"
+                            MouseLeftButtonDown="Chip_MouseLeftButtonDown">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding Label}"
                                        FontSize="12"

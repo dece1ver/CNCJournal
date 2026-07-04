@@ -21,6 +21,10 @@ namespace remeLog.ViewModels
     {
         private DateTime _FromDate;
         private DateTime _ToDate;
+        private bool _isSyncing;
+        private static bool lockUpdate;
+        private int _SelectedMonth;
+        private int _SelectedYear;
         private ObservableCollection<MachineFilter> _MachineFilters = new();
         private ObservableCollection<MachineInspectionCalendarDayRow> _Days = new();
         private List<string> _AllMachines = new();
@@ -32,6 +36,12 @@ namespace remeLog.ViewModels
         {
             _FromDate = fromDate;
             _ToDate = toDate;
+            _SelectedMonth = fromDate.Month;
+            _SelectedYear = fromDate.Year;
+            AvailableMonths = Enumerable.Range(1, 12)
+                .Select(m => new MonthItem(m, new DateTime(2000, m, 1).ToString("MMMM")))
+                .ToList();
+            AvailableYears = Enumerable.Range(2023, DateTime.Now.Year - 2023 + 1).ToList();
             ShowAllMachinesCommand = LambdaCommand.Create(_ => ExecuteShowAll());
             HideAllMachinesCommand = LambdaCommand.Create(_ => ExecuteHideAll());
             InvertMachinesCommand = LambdaCommand.Create(_ => ExecuteInvert());
@@ -42,13 +52,57 @@ namespace remeLog.ViewModels
         public DateTime FromDate
         {
             get => _FromDate;
-            set => Set(ref _FromDate, value);
+            set
+            {
+                if (Set(ref _FromDate, value))
+                {
+                    OnPropertyChanged(nameof(PeriodTitle));
+                    if (!_isSyncing)
+                    {
+                        _isSyncing = true;
+                        SelectedMonth = FromDate.Month;
+                        SelectedYear = FromDate.Year;
+                        _isSyncing = false;
+                    }
+                    _ = ReloadShiftsAsync();
+                }
+            }
         }
 
         public DateTime ToDate
         {
             get => _ToDate;
-            set => Set(ref _ToDate, value);
+            set
+            {
+                if (Set(ref _ToDate, value))
+                {
+                    OnPropertyChanged(nameof(PeriodTitle));
+                    _ = ReloadShiftsAsync();
+                }
+            }
+        }
+
+        public List<MonthItem> AvailableMonths { get; }
+        public List<int> AvailableYears { get; }
+
+        public int SelectedMonth
+        {
+            get => _SelectedMonth;
+            set
+            {
+                if (Set(ref _SelectedMonth, value) && !_isSyncing)
+                    UpdateFromSelectedMonthYear();
+            }
+        }
+
+        public int SelectedYear
+        {
+            get => _SelectedYear;
+            set
+            {
+                if (Set(ref _SelectedYear, value) && !_isSyncing)
+                    UpdateFromSelectedMonthYear();
+            }
         }
 
         public ObservableCollection<MachineFilter> MachineFilters
@@ -87,6 +141,22 @@ namespace remeLog.ViewModels
             _cts.Cancel();
             _cts.Dispose();
             _refreshTimer.Dispose();
+        }
+
+        private void LockUpdate() => lockUpdate = true;
+
+        private void UnlockUpdate()
+        {
+            lockUpdate = false;
+            _ = ReloadShiftsAsync();
+        }
+
+        private void UpdateFromSelectedMonthYear()
+        {
+            LockUpdate();
+            FromDate = new DateTime(_SelectedYear, _SelectedMonth, 1);
+            ToDate = new DateTime(_SelectedYear, _SelectedMonth, DateTime.DaysInMonth(_SelectedYear, _SelectedMonth));
+            UnlockUpdate();
         }
 
         private void ExecuteShowAll()
@@ -189,6 +259,8 @@ namespace remeLog.ViewModels
                 OnPropertyChanged(nameof(AllMachines));
 
                 await ReloadShiftsAsync();
+                OnPropertyChanged(nameof(SelectedMonth));
+                OnPropertyChanged(nameof(SelectedYear));
                 StartRefreshLoop();
             }
             catch (Exception ex)
@@ -224,6 +296,7 @@ namespace remeLog.ViewModels
 
         private async Task ReloadShiftsAsync()
         {
+            if (lockUpdate) return;
             var machines = _AllMachines;
             if (machines.Count == 0) return;
 
@@ -300,4 +373,6 @@ namespace remeLog.ViewModels
         public string DateDisplay => $"{Date:dd.MM}";
         public ObservableCollection<MachineInspectionCalendarCell> Cells { get; set; } = new();
     }
+
+    internal record MonthItem(int Value, string Name);
 }

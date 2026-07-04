@@ -75,9 +75,9 @@ namespace remeLog.Infrastructure
         public const string H_SpecifiedDowntimesRatio = "Отмеченные простои";
         public const string H_SpecifiedDowntimesComment = "Комментарий к простоям";
         public const string H_SetupRatioTitle = "Наладка";
-        public const string H_MasterSetupComment = "Невыполнение норматива наладки";
+        public const string H_MasterSetupComment = "Отклонения в наладке";
         public const string H_ProductionRatioTitle = "Изготовление";
-        public const string H_MasterMachiningComment = "Невыполнение норматива изготовления";
+        public const string H_MasterMachiningComment = "Отклонения в изготовлении";
         public const string H_MasterComment = "Комментарий мастера";
         public const string H_FixedSetupTimePlan = "(И) Норматив наладки";
         public const string H_FixedProductionTimePlan = "(И) Норматив изготовления";

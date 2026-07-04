@@ -1053,5 +1053,14 @@ namespace remeLog.Views
             if (ThoughtScrollViewer != null)
                 ThoughtScrollViewer.ScrollToBottom();
         }
+
+        private void Chip_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount >= 2 && sender is FrameworkElement { DataContext: FilterChip chip })
+            {
+                var vm = DataContext as PartsInfoWindowViewModel;
+                vm?.EditChipFilter(chip);
+            }
+        }
     }
 }

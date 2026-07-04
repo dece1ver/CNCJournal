@@ -95,6 +95,7 @@ namespace remeLog.ViewModels
             OpenMultiValueEditorCommand = new LambdaCommand(OnOpenMultiValueEditorCommandExecuted, CanOpenMultiValueEditorCommandExecute);
             UpdatePartsCommand = new LambdaCommand(OnUpdatePartsCommandExecutedAsync, CanUpdatePartsCommandExecute);
             RemoveChipFilterCommand = new LambdaCommand(OnRemoveChipFilterExecuted);
+            EditChipFilterCommand = new LambdaCommand(p => EditChipFilter((FilterChip)p!));
             ClearChipFiltersCommand = new LambdaCommand(_ => ClearChipFilters());
             MarkDayOkCommand = new LambdaCommand(OnMarkDayOkExecuted, CanMarkDayOkExecute);
             MarkDayEscalatedCommand = new LambdaCommand(OnMarkDayEscalatedExecuted, CanMarkDayEscalatedExecute);
@@ -2342,6 +2343,35 @@ namespace remeLog.ViewModels
         {
             if (p is FilterChip chip)
                 RemoveChipFilter(chip);
+        }
+
+        #endregion
+
+        #region EditChipFilter
+        public ICommand EditChipFilterCommand { get; }
+        public void EditChipFilter(FilterChip chip)
+        {
+            var editor = new MultiValueEditorWindow(chip.DisplayName, chip.Value);
+            if (Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) is { } owner)
+                editor.Owner = owner;
+            editor.ShowDialog();
+            if (!editor.Resilt) return;
+            if (string.IsNullOrEmpty(editor.ResultString))
+            {
+                RemoveChipFilter(chip);
+                return;
+            }
+            if (editor.ResultString == chip.Value) return;
+            var idx = ChipFilters.IndexOf(chip);
+            if (idx < 0) return;
+            ChipFilters[idx] = new FilterChip
+            {
+                SqlColumn = chip.SqlColumn,
+                DisplayName = chip.DisplayName,
+                Value = editor.ResultString,
+                IsInMemory = chip.IsInMemory
+            };
+            _ = LoadPartsAsync();
         }
 
         #endregion

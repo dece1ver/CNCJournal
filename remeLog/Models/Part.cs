@@ -1293,11 +1293,11 @@ namespace remeLog.Models
             {
                 return columnName switch
                 {
-                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && SetupRatio == 0 && SetupTimeFact > 0 => "Необходимо указать причину отсутствия номатива наладки.",
-                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0 => "Необходимо указать причину невыполнения номатива наладки.",
+                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && SetupRatio == 0 && SetupTimeFact > 0 => "Необходимо указать причину отсутствия норматива наладки.",
+                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0 => "Необходимо указать причину невыполнения норматива наладки.",
                     nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695 => "Необходимо указать причину превышения частичной наладки.",
-                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio == 0 => "Необходимо указать причину отсутствия номатива изготовления.",
-                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2 => "Необходимо указать причину невыполнения номатива изготовления.",
+                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio == 0 => "Необходимо указать причину отсутствия норматива изготовления.",
+                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2 => "Необходимо указать причину невыполнения норматива изготовления.",
                     nameof(MasterComment) when string.IsNullOrWhiteSpace(MasterComment) &&
                                         (RequiresComment(MasterSetupComment, SetupReasonsRequireComment) ||
                                          RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment)) => "Требуется указать дополнительный комментарий для выбранной причины.",
