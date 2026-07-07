@@ -8,6 +8,8 @@ namespace remeLog.Models
 {
     public class ToolSearchCase
     {
+        public ToolSearchCase() { }
+
         public ToolSearchCase(string @operator, string part, string machine, string type, string description, DateTime startTime, DateTime endTime, bool? isSuccess)
         {
             Operator = @operator;

@@ -127,7 +127,7 @@ namespace remeLog.Infrastructure
                 {
                     progress.Report($"Запрашиваю данные...");
                     var chunkCases = await conn.QueryAsync<ToolSearchCase>(
-                        "SELECT * FROM cnc_tool_search_cases WHERE PartGuid IN @guids",
+                        "SELECT p.Operator, p.PartName AS Part, p.Machine, c.ToolType AS Type, c.Value AS Description, c.StartTime, c.EndTime, c.IsSuccess FROM cnc_tool_search_cases c INNER JOIN parts p ON c.PartGuid = p.Guid WHERE c.PartGuid IN @guids",
                         new { guids = chunk });
                     cases.AddRange(chunkCases);
                 }
