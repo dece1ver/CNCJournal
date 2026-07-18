@@ -10,6 +10,13 @@ public class AnalyzeRequest
     public List<PartContext> Parts { get; set; } = [];
     public bool EnableThinking { get; set; } = false;
     public string? Model { get; set; }
+
+    /// <summary>
+    /// Профиль промпта: выбирает prompts/system_prompt.{profile}.txt.
+    /// Определяется клиентом remeLog из cnc_machines.AiPromptProfile.
+    /// Пусто/null или отсутствующий файл — используется system_prompt.txt.
+    /// </summary>
+    public string? PromptProfile { get; set; }
 }
 
 public class PartContext

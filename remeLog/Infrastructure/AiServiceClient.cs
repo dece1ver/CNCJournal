@@ -65,7 +65,8 @@ namespace remeLog.Infrastructure
             var partList = parts.ToList();
             var partsHistories = await LoadPartsHistoriesAsync(
                 machine, shiftDate, partList, ct);
-            var request = BuildRequest(machine, shiftDate, partList, partsHistories);
+            var promptProfile = await GetPromptProfileCachedAsync(machine, ct);
+            var request = BuildRequest(machine, shiftDate, partList, partsHistories, promptProfile);
 
             return AppSettings.Instance.AiThinkingEnabled
                 ? await AnalyzeWithStreamAsync(request, thinkingProgress, ct)
@@ -273,7 +274,8 @@ namespace remeLog.Infrastructure
 
         private static object BuildRequest(
                 string machine, DateTime shiftDate, IEnumerable<Part> parts,
-                Dictionary<(string PartName, string Order, int Setup), PartsHistorySummary> partsHistories)
+                Dictionary<(string PartName, string Order, int Setup), PartsHistorySummary> partsHistories,
+                string? promptProfile = null)
         {
             var partList = parts.ToList();
             var partContexts = partList.Select(p => BuildPartContext(p, partsHistories)).ToList();
@@ -286,7 +288,29 @@ namespace remeLog.Infrastructure
                 signals = daySignals,
                 parts = partContexts,
                 model = AppSettings.AiModel,
+                promptProfile = string.IsNullOrWhiteSpace(promptProfile) ? null : promptProfile.Trim(),
+                // Единственный источник истины «думать или нет» — сервер уважает его
+                // на обоих эндпоинтах; выбор /stream — только транспорт (SSE).
+                enableThinking = AppSettings.Instance.AiThinkingEnabled,
             };
+        }
+
+        /// <summary>
+        /// Профиль промпта станка из cnc_machines.AiPromptProfile с кэшем на 5 минут —
+        /// пакетный анализ дергает AnalyzeAsync по каждому дню, запрос в БД на каждый день лишний.
+        /// </summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string? Profile, DateTime LoadedAt)>
+            _promptProfileCache = new();
+
+        private static async Task<string?> GetPromptProfileCachedAsync(string machine, CancellationToken ct)
+        {
+            if (_promptProfileCache.TryGetValue(machine, out var cached)
+                && (DateTime.UtcNow - cached.LoadedAt) < TimeSpan.FromMinutes(5))
+                return cached.Profile;
+
+            var profile = await Database.GetMachineAiPromptProfileAsync(machine, ct);
+            _promptProfileCache[machine] = (profile, DateTime.UtcNow);
+            return profile;
         }
 
 
@@ -372,7 +396,8 @@ namespace remeLog.Infrastructure
             var machMins = p.MachiningTime.TotalMinutes;
 
             // Машинное время >= штучного норматива (порог синхронизирован с серверным HardRuleEvaluator)
-            if (machMins > 0.5 && p.SingleProductionTimePlan > 0
+            // При б/и не имеет смысла: норматив штучный, а изготовления не было.
+            if (!noProduction && machMins > 0.5 && p.SingleProductionTimePlan > 0
                 && machMins >= p.SingleProductionTimePlan)
                 s.Add($"Машинное время {machMins:0.#}мин >= штучного норматива {p.SingleProductionTimePlan:0.#}мин ({machMins / p.SingleProductionTimePlan:0%})");
 

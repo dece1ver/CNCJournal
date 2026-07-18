@@ -84,8 +84,13 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
             Options = new()
             {
                 Temperature = 0.1,
-                NumCtx = 8192,
-                NumPredict = think ? 4096 : -1,
+                // Промпт (~2.3k токенов) + данные насыщенного дня (~2-3k) + think-генерация
+                // должны помещаться целиком: при переполнении Ollama молча вытесняет
+                // НАЧАЛО промпта (ROLE/DEFINITIONS). 8192 не хватало в think-режиме.
+                NumCtx = 16384,
+                // 4096 не хватало: размышления съедали весь бюджет, JSON не оставался
+                // (3 пустых ответа в прогоне 2026-07-18).
+                NumPredict = think ? 8192 : -1,
             }
         };
 

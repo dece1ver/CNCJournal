@@ -90,6 +90,28 @@ namespace remeLog.Infrastructure
             }
         }
 
+        /// <summary>
+        /// Профиль промпта ИИ-анализа для станка (cnc_machines.AiPromptProfile).
+        /// NULL/пусто — базовый промпт AiService.
+        /// </summary>
+        public async static Task<string?> GetMachineAiPromptProfileAsync(string machine, CancellationToken ct = default)
+        {
+            try
+            {
+                await using var conn = await OpenConnectionAsync(AppSettings.Instance.ConnectionString);
+                return await conn.QueryFirstOrDefaultAsync<string?>(
+                    new CommandDefinition(
+                        "SELECT AiPromptProfile FROM cnc_machines WHERE Name = @Machine",
+                        new { Machine = machine },
+                        cancellationToken: ct));
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex);
+                return null;
+            }
+        }
+
         public async static Task<List<DateTime>> GetHolidaysAsync(IProgress<string>? progress)
         {
             progress?.Report("Подключение к БД...");

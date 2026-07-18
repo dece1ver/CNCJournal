@@ -8,7 +8,7 @@ namespace AiService.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilder, ILogger<AnalysisController> logger) : ControllerBase
+public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilder, RequestLog requestLog, ILogger<AnalysisController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions _camelCase = new()
     {
@@ -40,16 +40,16 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
     {
         try
         {
+            RequestShaper.Shape(request);
             var hardRules = HardRuleEvaluator.Evaluate(request);
 
-            var prompt = promptBuilder.Build(request, hardRules);
+            var promptBuild = promptBuilder.Build(request, hardRules);
             var thinkCapture = new StringBuilder();
 
-            var (raw, thinking) = await ollama.GenerateAsync(prompt, think: false, thinkingProgress: null, ct: ct, model: request.Model);
+            var (raw, thinking) = await ollama.GenerateAsync(promptBuild.Prompt, think: false, thinkingProgress: null, ct: ct, model: request.Model);
             var llmResult = ParseResponse(raw);
-            var notDowngraded = hardRules.SoftSignals
-                .Where(s => !llmResult.DowngradedSignals.Contains(s))
-                .ToList();
+            var notDowngraded = SoftSignalMatcher.GetNotDowngraded(
+                hardRules.SoftSignals, llmResult.DowngradedSignals);
 
             var (filteredSignals, reset) = FalsePositiveFilter.Apply(
                 request, hardRules, notDowngraded, llmResult.Signals);
@@ -95,13 +95,13 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                     : llmResult.SuggestedReason,
                 Error = llmResult.Error,
                 SuggestExcludeFromReports = llmResult.SuggestExcludeFromReports,
-                PromptVersion = promptBuilder.PromptVersion,
+                DowngradedSignals = llmResult.DowngradedSignals,
+                PromptVersion = promptBuild.Version,
             };
 
-            var allPartSignals = request.Parts.SelectMany(p => p.Signals);
             result.Signals = [.. llmResult.Signals
                 .Concat(request.Signals)
-                .Concat(allPartSignals)
+                .Concat(CollectPartSignals(request, hardRules, notDowngraded))
                 .Concat(hardRules.HardSignals)
                 .Concat(notDowngraded)
                 .Distinct()];
@@ -143,6 +143,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                         return !hardPartNames.Contains(name);
                     })];
             }
+
+            await requestLog.WriteAsync(request, result, "analyze");
             return Ok(result);
         }
         catch (TaskCanceledException)
@@ -178,10 +180,11 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         logger.LogInformation("Stream-анализ начат: {Machine} {Date}",
             request.Machine, request.ShiftDate);
 
+        RequestShaper.Shape(request);
         var hardRules = HardRuleEvaluator.Evaluate(request);
-        var prompt = promptBuilder.Build(request, hardRules);
+        var promptBuild = promptBuilder.Build(request, hardRules);
 
-        logger.LogDebug("Промпт построен, символов: {Len}", prompt.Length);
+        logger.LogDebug("Промпт построен, символов: {Len}", promptBuild.Prompt.Length);
 
         var channel = System.Threading.Channels.Channel.CreateBounded<string>(
             new System.Threading.Channels.BoundedChannelOptions(32)
@@ -216,7 +219,10 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
             logger.LogInformation("Отправка в Ollama...");
 
-            var generateTask = ollama.GenerateCoreAsync(prompt, true, progress, ct, model: request.Model);
+            // Думать или нет решает ТОЛЬКО request.EnableThinking; stream-эндпоинт — это
+            // транспорт (SSE: очередь/размышления/результат), а не признак thinking.
+            // Клиент remeLog вызывает /stream при включённом thinking и передаёт флаг.
+            var generateTask = ollama.GenerateCoreAsync(promptBuild.Prompt, request.EnableThinking, progress, ct, model: request.Model);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
@@ -260,9 +266,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             llmResult.RequiresReview, llmResult.Error ?? "(нет)",
             llmResult.SuggestExcludeFromReports.Count, string.Join(" | ", llmResult.SuggestExcludeFromReports));
 
-        var notDowngraded = hardRules.SoftSignals
-            .Where(s => !llmResult.DowngradedSignals.Contains(s))
-            .ToList();
+        var notDowngraded = SoftSignalMatcher.GetNotDowngraded(
+            hardRules.SoftSignals, llmResult.DowngradedSignals);
 
         var (filteredSignals, reset) = FalsePositiveFilter.Apply(
             request, hardRules, notDowngraded, llmResult.Signals);
@@ -292,8 +297,9 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 ? FallbackReason(hardRules, notDowngraded) : llmResult.SuggestedReason,
             ThinkingProcess = thinking,
             SuggestExcludeFromReports = llmResult.SuggestExcludeFromReports,
+            DowngradedSignals = llmResult.DowngradedSignals,
             Error = llmResult.Error,
-            PromptVersion = promptBuilder.PromptVersion,
+            PromptVersion = promptBuild.Version,
         };
 
         if (hardRules.MustEscalate && result.SuggestExcludeFromReports.Count > 0)
@@ -308,7 +314,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
         result.Signals = [.. llmResult.Signals
         .Concat(request.Signals)
-        .Concat(request.Parts.SelectMany(p => p.Signals))
+        .Concat(CollectPartSignals(request, hardRules, notDowngraded))
         .Concat(hardRules.HardSignals)
         .Concat(notDowngraded)
         .Distinct()];
@@ -317,6 +323,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             "Stream-анализ завершён: {Machine} {Date} → RequiresReview={R}, Confidence={C:F2}",
             request.Machine, request.ShiftDate, result.RequiresReview, result.Confidence);
 
+        await requestLog.WriteAsync(request, result, "stream");
         await Send("result", JsonSerializer.Serialize(result, _camelCase));
     }
 
@@ -338,8 +345,13 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         }
 
         if (notDowngraded.Count > 0)
-            return "Эскалация по превышению машинного времени над нормативом: "
-                + string.Join("; ", notDowngraded);
+        {
+            var softBase = "Эскалация: объяснение мастера не подтверждено — "
+                + string.Join("; ", notDowngraded) + ".";
+            return string.IsNullOrWhiteSpace(llmResult.Explanation)
+                ? softBase
+                : softBase + " " + llmResult.Explanation;
+        }
 
         if (!string.IsNullOrWhiteSpace(llmResult.Explanation))
             return llmResult.Explanation;
@@ -352,8 +364,48 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
     private static string FallbackReason(HardRuleResult hardRules, List<string> notDowngraded)
     {
         if (hardRules.MustEscalate) return hardRules.HardSignals.FirstOrDefault() ?? "Требует проверки";
-        if (notDowngraded.Count > 0) return "Машинное время превышает норматив";
+        if (notDowngraded.Count > 0)
+        {
+            var kinds = notDowngraded.Select(SoftSignalMatcher.Classify).ToHashSet();
+            if (kinds.Count == 1)
+            {
+                return kinds.First() switch
+                {
+                    SoftSignalMatcher.SignalKind.MachiningTime => "Машинное время превышает норматив",
+                    SoftSignalMatcher.SignalKind.OperatorComplaint => "Жалоба оператора на норматив не опровергнута",
+                    _ => "Объяснение мастера не подтверждено",
+                };
+            }
+            return "Объяснение мастера не подтверждено";
+        }
         return "Без замечаний";
+    }
+
+    /// <summary>
+    /// Клиентские сигналы деталей для ответа. Если soft-сигнал по детали понижен
+    /// моделью, его клиентский дубль («>= штучного норматива» / «Оператор сообщает
+    /// о некорректном нормативе») тоже не должен попасть в ответ — иначе аналитик
+    /// видит сигнал, который система уже сочла объяснённым.
+    /// </summary>
+    private static IEnumerable<string> CollectPartSignals(
+        AnalyzeRequest request, HardRuleResult hardRules, List<string> notDowngraded)
+    {
+        var downgraded = hardRules.SoftSignals.Except(notDowngraded).ToList();
+        if (downgraded.Count == 0)
+            return request.Parts.SelectMany(p => p.Signals);
+
+        HashSet<string> PartsOfKind(SoftSignalMatcher.SignalKind kind) => downgraded
+            .Where(s => SoftSignalMatcher.Classify(s) == kind)
+            .Select(SoftSignalMatcher.ExtractPartName)
+            .OfType<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var machiningParts = PartsOfKind(SoftSignalMatcher.SignalKind.MachiningTime);
+        var operatorParts = PartsOfKind(SoftSignalMatcher.SignalKind.OperatorComplaint);
+
+        return request.Parts.SelectMany(p => p.Signals.Where(s =>
+            !(machiningParts.Contains(p.PartName) && SoftSignalMatcher.IsMachiningTimeEcho(s))
+            && !(operatorParts.Contains(p.PartName) && SoftSignalMatcher.IsOperatorComplaintEcho(s))));
     }
 
     /// <summary> Пробуем спарсить JSON из ответа модели, обрабатываем типичные огрехи </summary>

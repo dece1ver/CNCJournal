@@ -1,113 +1,114 @@
-﻿using AiService.Models;
+using AiService.Models;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace AiService.Services;
+
+public record PromptBuildResult(string Prompt, string Version);
 
 public class PromptBuilder
 {
     private const string PromptsSubfolder = "prompts";
+    private const string DefaultSystemPromptFile = "system_prompt.txt";
+    private const string SoftSignalPromptFile = "soft_signal_explanation.txt";
 
     private static readonly string AssemblyLocation = Assembly.GetExecutingAssembly().Location;
     private static readonly string? AssemblyDir = Path.GetDirectoryName(AssemblyLocation);
-
-    private string _systemPrompt;
-    private string _softSignalExplanation;
-    private readonly ILogger<PromptBuilder> _logger;
-
-    private DateTime _lastExternalCheckUtc = DateTime.MinValue;
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(5);
-    private DateTime _systemPromptWriteTimeUtc;
-    private DateTime _softPromptWriteTimeUtc;
 
-    public string PromptVersion { get; private set; }
+    private readonly ILogger<PromptBuilder> _logger;
+    private readonly object _lock = new();
+    private readonly Dictionary<string, CachedPrompt> _cache = new(StringComparer.OrdinalIgnoreCase);
+
+    private sealed class CachedPrompt
+    {
+        public string Content = "";
+        public string Version = "unknown";
+        public bool Exists;
+        public DateTime WriteTimeUtc;
+        public DateTime LastCheckUtc = DateTime.MinValue;
+    }
 
     public PromptBuilder(ILogger<PromptBuilder> logger)
     {
         _logger = logger;
-
-        var (sysPrompt, sysVersion) = LoadPrompt("system_prompt.txt");
-        _systemPrompt = sysPrompt;
-
-        var (softPrompt, _) = LoadPrompt("soft_signal_explanation.txt");
-        _softSignalExplanation = softPrompt;
-
-        PromptVersion = sysVersion;
+        // Прогрев: базовые промпты обязаны существовать (файл или embedded resource),
+        // иначе падаем при старте, а не на первом запросе.
+        var (_, _, defaultExists) = GetPrompt(DefaultSystemPromptFile, allowEmbeddedFallback: true);
+        if (!defaultExists)
+            throw new FileNotFoundException($"Не найден базовый промпт '{DefaultSystemPromptFile}' (ни внешний файл, ни embedded resource).");
+        GetPrompt(SoftSignalPromptFile, allowEmbeddedFallback: true);
     }
 
-    private void ReloadPromptsIfNeeded()
+    /// <summary>
+    /// Возвращает содержимое и версию промпта по имени файла с кэшированием и
+    /// hot-reload (проверка изменений не чаще, чем раз в CheckInterval).
+    /// </summary>
+    private (string Content, string Version, bool Exists) GetPrompt(string fileName, bool allowEmbeddedFallback)
     {
-        var now = DateTime.UtcNow;
-        if ((now - _lastExternalCheckUtc) < CheckInterval) return;
-        _lastExternalCheckUtc = now;
-
-        var sysPath = Path.Combine(AssemblyDir ?? AppContext.BaseDirectory, PromptsSubfolder, "system_prompt.txt");
-        var softPath = Path.Combine(AssemblyDir ?? AppContext.BaseDirectory, PromptsSubfolder, "soft_signal_explanation.txt");
-
-        var sysChanged = CheckAndReload(sysPath, ref _systemPromptWriteTimeUtc,
-            out var sysContent, out var sysVersion);
-        var softChanged = CheckAndReload(softPath, ref _softPromptWriteTimeUtc,
-            out var softContent, out _);
-
-        if (sysChanged)
+        lock (_lock)
         {
-            _systemPrompt = sysContent!;
-            PromptVersion = sysVersion!;
-            _logger.LogInformation("System prompt обновлён, version: {Version}", PromptVersion);
-        }
+            if (!_cache.TryGetValue(fileName, out var entry))
+            {
+                entry = new CachedPrompt();
+                _cache[fileName] = entry;
+            }
 
-        if (softChanged)
-        {
-            _softSignalExplanation = softContent!;
-            _logger.LogInformation("Soft signal prompt обновлён");
+            var now = DateTime.UtcNow;
+            if ((now - entry.LastCheckUtc) >= CheckInterval)
+            {
+                entry.LastCheckUtc = now;
+                RefreshEntry(fileName, entry, allowEmbeddedFallback);
+            }
+
+            return (entry.Content, entry.Version, entry.Exists);
         }
     }
 
-    private bool CheckAndReload(string path, ref DateTime cachedWriteTimeUtc,
-        out string? content, out string? version)
-    {
-        content = null;
-        version = null;
-
-        if (!File.Exists(path)) return false;
-
-        var writeTimeUtc = File.GetLastWriteTimeUtc(path);
-        if (writeTimeUtc == cachedWriteTimeUtc) return false;
-        cachedWriteTimeUtc = writeTimeUtc;
-
-        var raw = File.ReadAllText(path);
-        var stripped = StripVersionLine(raw);
-        content = stripped?.content ?? raw;
-        version = stripped?.version ?? writeTimeUtc.ToString("yyyy-MM-dd-HH:mm");
-        return true;
-    }
-
-    private (string, string) LoadPrompt(string fileName)
+    private void RefreshEntry(string fileName, CachedPrompt entry, bool allowEmbeddedFallback)
     {
         var externalPath = Path.Combine(AssemblyDir ?? AppContext.BaseDirectory, PromptsSubfolder, fileName);
 
         if (File.Exists(externalPath))
         {
-            var fileRaw = File.ReadAllText(externalPath);
-            var fileStripped = StripVersionLine(fileRaw);
-            var fileContent = fileStripped?.content ?? fileRaw;
-            var fileVersion = fileStripped?.version ?? File.GetLastWriteTimeUtc(externalPath).ToString("yyyy-MM-dd-HH:mm");
-            _logger.LogInformation("Prompt '{FileName}' version {Version} loaded from external: {Path}",
-                fileName, fileVersion, externalPath);
-            return (fileContent, fileVersion);
+            var writeTimeUtc = File.GetLastWriteTimeUtc(externalPath);
+            if (entry.Exists && writeTimeUtc == entry.WriteTimeUtc) return;
+
+            var raw = File.ReadAllText(externalPath);
+            var stripped = StripVersionLine(raw);
+            entry.Content = stripped?.content ?? raw;
+            entry.Version = stripped?.version ?? writeTimeUtc.ToString("yyyy-MM-dd-HH:mm");
+            entry.WriteTimeUtc = writeTimeUtc;
+            entry.Exists = true;
+            _logger.LogInformation("Промпт '{FileName}' version {Version} загружен из файла: {Path}",
+                fileName, entry.Version, externalPath);
+            return;
         }
 
+        if (entry.Exists && !allowEmbeddedFallback)
+        {
+            // Файл профиля удалили на лету — перестаём его использовать.
+            entry.Exists = false;
+            entry.Content = "";
+            _logger.LogWarning("Промпт '{FileName}' исчез с диска — будет использоваться базовый", fileName);
+            return;
+        }
+
+        if (entry.Exists || !allowEmbeddedFallback) return;
+
         var resourceName = $"AiService.prompts.{fileName}";
-        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName)
-            ?? throw new FileNotFoundException($"Embedded resource '{resourceName}' not found.");
+        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
+        if (stream == null) return;
+
         using var reader = new StreamReader(stream);
-        var raw = reader.ReadToEnd();
-        var stripped = StripVersionLine(raw);
-        var content = stripped?.content ?? raw;
-        var version = stripped?.version ?? "unknown";
-        _logger.LogInformation("Prompt '{FileName}' version {Version} loaded from embedded resource",
-            fileName, version);
-        return (content, version);
+        var embeddedRaw = reader.ReadToEnd();
+        var embeddedStripped = StripVersionLine(embeddedRaw);
+        entry.Content = embeddedStripped?.content ?? embeddedRaw;
+        entry.Version = embeddedStripped?.version ?? "unknown";
+        entry.Exists = true;
+        _logger.LogInformation("Промпт '{FileName}' version {Version} загружен из embedded resource",
+            fileName, entry.Version);
     }
 
     private static (string content, string version)? StripVersionLine(string text)
@@ -123,17 +124,82 @@ public class PromptBuilder
         return null;
     }
 
-    public string Build(AnalyzeRequest req, HardRuleResult hardRules)
+    /// <summary>
+    /// Выбор системного промпта по профилю станка (cnc_machines.AiPromptProfile,
+    /// передаётся клиентом в PromptProfile). Пустой/некорректный профиль или
+    /// отсутствующий файл — базовый system_prompt.txt. Версия профильного промпта
+    /// автоматически получает суффикс @профиль, чтобы в ai_day_reviews точность
+    /// считалась раздельно по профилям.
+    /// </summary>
+    private (string Content, string Version) ResolveSystemPrompt(string? profile)
     {
-        ReloadPromptsIfNeeded();
+        var normalized = NormalizeProfile(profile);
+        if (normalized != null)
+        {
+            var (content, version, exists) = GetPrompt($"system_prompt.{normalized}.txt", allowEmbeddedFallback: false);
+            if (exists)
+                return (content, $"{version}@{normalized}");
+            _logger.LogDebug("Файл промпта для профиля '{Profile}' не найден — используется базовый", normalized);
+        }
+
+        var (defContent, defVersion, _) = GetPrompt(DefaultSystemPromptFile, allowEmbeddedFallback: true);
+        return (defContent, defVersion);
+    }
+
+    private static string? NormalizeProfile(string? profile)
+    {
+        if (string.IsNullOrWhiteSpace(profile)) return null;
+        var trimmed = profile.Trim().ToLowerInvariant();
+        return Regex.IsMatch(trimmed, @"^[a-z0-9_\-]{1,50}$") ? trimmed : null;
+    }
+
+    // ═══ История детали: показывается модели только когда есть заявление, которое
+    // история может подтвердить или опровергнуть («Требования к заполнению и
+    // контролю», п.4.3). Во всех остальных случаях история — источник галлюцинаций
+    // («раньше наладка была, а сегодня б/н») и в промпт не попадает.
+    //   «Освоение» — деталь впервые на станке; опровергается записью с FinishedCount>0.
+    //   «Некорректные нормативы»/«Отсутствие нормативов» — «если деталь уже нормально
+    //   выполнялась с этими нормативами — норматив корректен»: история опровергает.
+    //   Свободный текст про освоение/УП/нормативы — та же логика по слабой ветке.
+    private static readonly string[] HistorySensitiveReasons =
+    [
+        "Освоение",
+        "Некорректные нормативы",
+        "Отсутствие нормативов",
+    ];
+
+    private static bool HistoryIsRelevant(PartContext p)
+    {
+        foreach (var reason in HistorySensitiveReasons)
+        {
+            if (reason.Equals(p.MasterSetupComment?.Trim(), StringComparison.OrdinalIgnoreCase)
+                || reason.Equals(p.MasterMachiningComment?.Trim(), StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        var text = $"{p.MasterComment} {p.OperatorComment}".ToLowerInvariant();
+        if (text.Contains("осво") || text.Contains("осваив")) return true;   // освоение / освоена / осваивает
+        if (text.Contains("вперв") || text.Contains("первый раз")) return true;
+        if (text.Contains("норматив") || text.Contains("некорректн")) return true;
+        if (text.Contains("управляющ") || Regex.IsMatch(text, @"\bуп\b")) return true; // написание/правка УП
+        return false;
+    }
+
+    public PromptBuildResult Build(AnalyzeRequest req, HardRuleResult hardRules)
+    {
+        var (systemPrompt, promptVersion) = ResolveSystemPrompt(req.PromptProfile);
 
         var sb = new StringBuilder();
-        sb.AppendLine(_systemPrompt);
+        sb.AppendLine(systemPrompt);
 
         if (hardRules.SoftSignals.Count > 0)
         {
-            sb.AppendLine();
-            sb.AppendLine(_softSignalExplanation);
+            var (softPrompt, _, softExists) = GetPrompt(SoftSignalPromptFile, allowEmbeddedFallback: true);
+            if (softExists)
+            {
+                sb.AppendLine();
+                sb.AppendLine(softPrompt);
+            }
         }
 
         sb.AppendLine();
@@ -195,7 +261,7 @@ public class PromptBuilder
                 foreach (var sig in p.Signals)
                     sb.AppendLine($"    ⚠ {sig}");
             }
-            if (p.PartsHistory is { RecordsFound: > 0 } ph)
+            if (p.PartsHistory is { RecordsFound: > 0 } ph && HistoryIsRelevant(p))
             {
                 sb.AppendLine($"  История этой детали ({ph.RecordsFound} прошлых смен, от новых к старым):");
                 foreach (var line in ph.Lines)
@@ -271,12 +337,12 @@ public class PromptBuilder
           "confidence": число от 0.0 до 1.0,
           "signals": ["краткие описания необъяснённых проблем, если есть"],
           "downgraded_signals": ["soft-сигналы из списка выше, которые ты решил НЕ эскалировать — если таких нет, пустой массив"],
-          "suggest_exclude_from_reports": ["PartName§SetupNumber§Order для деталей с адекватно объяснённой разовой проблемой ИЛИ «Освоением» с КПД < 90% — если таких нет, пустой массив"],
+          "suggest_exclude_from_reports": ["PartName§SetupNumber§Order§Причина для деталей с адекватно объяснённой разовой проблемой ИЛИ «Освоением» с КПД < 90% — если таких нет, пустой массив. Причина — 3-10 слов КОНКРЕТНО про эту деталь (что именно объяснил мастер), НЕ общий вывод по суткам"],
           "explanation": "1-2 предложения — ОБЯЗАТЕЛЬНОЕ непустое поле",
           "suggested_reason": "краткая причина в 3-7 слов — ОБЯЗАТЕЛЬНОЕ непустое поле"
         }
         """);
 
-        return sb.ToString();
+        return new PromptBuildResult(sb.ToString(), promptVersion);
     }
 }

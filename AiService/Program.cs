@@ -16,6 +16,7 @@ namespace AiService
             builder.Services.AddControllers();
             builder.Services.AddSingleton<OllamaService>();
             builder.Services.AddSingleton<PromptBuilder>();
+            builder.Services.AddSingleton<RequestLog>();
 
             var app = builder.Build();
             app.MapControllers();

@@ -421,7 +421,12 @@ namespace remeLog.ViewModels
                 {
                     sb.AppendLine($"{Environment.NewLine}Предложено исключить из отчётов:");
                     foreach (var e in AiResult.SuggestExcludeFromReports)
-                        sb.AppendLine($"  • {e}");
+                    {
+                        var p = e.Split('§');
+                        sb.AppendLine(p.Length > 3
+                            ? $"  • {p[0]} | М/Л: {p[2]} | Уст.{p[1]} — {string.Join("§", p[3..])}"
+                            : $"  • {e}");
+                    }
                 }
 
                 return sb.ToString().TrimEnd();
@@ -2524,11 +2529,16 @@ namespace remeLog.ViewModels
             foreach (var entry in result.SuggestExcludeFromReports)
             {
                 var parts = entry.Split('§');
-                if (parts.Length != 3) continue;
+                if (parts.Length < 3) continue;
 
                 var partName = parts[0];
                 var setupStr = parts[1];
                 var order = parts[2];
+                // 4-й сегмент — причина именно по этой строке (формат
+                // PartName§SetupNumber§Order§Причина); старый трёхсегментный
+                // формат — откат на общее объяснение по суткам.
+                var reason = parts.Length > 3 ? string.Join("§", parts[3..]).Trim() : "";
+                if (string.IsNullOrEmpty(reason)) reason = result.Explanation;
 
                 if (!int.TryParse(setupStr, out var setupNumber)) continue;
 
@@ -2542,7 +2552,7 @@ namespace remeLog.ViewModels
                 var message =
                     $"ИИ предлагает исключить деталь из расчётов:\n\n" +
                     $"  {partName}  |  М/Л: {order}  |  Уст.{setupNumber}\n\n" +
-                    $"Причина: {result.Explanation}\n\n" +
+                    $"Причина: {reason}\n\n" +
                     $"Исключить из отчётов?";
 
                 var answer = MessageBoxWindow.Show(

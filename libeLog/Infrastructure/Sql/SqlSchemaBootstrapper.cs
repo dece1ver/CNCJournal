@@ -188,6 +188,9 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("Type", 50, false)
                 .AddIntColumn("SetupLimit", false)
                 .AddDoubleColumn("SetupCoefficient", false)
+                // Профиль промпта для ИИ-анализа: AiService подставляет
+                // prompts/system_prompt.{профиль}.txt; NULL — базовый промпт.
+                .AddStringColumn("AiPromptProfile", 50)
                 .AddIntColumn("WnId", false)
                 .AddGuidColumn("WnUuid", false, false)
                 .AddStringColumn("WnCounterSignal", 8, true)
