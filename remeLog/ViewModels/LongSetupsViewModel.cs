@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using libeLog.Views;
 
 namespace remeLog.ViewModels
 {
@@ -96,7 +97,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
             }
             finally
             {

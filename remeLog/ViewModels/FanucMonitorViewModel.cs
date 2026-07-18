@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using libeLog.Views;
 
 namespace remeLog.ViewModels
 {
@@ -88,7 +89,7 @@ namespace remeLog.ViewModels
                 else
                 {
                     IsConnected = false;
-                    MessageBox.Show($"Unable to connect. Return Code: {_ret}");
+                    MessageBoxWindow.Show($"Unable to connect. Return Code: {_ret}");
                 }
             });
         }
@@ -111,7 +112,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
                 return;
             }
             while (IsConnected)
@@ -134,7 +135,7 @@ namespace remeLog.ViewModels
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(ex.Message, "Monitoring Error");
+                    MessageBoxWindow.Show(ex.Message, "Monitoring Error");
                 }
             }
         }

@@ -11,11 +11,16 @@ public class PromptBuilder
     private static readonly string AssemblyLocation = Assembly.GetExecutingAssembly().Location;
     private static readonly string? AssemblyDir = Path.GetDirectoryName(AssemblyLocation);
 
-    private readonly string _systemPrompt;
-    private readonly string _softSignalExplanation;
+    private string _systemPrompt;
+    private string _softSignalExplanation;
     private readonly ILogger<PromptBuilder> _logger;
 
-    public string PromptVersion { get; }
+    private DateTime _lastExternalCheckUtc = DateTime.MinValue;
+    private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(5);
+    private DateTime _systemPromptWriteTimeUtc;
+    private DateTime _softPromptWriteTimeUtc;
+
+    public string PromptVersion { get; private set; }
 
     public PromptBuilder(ILogger<PromptBuilder> logger)
     {
@@ -30,6 +35,53 @@ public class PromptBuilder
         PromptVersion = sysVersion;
     }
 
+    private void ReloadPromptsIfNeeded()
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _lastExternalCheckUtc) < CheckInterval) return;
+        _lastExternalCheckUtc = now;
+
+        var sysPath = Path.Combine(AssemblyDir ?? AppContext.BaseDirectory, PromptsSubfolder, "system_prompt.txt");
+        var softPath = Path.Combine(AssemblyDir ?? AppContext.BaseDirectory, PromptsSubfolder, "soft_signal_explanation.txt");
+
+        var sysChanged = CheckAndReload(sysPath, ref _systemPromptWriteTimeUtc,
+            out var sysContent, out var sysVersion);
+        var softChanged = CheckAndReload(softPath, ref _softPromptWriteTimeUtc,
+            out var softContent, out _);
+
+        if (sysChanged)
+        {
+            _systemPrompt = sysContent!;
+            PromptVersion = sysVersion!;
+            _logger.LogInformation("System prompt обновлён, version: {Version}", PromptVersion);
+        }
+
+        if (softChanged)
+        {
+            _softSignalExplanation = softContent!;
+            _logger.LogInformation("Soft signal prompt обновлён");
+        }
+    }
+
+    private bool CheckAndReload(string path, ref DateTime cachedWriteTimeUtc,
+        out string? content, out string? version)
+    {
+        content = null;
+        version = null;
+
+        if (!File.Exists(path)) return false;
+
+        var writeTimeUtc = File.GetLastWriteTimeUtc(path);
+        if (writeTimeUtc == cachedWriteTimeUtc) return false;
+        cachedWriteTimeUtc = writeTimeUtc;
+
+        var raw = File.ReadAllText(path);
+        var stripped = StripVersionLine(raw);
+        content = stripped?.content ?? raw;
+        version = stripped?.version ?? writeTimeUtc.ToString("yyyy-MM-dd-HH:mm");
+        return true;
+    }
+
     private (string, string) LoadPrompt(string fileName)
     {
         var externalPath = Path.Combine(AssemblyDir ?? AppContext.BaseDirectory, PromptsSubfolder, fileName);
@@ -39,7 +91,7 @@ public class PromptBuilder
             var fileRaw = File.ReadAllText(externalPath);
             var fileStripped = StripVersionLine(fileRaw);
             var fileContent = fileStripped?.content ?? fileRaw;
-            var fileVersion = fileStripped?.version ?? File.GetLastWriteTime(externalPath).ToString("yyyy-MM-dd-HH:mm");
+            var fileVersion = fileStripped?.version ?? File.GetLastWriteTimeUtc(externalPath).ToString("yyyy-MM-dd-HH:mm");
             _logger.LogInformation("Prompt '{FileName}' version {Version} loaded from external: {Path}",
                 fileName, fileVersion, externalPath);
             return (fileContent, fileVersion);
@@ -73,6 +125,8 @@ public class PromptBuilder
 
     public string Build(AnalyzeRequest req, HardRuleResult hardRules)
     {
+        ReloadPromptsIfNeeded();
+
         var sb = new StringBuilder();
         sb.AppendLine(_systemPrompt);
 
@@ -217,7 +271,7 @@ public class PromptBuilder
           "confidence": число от 0.0 до 1.0,
           "signals": ["краткие описания необъяснённых проблем, если есть"],
           "downgraded_signals": ["soft-сигналы из списка выше, которые ты решил НЕ эскалировать — если таких нет, пустой массив"],
-          "suggest_exclude_from_reports": ["PartName§SetupNumber§Order для деталей с адекватно объяснённой разовой проблемой — если таких нет, пустой массив"],
+          "suggest_exclude_from_reports": ["PartName§SetupNumber§Order для деталей с адекватно объяснённой разовой проблемой ИЛИ «Освоением» с КПД < 90% — если таких нет, пустой массив"],
           "explanation": "1-2 предложения — ОБЯЗАТЕЛЬНОЕ непустое поле",
           "suggested_reason": "краткая причина в 3-7 слов — ОБЯЗАТЕЛЬНОЕ непустое поле"
         }

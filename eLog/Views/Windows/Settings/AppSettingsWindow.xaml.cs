@@ -2,6 +2,7 @@
 using eLog.Infrastructure;
 using eLog.Models;
 using libeLog.Models;
+using libeLog.Views;
 using Microsoft.Data.SqlClient;
 using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
@@ -267,11 +268,11 @@ namespace eLog.Views.Windows.Settings
                 if (!Directory.Exists(tempPath)) Directory.CreateDirectory(tempPath);
                 var exportPath = Path.Combine(tempPath, "config.json");
                 File.Copy(AppSettings.ConfigFilePath, exportPath);
-                MessageBox.Show($"Параменры экспортированы:\n{exportPath}", "Экспорт");
+                MessageBoxWindow.Show($"Параменры экспортированы:\n{exportPath}", "Экспорт");
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Не удалось выполнить экспорт из-за непредвиденной ошибки.\n{ex.Message}", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show($"Не удалось выполнить экспорт из-за непредвиденной ошибки.\n{ex.Message}", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -329,12 +330,12 @@ namespace eLog.Views.Windows.Settings
                 File.Delete(tempName);
 
 
-                MessageBox.Show($"Параметры импортированы", "Импорт");
+                MessageBoxWindow.Show($"Параметры импортированы", "Импорт");
             }
             catch (Exception ex)
             {
                 AppSettings.Instance.ReadConfig();
-                MessageBox.Show($"Не удалось выполнить импорт конфигурации.\n{ex.Message}", "Импорт", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show($"Не удалось выполнить импорт конфигурации.\n{ex.Message}", "Импорт", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -382,13 +383,13 @@ namespace eLog.Views.Windows.Settings
                 {
                     if (string.IsNullOrWhiteSpace(ConnectionString))
                     {
-                        MessageBox.Show("Не указана строка подключения", "Нет", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBoxWindow.Show("Не указана строка подключения", "Нет", MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                      }
                     connection.Open();
                     connection.Close();
                     _ = LoadMachinesAsync();
-                    MessageBox.Show("Ок", $"Подключение доступно.", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBoxWindow.Show("Ок", $"Подключение доступно.", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
             catch (SqlException sqlEx)
@@ -396,16 +397,16 @@ namespace eLog.Views.Windows.Settings
                 switch (sqlEx.Number)
                 {
                     case 18456:
-                        MessageBox.Show($"Ошибка авторизации №{sqlEx.Number}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBoxWindow.Show($"Ошибка авторизации №{sqlEx.Number}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                         break;
                     default:
-                        MessageBox.Show($"Ошибка №{sqlEx.Number}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBoxWindow.Show($"Ошибка №{sqlEx.Number}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                         break;
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"{ex}", $"{ex.Message}", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show($"{ex}", $"{ex.Message}", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

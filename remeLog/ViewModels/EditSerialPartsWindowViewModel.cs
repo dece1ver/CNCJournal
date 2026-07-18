@@ -14,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using libeLog.Views;
 
 namespace remeLog.ViewModels
 {
@@ -149,11 +150,12 @@ namespace remeLog.ViewModels
             if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { ShowMessage("Нет прав на выполнение операции"); return; }
             if (p is not SerialPart serialPart) 
                 return; 
-            if (MessageBox.Show(
+            if (MessageBoxWindow.Show(
                 "Это действие необратимо.\nУдалить деталь из списка серийных вместе со всеми операциями и историей нормативов?", 
                 serialPart.PartName, 
                 MessageBoxButton.YesNo, 
-                MessageBoxImage.Warning) == MessageBoxResult.Yes)
+                MessageBoxImage.Warning,
+                MessageBoxDefaultButton.No) == MessageBoxResult.Yes)
             {
                 ShowMessage($"Удаление детали: {serialPart.PartName}");
             }
@@ -279,7 +281,7 @@ namespace remeLog.ViewModels
                 var parentPart = SerialParts.FirstOrDefault(sp => sp.Operations.Contains(cncOperation));
                 if (parentPart == null)
                     return;
-                if (MessageBox.Show($"Удалить операцию '{cncOperation.Name}'?", parentPart.PartName, MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+                if (MessageBoxWindow.Show($"Удалить операцию '{cncOperation.Name}'?", parentPart.PartName, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.No) == MessageBoxResult.Yes)
                 {
                     parentPart.Operations.Remove(cncOperation);
                     ShowMessage("Операция удалена");
@@ -304,7 +306,7 @@ namespace remeLog.ViewModels
                 var parentOperation = SerialParts.SelectMany(sp => sp.Operations).FirstOrDefault(sp => sp.Setups.Contains(cncSetup));
                 if (parentOperation == null)
                     return;
-                if (MessageBox.Show($"Удалить {cncSetup.Number} установ?", parentOperation.Name, MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+                if (MessageBoxWindow.Show($"Удалить {cncSetup.Number} установ?", parentOperation.Name, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.No) == MessageBoxResult.Yes)
                 {
                     parentOperation.Setups.Remove(cncSetup);
                     ShowMessage("Операция удалена");
@@ -398,13 +400,13 @@ namespace remeLog.ViewModels
                 try
                 {
                     InProgress = true;
-                    if (MessageBox.Show("Удалить норматив?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                    if (MessageBoxWindow.Show("Удалить норматив?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.No) != MessageBoxResult.Yes) return;
                     await Database.RemoveNormativeAsync(normative);
                     await LoadSerialPartsAsync();
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBoxWindow.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
                 finally
                 {

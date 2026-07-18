@@ -20,7 +20,18 @@ namespace AiService
             var app = builder.Build();
             app.MapControllers();
 
-            app.Run("http://0.0.0.0:5050");
+            var port = app.Configuration.GetValue("Port", 5050);
+            var logger = app.Services.GetRequiredService<ILogger<Program>>();
+            logger.LogDebug("AiService started on http://0.0.0.0:{Port}", port);
+
+            app.Use(async (context, next) =>
+            {
+                var ip = context.Connection.RemoteIpAddress;
+                logger.LogDebug("{RemoteIP} {Method} {Path}", ip, context.Request.Method, context.Request.Path);
+                await next();
+            });
+
+            app.Run($"http://0.0.0.0:{port}");
         }
     }
 }

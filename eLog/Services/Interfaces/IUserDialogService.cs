@@ -1,4 +1,6 @@
-﻿namespace eLog.Services.Interfaces
+﻿using libeLog.Views;
+
+namespace eLog.Services.Interfaces
 {
     internal interface IUserDialogService
     {
@@ -10,6 +12,6 @@
 
         void ShowError(string message, string caption);
 
-        bool Confirm(string message, string caption, bool Exclamation = false);
+        bool Confirm(string message, string caption, bool Exclamation = false, MessageBoxDefaultButton defaultButton = MessageBoxDefaultButton.No);
     }
 }

@@ -1,5 +1,6 @@
 ﻿using remeLog.Infrastructure.Winnum.Data;
 using remeLog.ViewModels;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Windows;
@@ -12,10 +13,17 @@ namespace remeLog.Views
     /// </summary>
     public partial class WinnumInfoWindow : Window
     {
-        public WinnumInfoWindow(string generalInfo, string ncProgramFolder, List<PriorityTagDuration> priorityTagDurations, List<TimeInterval> timeIntervals, DataTable? timeline = null)
+        public WinnumInfoWindow(string generalInfo, string ncProgramFolder, List<PriorityTagDuration> priorityTagDurations, List<TimeInterval> timeIntervals, DataTable? timeline = null, string? winnumPageUrl = null)
         {
-            DataContext = new WinnumInfoViewModel(generalInfo, ncProgramFolder, priorityTagDurations, timeIntervals, timeline);
+            DataContext = new WinnumInfoViewModel(generalInfo, ncProgramFolder, priorityTagDurations, timeIntervals, timeline, winnumPageUrl);
             InitializeComponent();
+
+            if (winnumPageUrl != null)
+            {
+                var browser = new WebBrowser();
+                browser.Source = new Uri(winnumPageUrl);
+                BrowserContainer.Children.Add(browser);
+            }
         }
     }
 }

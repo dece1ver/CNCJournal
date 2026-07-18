@@ -68,6 +68,9 @@
                     </DataGrid.Columns>
                 </DataGrid>
             </TabItem>
+            <TabItem Header="Подробнее" Visibility="{Binding WinnumPageUrl, Converter={StaticResource NullToVisibilityConverter}}">
+                <Grid x:Name="BrowserContainer" />
+            </TabItem>
         </TabControl>
     </DockPanel>
 </Window>

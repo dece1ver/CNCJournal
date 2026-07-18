@@ -2,6 +2,7 @@
 using eLog.Services;
 using libeLog.Interfaces;
 using libeLog.Models;
+using libeLog.Views;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -54,7 +55,7 @@ namespace eLog.Views.Windows.Dialogs
                 {
                     if (type is DownTime.Types.CreateNcProgram && Part is { SetupIsFinished: true })
                     {
-                        MessageBox.Show($"{DownTimes.CreateNcProgram} может быть только в наладке.", "Молодой человек, это не для вас простой.", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        MessageBoxWindow.Show($"{DownTimes.CreateNcProgram} может быть только в наладке.", "Молодой человек, это не для вас простой.", MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
                     Part.DownTimes.Add(new DownTime(Part, type) { ToolType = toolType, Comment = comment});
@@ -152,7 +153,7 @@ namespace eLog.Views.Windows.Dialogs
             {
                 if (gridChild is AdornedElementPlaceholder { AdornedElement: TextBox textBox } && Validation.GetErrors(textBox) is ICollection<ValidationError> { Count: > 0 } errors)
                 {
-                    MessageBox.Show(errors.First().ErrorContent.ToString(), "Некорректный ввод", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBoxWindow.Show(errors.First().ErrorContent.ToString(), "Некорректный ввод", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
         }
@@ -161,7 +162,7 @@ namespace eLog.Views.Windows.Dialogs
         {
             foreach (var dt in Part.DownTimes.Where(d => d.Type == DownTime.Types.ToolSearching && d.IsSuccess == null && d.EndTime > d.StartTime))
             {
-                dt.IsSuccess = MessageBox.Show($"Удалось ли найти инструмент?\n[{dt.ToolType}] {dt.Comment}\nс {dt.StartTimeText} по {dt.EndTimeText}", "Уточните", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+                dt.IsSuccess = MessageBoxWindow.Show($"Удалось ли найти инструмент?\n[{dt.ToolType}] {dt.Comment}\nс {dt.StartTimeText} по {dt.EndTimeText}", "Уточните", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.Yes) == MessageBoxResult.Yes;
             }
             DialogResult = true;
             Close();

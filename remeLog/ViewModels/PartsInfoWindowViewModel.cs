@@ -25,6 +25,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using libeLog.Views;
 using static remeLog.Infrastructure.Winnum.Types;
 using Database = remeLog.Infrastructure.Database;
 using Part = remeLog.Models.Part;
@@ -45,6 +46,22 @@ namespace remeLog.ViewModels
         public PartsInfoWindowViewModel(CombinedParts parts)
         {
             lockUpdate = true;
+            if (Util.HasFeature(RemeLogFeature.Ai))
+            {
+                AiHealthMonitor.Instance.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName == nameof(AiHealthMonitor.IsServerAvailable))
+                        OnPropertyChanged(nameof(IsServerAvailable));
+                    if (e.PropertyName == nameof(AiHealthMonitor.IsOllamaAvailable))
+                        OnPropertyChanged(nameof(IsOllamaAvailable));
+                    if (e.PropertyName == nameof(AiHealthMonitor.IsAiAvailable))
+                        OnPropertyChanged(nameof(IsAiAvailable));
+                    if (e.PropertyName == nameof(AiHealthMonitor.HealthError))
+                        OnPropertyChanged(nameof(HealthError));
+                    if (e.PropertyName == nameof(AiHealthMonitor.HealthTooltip))
+                        OnPropertyChanged(nameof(HealthTooltip));
+                };
+            }
             ChangeCalcFixedCommand = new LambdaCommand(OnChangeCalcFixedCommandExecuted, CanChangeCalcFixedCommandExecute);
             ChangeCompactViewCommand = new LambdaCommand(OnChangeCompactViewCommandExecuted, CanChangeCompactViewCommandExecute);
             ChangeRoleCommand = new LambdaCommand(OnChangeRoleCommandExecuted, CanChangeRoleCommandExecute);
@@ -712,6 +729,14 @@ namespace remeLog.ViewModels
             set => Set(ref _Status, value);
         }
 
+        public bool HasFeatureAi => Util.HasFeature(RemeLogFeature.Ai);
+        public bool HasFeatureAdvancedEdit => Util.HasFeature(RemeLogFeature.AdvancedEdit);
+        public bool IsAiAvailable => AiHealthMonitor.Instance.IsAiAvailable;
+        public bool IsServerAvailable => AiHealthMonitor.Instance.IsServerAvailable;
+        public bool IsOllamaAvailable => AiHealthMonitor.Instance.IsOllamaAvailable;
+        public string? HealthError => AiHealthMonitor.Instance.HealthError;
+        public string? HealthTooltip => AiHealthMonitor.Instance.HealthTooltip;
+
 
         private string _ThinkingThoughts = string.Empty;
         /// <summary> Накапливаемые мысли ИИ для отображения в выдвижной панели. </summary>
@@ -1122,7 +1147,7 @@ namespace remeLog.ViewModels
                     }
                     else
                     {
-                        MessageBox.Show("Ничего не найдено :с", ":c", MessageBoxButton.OK, MessageBoxImage.Information);
+                        MessageBoxWindow.Show("Ничего не найдено :с", ":c", MessageBoxButton.OK, MessageBoxImage.Information);
                     }
                 }
                 catch (TaskCanceledException)
@@ -1131,7 +1156,7 @@ namespace remeLog.ViewModels
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBoxWindow.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
                 finally
                 {
@@ -1280,6 +1305,13 @@ namespace remeLog.ViewModels
 
                     var timeline = await TimelineBuilder.BuildAsync(timelineSources, TimeSpan.FromSeconds(5), progress);
                     progress.Report("");
+
+                    var pageUrl = operation.BuildPageUrl(
+                        "winnum.views.pages.app.cnc.reports.DetailedTagPriorityWorkReportPage",
+                        "processPage",
+                        AppId.CNC_MONITORING_WITH_STOPS_AND_MANUAL,
+                        startTime);
+
                     var win = new WinnumInfoWindow($"" +
                         $"Локальное время:      {DateTime.Now:g} │ М/В Вар.1:   {(double.IsFinite(m1) ? $"{TimeSpan.FromMinutes(m1):hh\\:mm\\:ss}" : "00:00:00")} │\n" +
                         $"Время на платформе:   {platformDateTime:g} │ М/В Вар.2:   {(double.IsFinite(m2) ? $"{TimeSpan.FromMinutes(m2):hh\\:mm\\:ss}" : "00:00:00")} │\n" +
@@ -1290,7 +1322,7 @@ namespace remeLog.ViewModels
                         $"{new DateTime(startTime.Year, startTime.Month, startTime.Day):d} - " +
                         $"{new DateTime(SelectedPart.EndMachiningTime.Year, SelectedPart.EndMachiningTime.Month, SelectedPart.EndMachiningTime.Day):d}\n" +
                         $"{completedInfo}" +
-                        $"", Path.Combine(winnumConfig.NcProgramFolder, serialNumber), priorityTagDurations, intervals, timeline);
+                        $"", Path.Combine(winnumConfig.NcProgramFolder, serialNumber), priorityTagDurations, intervals, timeline, pageUrl);
                     win.Show();
                 }
                 catch (Exception ex)
@@ -1312,7 +1344,7 @@ namespace remeLog.ViewModels
         public ICommand ShowInfoCommand { get; }
         private void OnShowInfoCommandExecuted(object p)
         {
-            MessageBox.Show("Тут будет информация по выборке", "Заглушка", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBoxWindow.Show("Тут будет информация по выборке", "Заглушка", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         private static bool CanShowInfoCommandExecute(object p) => true;
         #endregion
@@ -1349,7 +1381,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
             }
             finally { InProgress = false; }
         }
@@ -1379,7 +1411,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
             }
             finally { InProgress = false; }
         }
@@ -1407,7 +1439,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
             }
             finally { InProgress = false; }
         }
@@ -1440,7 +1472,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
             }
             finally { InProgress = false; }
         }
@@ -1455,7 +1487,7 @@ namespace remeLog.ViewModels
             {
                 string runCountFilter = "";
                 bool addSheetPerMachine = true;
-                if (MessageBox.Show("Задать фильтр по количеству запусков?", "Вопросик", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                if (MessageBoxWindow.Show("Задать фильтр по количеству запусков?", "Вопросик", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.Yes) == MessageBoxResult.Yes)
                 {
                     var dialog = new PartSelectionFilterWindow("", true)
                     {
@@ -1488,7 +1520,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
             }
             finally { InProgress = false; }
         }
@@ -1516,7 +1548,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
             }
             finally { InProgress = false; }
         }
@@ -1551,7 +1583,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
             }
             finally { InProgress = false; }
         }
@@ -1576,7 +1608,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
                 Util.WriteLog(ex, "Ошибка при экспорте отчёта по поискам.");
                 Status = "";
             }
@@ -1593,11 +1625,11 @@ namespace remeLog.ViewModels
             {
                 if (!File.Exists(AppSettings.Instance.GoogleCredentialPath) )
                 {
-                    MessageBox.Show("Файл с учетными данными Google не существует.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBoxWindow.Show("Файл с учетными данными Google не существует.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
                 if (!File.Exists(AppSettings.Instance.GoogleCredentialPath) && string.IsNullOrWhiteSpace(AppSettings.Instance.AssignedPartsSheet))
                 {
-                    MessageBox.Show("Не указан ID Google таблицы.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBoxWindow.Show("Не указан ID Google таблицы.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
                 var path = Util.GetXlsxPath();
                 if (string.IsNullOrEmpty(path))
@@ -1618,11 +1650,11 @@ namespace remeLog.ViewModels
             }
             catch (Google.GoogleApiException ex)
             {
-                MessageBox.Show(GoogleSheet.ExceptionMessage(ex), "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show(GoogleSheet.ExceptionMessage(ex), "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally { InProgress = false; }
         }
@@ -1663,7 +1695,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally { InProgress = false; }
         }
@@ -1696,7 +1728,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
             }
             finally { InProgress = false; }
         }
@@ -1755,7 +1787,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
             }
             finally { InProgress = false; }
         }
@@ -1784,7 +1816,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
             }
             finally { InProgress = false; }
         }
@@ -1948,12 +1980,12 @@ namespace remeLog.ViewModels
             if (serialPart == null) return;
             if (!Util.HasFeature(RemeLogFeature.AdvancedEdit))
             {
-                MessageBox.Show("Нет прав на выполнение операции", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show("Нет прав на выполнение операции", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
             if (!serialPart.Operations.Any())
             {
-                MessageBox.Show(
+                MessageBoxWindow.Show(
                     "У этой серийной детали нет операций, к которым могут принадлежать нормативы. Создайте операции с установками в окне 'Серийные детали'", 
                     SelectedPart?.PartName, 
                     MessageBoxButton.OK, 
@@ -2006,7 +2038,7 @@ namespace remeLog.ViewModels
         private void OnDeletePartCommandExecuted(object p)
         {
             if (p is Part part && part == SelectedPart
-                && MessageBox.Show($"Удалить деталь: {part.PartName}?\nДанное действие невозможно отменить.", "Удаление информации", MessageBoxButton.YesNo, MessageBoxImage.Exclamation) == MessageBoxResult.Yes)
+                && MessageBoxWindow.Show($"Удалить деталь: {part.PartName}?\nДанное действие невозможно отменить.", "Удаление информации", MessageBoxButton.YesNo, MessageBoxImage.Exclamation, MessageBoxDefaultButton.No) == MessageBoxResult.Yes)
             {
                 var deleteResult = Database.DeletePart(part);
                 switch (deleteResult.Status)
@@ -2036,9 +2068,11 @@ namespace remeLog.ViewModels
         {
             if (p is bool skipAsk && !skipAsk || p is not bool)
             {
-                if (MessageBox.Show("Обновить информацию?", "Вы точно уверены?", MessageBoxButton.YesNo, MessageBoxImage.Question) is MessageBoxResult.No) return;
+                if (MessageBoxWindow.Show("Обновить информацию?", "Вы точно уверены?", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.Yes) is MessageBoxResult.No) return;
             }
-            
+
+            InProgress = true;
+
             foreach (var part in Parts.Where(p => p.NeedUpdate))
             {
                 var updateResult = await part.UpdatePartAsync();
@@ -2048,10 +2082,10 @@ namespace remeLog.ViewModels
                         part.NeedUpdate = false;
                         break;
                     case DbResult.AuthError:
-                        MessageBox.Show(updateResult.Error);
+                        MessageBoxWindow.Show(updateResult.Error);
                         break;
                     case DbResult.Error:
-                        MessageBox.Show(updateResult.Error);
+                        MessageBoxWindow.Show(updateResult.Error);
                         break;
                 }
             }
@@ -2133,7 +2167,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBoxWindow.Show(ex.Message);
             }
             finally { InProgress = false; }
             using (Overlay = new())
@@ -2168,53 +2202,53 @@ namespace remeLog.ViewModels
         {
             if (FromDate != ToDate)
             {
-                MessageBox.Show("Для составления суточного отчета должны быть выбраны одинаковые даты.", "Разные даты", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBoxWindow.Show("Для составления суточного отчета должны быть выбраны одинаковые даты.", "Разные даты", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             if (MachineFilters.Count(f => f.Filter) > 1)
             {
-                MessageBox.Show("Для составления суточного отчета в фильтре должен быть только один станок.", "Выбрано слишком много станков.", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBoxWindow.Show("Для составления суточного отчета в фильтре должен быть только один станок.", "Выбрано слишком много станков.", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             else if (!MachineFilters.Any(f => f.Filter))
             {
-                MessageBox.Show("Для составления суточного отчета в фильтре должен быть как минимум один станок.", "Выбрано слишком мало станков.", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBoxWindow.Show("Для составления суточного отчета в фильтре должен быть как минимум один станок.", "Выбрано слишком мало станков.", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             if (ShiftFilter.Type != ShiftType.All)
             {
-                MessageBox.Show("Для составления суточного отчета не должно быть фильтра по смене.", "Лишние фильтры.", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBoxWindow.Show("Для составления суточного отчета не должно быть фильтра по смене.", "Лишние фильтры.", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             if (!string.IsNullOrEmpty(OperatorFilter))
             {
-                MessageBox.Show("Для составления суточного отчета не должно быть фильтра по оператору.", "Лишние фильтры.", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBoxWindow.Show("Для составления суточного отчета не должно быть фильтра по оператору.", "Лишние фильтры.", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             if (!string.IsNullOrEmpty(PartNameFilter))
             {
-                MessageBox.Show("Для составления суточного отчета не должно быть фильтра по детали.", "Лишние фильтры.", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBoxWindow.Show("Для составления суточного отчета не должно быть фильтра по детали.", "Лишние фильтры.", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             if (!string.IsNullOrEmpty(OrderFilter))
             {
-                MessageBox.Show("Для составления суточного отчета не должно быть фильтра по маршрутному листу.", "Лишние фильтры.", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBoxWindow.Show("Для составления суточного отчета не должно быть фильтра по маршрутному листу.", "Лишние фильтры.", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             if (SetupFilter != null)
             {
-                MessageBox.Show("Для составления суточного отчета не должно быть фильтра по установке.", "Лишние фильтры.", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBoxWindow.Show("Для составления суточного отчета не должно быть фильтра по установке.", "Лишние фильтры.", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             if (Parts.Any(x => x.NeedUpdate))
             {
-                MessageBox.Show("Есть несохраненные данные.", "Подтверждение.",
+                MessageBoxWindow.Show("Есть несохраненные данные.", "Подтверждение.",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             if (HasErrors)
             {
-                MessageBox.Show("Не всё заполнено корректно.", "Предупреждение.",
+                MessageBoxWindow.Show("Не всё заполнено корректно.", "Предупреждение.",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -2408,7 +2442,7 @@ namespace remeLog.ViewModels
             }
         }
 
-        private bool CanTogglePartFlagExecute(object _) => IsSingleMachineSingleDay && !Parts.Any(p => p.NeedUpdate);
+        private bool CanTogglePartFlagExecute(object _) => IsSingleMachineSingleDay && !Parts.Any(p => p.NeedUpdate) && Util.HasFeature(RemeLogFeature.Ai);
         #endregion
 
         #region AnalyzeDay
@@ -2416,6 +2450,8 @@ namespace remeLog.ViewModels
 
         private async void OnAnalyzeDayExecuted(object _)
         {
+            if (!Util.HasFeature(RemeLogFeature.Ai)) return;
+
             if (AiInProgress)
             {
                 _aiCancellationTokenSource?.Cancel();
@@ -2509,11 +2545,12 @@ namespace remeLog.ViewModels
                     $"Причина: {result.Explanation}\n\n" +
                     $"Исключить из отчётов?";
 
-                var answer = MessageBox.Show(
+                var answer = MessageBoxWindow.Show(
                     message,
                     "Исключить из отчётов?",
                     MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
+                    MessageBoxImage.Question,
+                    MessageBoxDefaultButton.Yes);
 
                 if (answer == MessageBoxResult.Yes)
                     part.ExcludeFromReports = true;
@@ -2521,7 +2558,7 @@ namespace remeLog.ViewModels
         }
 
         private bool CanAnalyzeDayExecute(object _) =>
-            IsSingleMachineSingleDay && Parts.Count > 0 && !InProgress;
+            Util.HasFeature(RemeLogFeature.Ai) && IsSingleMachineSingleDay && Parts.Count > 0 && !InProgress;
 
         #endregion
 
@@ -2617,7 +2654,7 @@ namespace remeLog.ViewModels
 #if DEBUG
                 message = message += ex.StackTrace;
 #endif
-                MessageBox.Show($"{message}");
+                MessageBoxWindow.Show($"{message}");
                 InProgress = false;
                 return false;
             }
@@ -2823,8 +2860,8 @@ namespace remeLog.ViewModels
         private bool CanBeChanged()
         {
             if (Parts.Any(x => x.NeedUpdate)
-                && MessageBox.Show("Есть незаписанные изменения. При продолжении они будут утеряны.", "Обновить список деталей?",
-                MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.Cancel) return false;
+                && MessageBoxWindow.Show("Есть незаписанные изменения. При продолжении они будут утеряны.", "Обновить список деталей?",
+                MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxDefaultButton.Cancel) == MessageBoxResult.Cancel) return false;
             return true;
         }
 
@@ -3111,11 +3148,12 @@ namespace remeLog.ViewModels
                 && string.IsNullOrWhiteSpace(DayReviewComment)
                 && flaggedParts.Count == 0)
             {
-                var answer = MessageBox.Show(
+                var answer = MessageBoxWindow.Show(
                     "Не указан комментарий и не отмечены проблемные строки.\nПродолжить?",
                     "Эскалация без деталей",
                     MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
+                    MessageBoxImage.Question,
+                    MessageBoxDefaultButton.No);
                 if (answer == MessageBoxResult.No) return;
             }
 
@@ -3134,10 +3172,13 @@ namespace remeLog.ViewModels
 
             if (result != DbResult.Ok)
             {
-                MessageBox.Show(message, "Ошибка сохранения", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show(message, "Ошибка сохранения", MessageBoxButton.OK, MessageBoxImage.Error);
                 Status = string.Empty;
                 return;
             }
+
+            // Очищаем старые флаги перед записью новых
+            await Database.ClearPartFlagsAsync(dayReviewId);
 
             // Сохраняем флаги проблемных строк
             foreach (var part in flaggedParts)
@@ -3189,6 +3230,8 @@ namespace remeLog.ViewModels
                 CurrentDayReview = null;
                 OnPropertyChanged(nameof(IsSingleMachineSingleDay));
                 OnPropertyChanged(nameof(CanUserReview));
+                OnPropertyChanged(nameof(HasFeatureAi));
+                OnPropertyChanged(nameof(HasFeatureAdvancedEdit));
                 OnPropertyChanged(nameof(FlaggedPartsCount));
                 return;
             }

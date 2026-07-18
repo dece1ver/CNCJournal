@@ -38,8 +38,9 @@ namespace remeLog.Infrastructure
         public static List<OperatorInfo> GetOperators()
         {
             using var conn = OpenConnection(AppSettings.Instance.ConnectionString);
-            return conn.Query<OperatorInfo>(
-                "SELECT Id, FirstName, LastName, Patronymic, Qualification, IsActive FROM cnc_operators ORDER BY LastName ASC").AsList();
+            var rows = conn.Query<(int Id, string FirstName, string LastName, string Patronymic, int Qualification, bool IsActive)>(
+                "SELECT Id, FirstName, LastName, Patronymic, Qualification, IsActive FROM cnc_operators ORDER BY LastName ASC");
+            return rows.Select(r => new OperatorInfo(r.Id, r.FirstName, r.LastName, r.Patronymic, r.Qualification, r.IsActive)).ToList();
         }
 
         public async static Task<List<OperatorInfo>> GetOperatorsAsync(IProgress<string>? progress = null)
@@ -49,10 +50,10 @@ namespace remeLog.Infrastructure
             {
                 await using var conn = await OpenConnectionAsync(AppSettings.Instance.ConnectionString);
                 progress?.Report("Чтение данных из БД...");
-                var result = (await conn.QueryAsync<OperatorInfo>(
-                    "SELECT Id, FirstName, LastName, Patronymic, Qualification, IsActive FROM cnc_operators ORDER BY LastName ASC")).AsList();
+                var rows = await conn.QueryAsync<(int Id, string FirstName, string LastName, string Patronymic, int Qualification, bool IsActive)>(
+                    "SELECT Id, FirstName, LastName, Patronymic, Qualification, IsActive FROM cnc_operators ORDER BY LastName ASC");
                 progress?.Report("Чтение завершено");
-                return result;
+                return rows.Select(r => new OperatorInfo(r.Id, r.FirstName, r.LastName, r.Patronymic, r.Qualification, r.IsActive)).ToList();
             }
             catch (Exception ex)
             {

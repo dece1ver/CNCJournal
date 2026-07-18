@@ -15,6 +15,24 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
+    [HttpGet("health")]
+    public async Task<ActionResult> Health()
+    {
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "(unknown)";
+        logger.LogDebug("Health check from {IP}", ip);
+
+        var ollamaOk = await ollama.CheckHealthAsync();
+        logger.LogDebug("Health: IP={IP}, ollama={Ollama}", ip, ollamaOk);
+
+        return Ok(new { status = "ok", ollama = ollamaOk });
+    }
+
+    [HttpGet("queue-length")]
+    public ActionResult QueueLength()
+    {
+        return Ok(new { queueLength = ollama.QueueLength });
+    }
+
     [HttpPost]
     public async Task<ActionResult<AnalyzeResponse>> Analyze(
         [FromBody] AnalyzeRequest request,
@@ -33,19 +51,37 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 .Where(s => !llmResult.DowngradedSignals.Contains(s))
                 .ToList();
 
-            var requiresReview = hardRules.MustEscalate || notDowngraded.Count > 0 || llmResult.RequiresReview;
+            var (filteredSignals, reset) = FalsePositiveFilter.Apply(
+                request, hardRules, notDowngraded, llmResult.Signals);
+            llmResult.Signals = filteredSignals;
+
+            if (reset)
+            {
+                llmResult.RequiresReview = false;
+                llmResult.Explanation = "";
+                llmResult.SuggestedReason = "";
+                logger.LogInformation(
+                    "Пост-фильтр сбросил requiresReview: {Machine} {Date} — " +
+                    "все сигналы LLM были галлюцинациями про б/н/б/и",
+                    request.Machine, request.ShiftDate);
+            }
+
+            var requiresReview = reset ? false
+                : hardRules.MustEscalate || notDowngraded.Count > 0 || llmResult.RequiresReview;
 
             logger.LogDebug(
                 "ДИАГНОСТИКА {Machine} {Date}: " +
                 "hardRules.MustEscalate={MustEscalate}, hardRules.HardSignals=[{HardSignals}], " +
                 "hardRules.SoftSignals=[{SoftSignals}], notDowngraded=[{NotDowngraded}], " +
                 "llmResult.RequiresReview={LlmRR}, llmResult.HasError={LlmErr}, llmResult.Error={LlmErrMsg}, " +
-                "llmResult.DowngradedSignals=[{LlmDowngraded}] → итоговый requiresReview={Final}",
+                "llmResult.DowngradedSignals=[{LlmDowngraded}], llmResult.ExcludeFromReports={ExcludeCount} [{ExcludeList}] → итоговый requiresReview={Final}",
                 request.Machine, request.ShiftDate,
                 hardRules.MustEscalate, string.Join(" | ", hardRules.HardSignals),
                 string.Join(" | ", hardRules.SoftSignals), string.Join(" | ", notDowngraded),
                 llmResult.RequiresReview, llmResult.HasError, llmResult.Error ?? "(нет)",
-                string.Join(" | ", llmResult.DowngradedSignals), requiresReview);
+                string.Join(" | ", llmResult.DowngradedSignals),
+                llmResult.SuggestExcludeFromReports.Count, string.Join(" | ", llmResult.SuggestExcludeFromReports),
+                requiresReview);
 
             var result = new AnalyzeResponse
             {
@@ -166,12 +202,21 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
         string raw;
         string? thinking;
+        int queuePosition;
 
         try
         {
+            queuePosition = await ollama.EnterQueueAsync(ct);
+            logger.LogInformation(
+                "Вошли в очередь: {QueuePos} для {Machine} {Date}",
+                queuePosition, request.Machine, request.ShiftDate);
+
+            if (queuePosition > 1)
+                await Send("queue", JsonSerializer.Serialize(new { position = queuePosition }));
+
             logger.LogInformation("Отправка в Ollama...");
 
-            var generateTask = ollama.GenerateAsync(prompt, true, progress, ct, model: request.Model);
+            var generateTask = ollama.GenerateCoreAsync(prompt, true, progress, ct, model: request.Model);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
@@ -184,13 +229,11 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 }
             }, ct);
 
-            // Ждём генерацию
             (raw, thinking) = await generateTask;
             logger.LogInformation(
                 "Ollama завершила. response={RLen}, thinking={TLen}",
                 raw.Length, thinking?.Length ?? 0);
 
-            // Закрываем канал и ждём пока drain допишет оставшееся
             channel.Writer.Complete();
             await drainTask;
             logger.LogInformation("Drain завершён");
@@ -206,17 +249,38 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             await Send("error", JsonSerializer.Serialize(ex.Message));
             return;
         }
+        finally
+        {
+            ollama.LeaveQueue();
+        }
 
         var llmResult = ParseResponse(raw);
 
-        logger.LogDebug("ParseResponse: RequiresReview={R}, Error={E}",
-            llmResult.RequiresReview, llmResult.Error ?? "(нет)");
+        logger.LogDebug("ParseResponse: RequiresReview={R}, Error={E}, ExcludeFromReports={ExcludeCount} [{ExcludeList}]",
+            llmResult.RequiresReview, llmResult.Error ?? "(нет)",
+            llmResult.SuggestExcludeFromReports.Count, string.Join(" | ", llmResult.SuggestExcludeFromReports));
 
         var notDowngraded = hardRules.SoftSignals
             .Where(s => !llmResult.DowngradedSignals.Contains(s))
             .ToList();
-        var requiresReview =
-            hardRules.MustEscalate || notDowngraded.Count > 0 || llmResult.RequiresReview;
+
+        var (filteredSignals, reset) = FalsePositiveFilter.Apply(
+            request, hardRules, notDowngraded, llmResult.Signals);
+        llmResult.Signals = filteredSignals;
+
+        if (reset)
+        {
+            llmResult.RequiresReview = false;
+            llmResult.Explanation = "";
+            llmResult.SuggestedReason = "";
+            logger.LogInformation(
+                "Пост-фильтр сбросил requiresReview: {Machine} {Date} — " +
+                "все сигналы LLM были галлюцинациями про б/н/б/и",
+                request.Machine, request.ShiftDate);
+        }
+
+        var requiresReview = reset ? false
+            : hardRules.MustEscalate || notDowngraded.Count > 0 || llmResult.RequiresReview;
 
         var result = new AnalyzeResponse
         {

@@ -1,11 +1,16 @@
 ﻿using libeLog.Infrastructure.Sql;
 using Microsoft.Data.SqlClient;
+using remeLog.Infrastructure.Types;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using Windows.Data.Xml.Dom;
+using libeLog.Views;
 using Windows.UI.Notifications;
 
 namespace remeLog.Infrastructure
@@ -44,6 +49,7 @@ namespace remeLog.Infrastructure
         private readonly string _userName = Environment.UserName;
         private readonly string _applicationName = "remeLog";
         private readonly string _version = App.CreateUniqueEventName();
+        private readonly string _ipAddress;
 
         private DateTime _lastCleanupUtc = DateTime.MinValue;
 
@@ -56,6 +62,17 @@ namespace remeLog.Infrastructure
         public AppPresenceService(string connectionString)
         {
             _connectionString = connectionString;
+            try
+            {
+                _ipAddress = Dns.GetHostEntry(Dns.GetHostName())
+                    .AddressList
+                    .FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    ?.ToString() ?? string.Empty;
+            }
+            catch
+            {
+                _ipAddress = string.Empty;
+            }
         }
 
         /// <summary>Уникальный идентификатор текущего экземпляра приложения.</summary>
@@ -148,18 +165,22 @@ ON target.SessionId = source.SessionId
 
 WHEN MATCHED THEN
     UPDATE SET
-        LastSeenUtc = SYSUTCDATETIME()
+        LastSeenUtc = SYSUTCDATETIME(),
+        EnabledFeatures = @EnabledFeatures,
+        IpAddress      = @IpAddress
 
 WHEN NOT MATCHED THEN
     INSERT
     (
         SessionId, Application, MachineName, UserName,
-        DisplayName, Status, AppVersion, StartedUtc, LastSeenUtc
+        DisplayName, Status, AppVersion, IpAddress, EnabledFeatures,
+        StartedUtc, LastSeenUtc
     )
     VALUES
     (
         @SessionId, @Application, @MachineName, @UserName,
-        @DisplayName, 'Online', @AppVersion, SYSUTCDATETIME(), SYSUTCDATETIME()
+        @DisplayName, 'Online', @AppVersion, @IpAddress, @EnabledFeatures,
+        SYSUTCDATETIME(), SYSUTCDATETIME()
     );";
 
             await using var connection = CreateConnection();
@@ -176,6 +197,8 @@ WHEN NOT MATCHED THEN
             command.Parameters.AddWithValue("@UserName", _userName);
             command.Parameters.AddWithValue("@DisplayName", _userName);
             command.Parameters.AddWithValue("@AppVersion", _version);
+            command.Parameters.AddWithValue("@IpAddress", string.IsNullOrEmpty(_ipAddress) ? DBNull.Value : _ipAddress);
+            command.Parameters.AddWithValue("@EnabledFeatures", (int)AppSettings.EnabledFeatures);
 
             await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -242,55 +265,99 @@ ORDER BY CreatedUtc;";
             (Guid Id, string Type, string Payload) cmd,
             CancellationToken ct)
         {
+            string? result = null;
+
             try
             {
                 switch (cmd.Type)
                 {
                     case "Wake":
                         ShowToast(cmd.Payload);
+                        result = "OK";
                         break;
 
                     case "ActivateWindow":
                         await Application.Current.Dispatcher
                             .InvokeAsync(ActivateMainWindow)
                             .Task.ConfigureAwait(false);
+                        result = "OK";
                         break;
 
                     case "ForceClose":
                         await Application.Current.Dispatcher
                             .InvokeAsync(() => Application.Current.Shutdown())
                             .Task.ConfigureAwait(false);
+                        result = "OK";
                         break;
 
                     case "ShowNotification":
                         await Application.Current.Dispatcher
-                            .InvokeAsync(() => MessageBox.Show(cmd.Payload, "Уведомление",
+                            .InvokeAsync(() => MessageBoxWindow.Show(cmd.Payload, "Уведомление",
                                 MessageBoxButton.OK, MessageBoxImage.Information))
                             .Task.ConfigureAwait(false);
+                        result = "OK";
+                        break;
+
+                    case "UpdateNotification":
+                        var updateAnswer = await Application.Current.Dispatcher
+                            .InvokeAsync(() => MessageBoxWindow.Show(cmd.Payload,
+                                "Доступно обновление электронного журнала",
+                                MessageBoxButton.YesNo,
+                                MessageBoxImage.Question))
+                            .Task.ConfigureAwait(false);
+                        if (updateAnswer == MessageBoxResult.Yes)
+                            await Application.Current.Dispatcher
+                                .InvokeAsync(() => App.Current.Dispatcher.InvokeShutdown());
+                        result = "OK";
+                        break;
+
+                    case "CopyShortcut":
+                        result = await CopyShortcutAsync(cmd.Payload, ct).ConfigureAwait(false);
                         break;
 
                     default:
                         Util.WriteLog($"AppPresenceService: неизвестный тип команды '{cmd.Type}'");
+                        result = $"Неизвестная команда: {cmd.Type}";
                         break;
                 }
-
-                await MarkCommandProcessedAsync(connection, cmd.Id, ct).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 Util.WriteLog(ex, $"Ошибка обработки команды {cmd.Id} ({cmd.Type})");
+                result = $"Ошибка: {ex.Message}";
             }
+
+            await MarkCommandProcessedAsync(connection, cmd.Id, result, ct).ConfigureAwait(false);
         }
 
-        /// <summary>Помечает команду обработанной.</summary>
+        /// <summary>Копирует файл ярлыка на рабочий стол текущего пользователя.</summary>
+        private static async Task<string> CopyShortcutAsync(string filePath, CancellationToken ct)
+        {
+            return await Task.Run(() =>
+            {
+                if (!File.Exists(filePath))
+                    return $"Файл не найден: {filePath}";
+
+                var desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                var fileName = Path.GetFileName(filePath);
+                var dest = Path.Combine(desktop, fileName);
+
+                File.Copy(filePath, dest, overwrite: true);
+                return $"OK: {dest}";
+            }, ct).ConfigureAwait(false);
+        }
+
+        /// <summary>Помечает команду обработанной и записывает результат.</summary>
         private static async Task MarkCommandProcessedAsync(
             SqlConnection connection,
             Guid commandId,
+            string? result,
             CancellationToken ct)
         {
             const string sql = @"
 UPDATE remeLog_app_commands
-SET ProcessedUtc = SYSUTCDATETIME()
+SET ProcessedUtc = SYSUTCDATETIME(),
+    Result = @Result
 WHERE Id = @Id;";
 
             await using var command = new SqlCommand(sql, connection)
@@ -298,6 +365,7 @@ WHERE Id = @Id;";
                 CommandTimeout = DbCommandTimeoutSeconds
             };
             command.Parameters.AddWithValue("@Id", commandId);
+            command.Parameters.AddWithValue("@Result", (object?)result ?? DBNull.Value);
 
             await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }

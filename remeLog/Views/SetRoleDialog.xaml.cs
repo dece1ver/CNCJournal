@@ -12,6 +12,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using libeLog.Views;
 
 namespace remeLog.Views
 {
@@ -31,7 +32,7 @@ namespace remeLog.Views
         {
             if (!MasterRadioButton.IsChecked == true && !TechnologistRadioButton.IsChecked == true)
             {
-                MessageBox.Show("Пожалуйста, выберите роль!", "Предупреждение",
+                MessageBoxWindow.Show("Пожалуйста, выберите роль!", "Предупреждение",
                               MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }

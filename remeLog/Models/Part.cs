@@ -1269,6 +1269,12 @@ namespace remeLog.Models
                    requiresComment;
         }
 
+        private static bool IsSmallBatch(double machiningTimePerPiece, double finishedCount)
+        {
+            return (machiningTimePerPiece < 3 && finishedCount <= 10)
+                || (machiningTimePerPiece >= 3 && finishedCount <= 5);
+        }
+
         public string Error
         {
             get
@@ -1298,6 +1304,18 @@ namespace remeLog.Models
                     nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695 => "Необходимо указать причину превышения частичной наладки.",
                     nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio == 0 => "Необходимо указать причину отсутствия норматива изготовления.",
                     nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2 => "Необходимо указать причину невыполнения норматива изготовления.",
+                    nameof(MasterSetupComment) when
+                        !string.IsNullOrWhiteSpace(MasterSetupComment)
+                        && MasterSetupComment == "Изготовление типовой детали"
+                        && SetupTimeFact > 0
+                        && SetupRatio < 0.695
+                        => "«Изготовление типовой детали» не объясняет низкий показатель наладки",
+                    nameof(MasterMachiningComment) when
+                        !string.IsNullOrWhiteSpace(MasterMachiningComment)
+                        && MasterMachiningComment == "Штучная/длительная работа"
+                        && FinishedCount > 0
+                        && !IsSmallBatch(MachiningTime.TotalMinutes, FinishedCount)
+                        => "Причина «Штучная/длительная работа» применима только при малой партии: м/в < 3 мин и изготовлено ≤ 10 деталей или м/в ≥ 3 мин и изготовлено ≤ 5 деталей",
                     nameof(MasterComment) when string.IsNullOrWhiteSpace(MasterComment) &&
                                         (RequiresComment(MasterSetupComment, SetupReasonsRequireComment) ||
                                          RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment)) => "Требуется указать дополнительный комментарий для выбранной причины.",

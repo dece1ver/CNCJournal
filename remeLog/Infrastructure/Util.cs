@@ -24,7 +24,10 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
+using libeLog.Views;
+using System.Windows;
 using System.Windows.Forms;
+using MessageBoxDefaultButton = libeLog.Views.MessageBoxDefaultButton;
 
 namespace remeLog.Infrastructure
 {
@@ -62,7 +65,7 @@ namespace remeLog.Infrastructure
                 catch (Exception ex)
                 {
                     App.Current.Dispatcher.Invoke(() =>
-                        MessageBox.Show($"Ошибка при логировании: {ex.Message}"));
+                        MessageBoxWindow.Show($"Ошибка при логировании: {ex.Message}"));
                 }
             });
         }
@@ -94,15 +97,16 @@ namespace remeLog.Infrastructure
             {
                 if (filePath.CheckFileWriteAccess() is FileCheckResult.FileInUse)
                 {
-                    var result = MessageBox.Show(
+                    var result = MessageBoxWindow.Show(
                         $"Файл занят другим процессом.\n\n" +
                         $"Да - закрыть процесс самостоятельно и продолжить\n" +
                         $"Нет - прервать операцию",
                         "Файл занят",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Question);
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Question,
+                        MessageBoxDefaultButton.No);
 
-                    if (result == DialogResult.Yes)
+                    if (result == MessageBoxResult.Yes)
                     {
                         for (int i = 0; i < 10; i++)
                         {
@@ -114,8 +118,8 @@ namespace remeLog.Infrastructure
                         // Финальная проверка
                         if (filePath.CheckFileWriteAccess() == FileCheckResult.FileInUse)
                         {
-                            MessageBox.Show("Файл всё ещё занят. Закройте файл вручную и попробуйте снова.",
-                                "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            MessageBoxWindow.Show("Файл всё ещё занят. Закройте файл вручную и попробуйте снова.",
+                                "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                             return "";
                         }
                     }
@@ -411,7 +415,7 @@ namespace remeLog.Infrastructure
             var wncConfig = wncResultConfig.Value;
             if (wncResultConfig.Status != DbResult.Ok)
             {
-                MessageBox.Show("Не удалось выполнить поиск в Windchill из-за ошибки");
+                MessageBoxWindow.Show("Не удалось выполнить поиск в Windchill из-за ошибки");
                 return objects;
             }
 
@@ -600,7 +604,7 @@ namespace remeLog.Infrastructure
         /// </summary>
         public static bool HasFeature(RemeLogFeature feature)
         {
-            if (IsAppAdmin()) return true;
+            if (!AppSettings.FeaturesExplicitlySet && IsAppAdmin()) return true;
             return AppSettings.EnabledFeatures.HasFlag(feature);
         }
     }

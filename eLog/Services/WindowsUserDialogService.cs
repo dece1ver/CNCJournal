@@ -5,6 +5,7 @@ using eLog.Views.Windows.Dialogs;
 using eLog.Views.Windows.Settings;
 using libeLog;
 using libeLog.Models;
+using libeLog.Views;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -17,15 +18,16 @@ namespace eLog.Services
 {
     internal class WindowsUserDialogService : IUserDialogService
     {
-        public bool Confirm(string message, string caption, bool exclamation = false)
+        public bool Confirm(string message, string caption, bool exclamation = false, MessageBoxDefaultButton defaultButton = MessageBoxDefaultButton.No)
         {
-            return MessageBox.Show(
+            return MessageBoxWindow.Show(
                        message,
                        caption,
                        MessageBoxButton.YesNo,
                        exclamation
                            ? MessageBoxImage.Exclamation
-                           : MessageBoxImage.Question)
+                           : MessageBoxImage.Question,
+                       defaultButton)
                    == MessageBoxResult.Yes;
         }
 
@@ -39,13 +41,13 @@ namespace eLog.Services
         }
 
         public void ShowError(string message, string caption = "Ошибка") =>
-            MessageBox.Show(message, caption, MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBoxWindow.Show(message, caption, MessageBoxButton.OK, MessageBoxImage.Error);
 
         public void ShowInfo(string message, string caption = "Информация") =>
-            MessageBox.Show(message, caption, MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBoxWindow.Show(message, caption, MessageBoxButton.OK, MessageBoxImage.Information);
 
         public void ShowWarning(string message, string caption = "Внимание") =>
-            MessageBox.Show(message, caption, MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBoxWindow.Show(message, caption, MessageBoxButton.OK, MessageBoxImage.Warning);
 
         /// <summary>
         /// Возвращает вызывает диалог для изменения операторов.

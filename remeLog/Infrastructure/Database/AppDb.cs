@@ -17,6 +17,8 @@ namespace remeLog.Infrastructure
         MachineName,
         UserName,
         AppVersion,
+        IpAddress,
+        EnabledFeatures,
         StartedUtc,
         LastSeenUtc
     FROM
@@ -26,6 +28,8 @@ namespace remeLog.Infrastructure
             MachineName,
             UserName,
             AppVersion,
+            IpAddress,
+            EnabledFeatures,
             StartedUtc,
             LastSeenUtc,
             ROW_NUMBER() OVER (
@@ -53,15 +57,17 @@ namespace remeLog.Infrastructure
                     MachineName = reader.GetString(1),
                     UserName = reader.GetString(2),
                     AppVersion = reader.GetString(3),
-                    StartedLocal = DateTime.SpecifyKind(reader.GetDateTime(4), DateTimeKind.Utc).ToLocalTime(),
-                    LastSeenLocal = DateTime.SpecifyKind(reader.GetDateTime(5), DateTimeKind.Utc).ToLocalTime()
+                    IpAddress = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                    EnabledFeatures = reader.GetInt32(5),
+                    StartedLocal = DateTime.SpecifyKind(reader.GetDateTime(6), DateTimeKind.Utc).ToLocalTime(),
+                    LastSeenLocal = DateTime.SpecifyKind(reader.GetDateTime(7), DateTimeKind.Utc).ToLocalTime()
                 });
             }
 
             return result;
         }
 
-        public static async Task SendAppCommandAsync(
+        public static async Task<Guid> SendAppCommandAsync(
             Guid? targetSessionId, string targetMachine, string? targetUser,
             string commandType, string? payload)
         {
@@ -73,12 +79,13 @@ VALUES
     (@Id, @TargetSessionId, @TargetApplication, @TargetMachine, @TargetUser,
      @SenderMachine, @SenderUser, @CommandType, @Payload, SYSUTCDATETIME());";
 
+            var id = Guid.NewGuid();
             try
             {
                 await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
                 await connection.OpenAsync();
                 await using var command = new SqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@Id", Guid.NewGuid());
+                command.Parameters.AddWithValue("@Id", id);
                 command.Parameters.AddWithValue("@TargetSessionId", (object?)targetSessionId ?? DBNull.Value);
                 command.Parameters.AddWithValue("@TargetApplication", "remeLog");
                 command.Parameters.AddWithValue("@TargetMachine", targetMachine);
@@ -98,9 +105,26 @@ VALUES
                 Util.WriteLog(ex, $"Ошибка отправки команды '{commandType}' на {targetMachine}");
                 throw;
             }
+
+            return id;
         }
 
-        public static async Task SendAppCommandToAllAsync(
+        public static async Task<string?> GetCommandResultAsync(Guid commandId)
+        {
+            const string sql = @"
+SELECT Result
+FROM remeLog_app_commands
+WHERE Id = @Id AND ProcessedUtc IS NOT NULL;";
+
+            await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@Id", commandId);
+            var result = await command.ExecuteScalarAsync();
+            return result as string;
+        }
+
+        public static async Task<List<Guid>> SendAppCommandToAllAsync(
             List<AppPresence> targets, string commandType, string? payload)
         {
             const string sql = @"
@@ -111,6 +135,7 @@ VALUES
     (@Id, @TargetSessionId, @TargetApplication, @TargetMachine, @TargetUser,
      @SenderMachine, @SenderUser, @CommandType, @Payload, SYSUTCDATETIME());";
 
+            var ids = new List<Guid>();
             try
             {
                 await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
@@ -119,8 +144,9 @@ VALUES
 
                 foreach (var target in targets)
                 {
+                    var id = Guid.NewGuid();
                     await using var command = new SqlCommand(sql, connection, transaction);
-                    command.Parameters.AddWithValue("@Id", Guid.NewGuid());
+                    command.Parameters.AddWithValue("@Id", id);
                     command.Parameters.AddWithValue("@TargetSessionId", (object?)target.SessionId ?? DBNull.Value);
                     command.Parameters.AddWithValue("@TargetApplication", "remeLog");
                     command.Parameters.AddWithValue("@TargetMachine", target.MachineName);
@@ -130,6 +156,7 @@ VALUES
                     command.Parameters.AddWithValue("@CommandType", commandType);
                     command.Parameters.AddWithValue("@Payload", (object?)payload ?? DBNull.Value);
                     await command.ExecuteNonQueryAsync();
+                    ids.Add(id);
                 }
 
                 await transaction.CommitAsync();
@@ -142,6 +169,8 @@ VALUES
                 Util.WriteLog(ex, $"Ошибка массовой отправки команды '{commandType}'");
                 throw;
             }
+
+            return ids;
         }
 
         public static async Task<int> GetPendingCommandCountAsync()
@@ -152,6 +181,52 @@ VALUES
             await connection.OpenAsync();
             await using var command = new SqlCommand(sql, connection);
             return (int)(await command.ExecuteScalarAsync())!;
+        }
+
+        public static async Task<List<(Guid Id, string CommandType, string TargetMachine,
+            string TargetUser, string Payload, DateTime CreatedUtc)>> GetPendingCommandsAsync()
+        {
+            const string sql = @"
+SELECT Id, CommandType, TargetMachine, TargetUser, Payload, CreatedUtc
+FROM remeLog_app_commands
+WHERE ProcessedUtc IS NULL
+ORDER BY CreatedUtc;";
+
+            var result = new List<(Guid, string, string, string, string, DateTime)>();
+
+            await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(sql, connection);
+            await using var reader = await command.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                result.Add((
+                    reader.GetGuid(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.IsDBNull(3) ? "" : reader.GetString(3),
+                    reader.IsDBNull(4) ? "" : reader.GetString(4),
+                    DateTime.SpecifyKind(reader.GetDateTime(5), DateTimeKind.Utc).ToLocalTime()
+                ));
+            }
+
+            return result;
+        }
+
+        public static async Task<bool> CancelPendingCommandAsync(Guid commandId)
+        {
+            const string sql = @"
+UPDATE remeLog_app_commands
+SET ProcessedUtc = SYSUTCDATETIME(),
+    Result = 'Cancelled'
+WHERE Id = @Id AND ProcessedUtc IS NULL;";
+
+            await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@Id", commandId);
+            return await command.ExecuteNonQueryAsync() > 0;
         }
     }
 }

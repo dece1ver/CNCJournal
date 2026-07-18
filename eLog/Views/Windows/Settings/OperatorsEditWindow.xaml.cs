@@ -3,6 +3,7 @@ using eLog.Models;
 using eLog.ViewModels;
 using libeLog.Base;
 using libeLog.Models;
+using libeLog.Views;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -81,11 +82,12 @@ namespace eLog.Views.Windows.Settings
         {
             var grid = (DataGrid)sender;
             if (Key.Delete != e.Key) return;
-            if (MessageBox.Show(
+            if (MessageBoxWindow.Show(
                     $"Удалить оператора?",
                     "Подтверждение!",
                     MessageBoxButton.YesNo,
-                    MessageBoxImage.Question)
+                    MessageBoxImage.Question,
+                    MessageBoxDefaultButton.No)
                 == MessageBoxResult.Yes
                 && grid.SelectedItem is Operator @operator)
             {

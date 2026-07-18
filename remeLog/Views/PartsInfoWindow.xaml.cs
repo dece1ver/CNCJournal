@@ -14,6 +14,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using libeLog.Views;
 using Part = remeLog.Models.Part;
 using SelectionChangedEventArgs = System.Windows.Controls.SelectionChangedEventArgs;
 
@@ -89,7 +90,7 @@ namespace remeLog.Views
                 if (gridChild is AdornedElementPlaceholder { AdornedElement: TextBlock textBlock } 
                 && System.Windows.Controls.Validation.GetErrors(textBlock) is ICollection<ValidationError> { Count: > 0 } errors)
                 {
-                    MessageBox.Show(errors.First().ErrorContent.ToString(), "Некорректный ввод", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBoxWindow.Show(errors.First().ErrorContent.ToString(), "Некорректный ввод", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
         }
@@ -227,24 +228,27 @@ namespace remeLog.Views
         {
             var menu = new System.Windows.Controls.ContextMenu();
 
-            if (!part.IsFlagged)
+            if (vm.HasFeatureAi)
             {
-                var flagItem = new MenuItem
+                if (!part.IsFlagged)
                 {
-                    Header = "⚠ Проблемная запись — отметить",
-                };
-                flagItem.Click += (_, _) => vm.TogglePartFlagCommand.Execute(part);
-                menu.Items.Add(flagItem);
-            }
-            else
-            {
-                var unflagItem = new MenuItem
+                    var flagItem = new MenuItem
+                    {
+                        Header = "⚠ Проблемная запись — отметить",
+                    };
+                    flagItem.Click += (_, _) => vm.TogglePartFlagCommand.Execute(part);
+                    menu.Items.Add(flagItem);
+                }
+                else
                 {
-                    Header = "✔ Снять отметку проблемной",
-                    FontWeight = System.Windows.FontWeights.SemiBold,
-                };
-                unflagItem.Click += (_, _) => vm.TogglePartFlagCommand.Execute(part);
-                menu.Items.Add(unflagItem);
+                    var unflagItem = new MenuItem
+                    {
+                        Header = "✔ Снять отметку проблемной",
+                        FontWeight = System.Windows.FontWeights.SemiBold,
+                    };
+                    unflagItem.Click += (_, _) => vm.TogglePartFlagCommand.Execute(part);
+                    menu.Items.Add(unflagItem);
+                }
             }
 
             return menu;
@@ -334,7 +338,7 @@ namespace remeLog.Views
                                 $"Тип: {infoCellContent}\n" +
                                 $"Содержимое: {info}\n\n" +
                                 $"Деталь: {d.SelectedPart?.PartName}";
-                            MessageBox.Show(info);
+                            MessageBoxWindow.Show(info);
                             e.Handled = true;
                             break;
 
@@ -500,6 +504,7 @@ namespace remeLog.Views
 
             if (DataContext is PartsInfoWindowViewModel dv
                 && dv.IsSingleMachineSingleDay
+                && dv.HasFeatureAi
                 && cell.DataContext is Part flaggedPart)
             {
                 menu.Items.Add(new Separator());
@@ -725,7 +730,7 @@ namespace remeLog.Views
         private void OnSetValueClick(object sender, RoutedEventArgs e)
         {
             if (sender is not MenuItem item) return;
-            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { MessageBox.Show("Нет прав на выполнение операции", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error); return; }
+            if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { MessageBoxWindow.Show("Нет прав на выполнение операции", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error); return; }
             string value = item.Tag?.ToString() ?? string.Empty;
 
             if (Keyboard.FocusedElement is DataGridCell cell)

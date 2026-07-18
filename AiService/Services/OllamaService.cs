@@ -8,13 +8,64 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
 {
     private readonly string _baseUrl = config["Ollama:BaseUrl"] ?? "http://localhost:11434";
     private readonly string _model = config["Ollama:Model"] ?? "qwen3:14b";
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(240) };
+    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(300) };
+    private static readonly SemaphoreSlim _gate = new(1, 1);
+    private static int _queueCounter;
+    private static int _currentQueueLength;
 
-    /// <summary>
-    /// Отправляет промпт в Ollama, возвращает сырой текст ответа модели.
-    /// Если model не задан — используется модель из appsettings.json (Ollama:Model).
-    /// </summary>
+    public int QueueLength => _currentQueueLength;
+
+    /// <summary>Встать в очередь к LLM. Возвращает позицию в очереди (1 = сейчас выполняется).</summary>
+    public async Task<int> EnterQueueAsync(CancellationToken ct)
+    {
+        var pos = Interlocked.Increment(ref _queueCounter);
+        Interlocked.Exchange(ref _currentQueueLength, pos);
+        await _gate.WaitAsync(ct);
+        return pos;
+    }
+
+    /// <summary>Покинуть очередь.</summary>
+    public void LeaveQueue()
+    {
+        _gate.Release();
+        var left = Interlocked.Decrement(ref _queueCounter);
+        Interlocked.Exchange(ref _currentQueueLength, Math.Max(0, left));
+    }
+
+    public async Task<bool> CheckHealthAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.GetAsync($"{_baseUrl}/api/tags", ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Встать в очередь, выполнить запрос к LLM, покинуть очередь.</summary>
     public async Task<(string Response, string? Thinking)> GenerateAsync(
+    string prompt,
+    bool think = false,
+    IProgress<string>? thinkingProgress = null,
+    CancellationToken ct = default,
+    string? model = null)
+    {
+        await EnterQueueAsync(ct);
+        try
+        {
+            return await GenerateCoreAsync(prompt, think, thinkingProgress, ct, model);
+        }
+        finally
+        {
+            LeaveQueue();
+        }
+    }
+
+    /// <summary>Выполнить запрос к Ollama без управления очередью.</summary>
+    public async Task<(string Response, string? Thinking)> GenerateCoreAsync(
     string prompt,
     bool think = false,
     IProgress<string>? thinkingProgress = null,
@@ -106,7 +157,6 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
                                            currentLen - lastReportedLen);
                         var lastChar = delta[^1];
 
-                        // Репортим по границе слова/пунктуации или когда накопилось ≥10 символов
                         if (lastChar is ' ' or '\n' or '\r' or ',' or '.' or '!'
                                      or '?' or ':' or ';' or '-'
                             || delta.Length >= 10)
@@ -124,7 +174,6 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
 
             if (chunk.Done)
             {
-                // Сбрасываем остаток буфера если что-то не репортнули
                 if (thinkingProgress != null && thinkBuffer.Length > lastReportedLen)
                 {
                     var tail = thinkBuffer.ToString(lastReportedLen,

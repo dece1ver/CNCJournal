@@ -14,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using libeLog.Views;
 
 namespace remeLog.ViewModels
 {
@@ -266,7 +267,7 @@ namespace remeLog.ViewModels
             catch (Exception ex)
             {
                 Util.WriteLog(ex);
-                MessageBox.Show($"Ошибка загрузки данных: {ex.Message}", "Ошибка",
+                MessageBoxWindow.Show($"Ошибка загрузки данных: {ex.Message}", "Ошибка",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }

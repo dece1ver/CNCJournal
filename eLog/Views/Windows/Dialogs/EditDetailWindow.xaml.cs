@@ -6,6 +6,7 @@ using libeLog;
 using libeLog.Extensions;
 using libeLog.Interfaces;
 using libeLog.Models;
+using libeLog.Views;
 using libeLog.WinApi.Windows;
 using Microsoft.IdentityModel.Tokens;
 using System;
@@ -1045,7 +1046,7 @@ namespace eLog.Views.Windows.Dialogs
             {
                 if (gridChild is AdornedElementPlaceholder { AdornedElement: TextBox textBox } && Validation.GetErrors(textBox) is ICollection<ValidationError> { Count: > 0 } errors)
                 {
-                    MessageBox.Show(errors.First().ErrorContent.ToString(), "Некорректный ввод", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBoxWindow.Show(errors.First().ErrorContent.ToString(), "Некорректный ввод", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
         }

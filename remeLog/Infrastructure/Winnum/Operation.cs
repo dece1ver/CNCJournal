@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Web;
 using DocumentFormat.OpenXml.Presentation;
 using remeLog.Models;
 using static remeLog.Infrastructure.Winnum.Types;
@@ -189,6 +190,22 @@ namespace remeLog.Infrastructure.Winnum
             var result = await _client.ExecuteRequestAsync(parameters);
             progress?.Report("Получена информация о станке");
             return result;
+        }
+
+        public string BuildPageUrl(string rpc, string men, AppId appId, DateTime date, string? usr = null, string? pwd = null)
+        {
+            var uri = new Uri(_client.BaseUrl);
+            var pageUrl = $"{uri.Scheme}://{uri.Host}/Winnum/views/pages/app/agw.jsp";
+            var query = HttpUtility.ParseQueryString(string.Empty);
+            query["usr"] = usr ?? _client.Usr;
+            query["pwd"] = pwd ?? _client.Pwd;
+            query["rpc"] = rpc;
+            query["men"] = men;
+            query["mode"] = "yes";
+            query["appid"] = FormatAppId(appId);
+            query["oid"] = FormatWnId();
+            query["date"] = date.ToString("dd.MM.yyyy");
+            return $"{pageUrl}?{query}";
         }
     }
 }

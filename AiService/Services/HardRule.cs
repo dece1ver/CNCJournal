@@ -29,6 +29,15 @@ public static class HardRuleEvaluator
         "Отсутствие нормативов",
     };
 
+    // Причины из комбобокса MasterMachiningComment, при наличии которых
+    // и непустого MasterComment правило "машинное время >= норматива"
+    // понижается до soft — LLM решает по правилам soft_signal_explanation.txt.
+    private static readonly HashSet<string> MachiningTimeSoftDowngradeReasons = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Разовое изменение времени из-за проблем с инструментом/оборудованием",
+        "Несоответствующие заготовки",
+    };
+
     // "Доработка" в причине наладки/изготовления освобождает от ряда проверок:
     // КПД = 0 и отсутствие норматива нормальны для доработки.
     private const string ReworkReason = "Доработка";
@@ -128,14 +137,29 @@ public static class HardRuleEvaluator
             // Физический смысл: норматив = машинное время + ручные операции,
             // поэтому machiningTime >= plan означает, что на ручные операции
             // времени не осталось вообще — это структурная аномалия, не шум.
+            //
+            // 2026-07-15: исключение — разовые причины (проблемы с инструментом/оборудованием,
+            // несоответствующие заготовки) при непустом MasterComment → soft.
+            // LLM решает по правилам soft_signal_explanation.txt.
+            // Без исключения или с пустым MasterComment — остаётся HARD.
             if (p.MachiningTime > 0.5 && p.SingleProductionTimePlan > 0
                 && p.MachiningTime >= p.SingleProductionTimePlan
                 && !p.NoProductionHappened)
             {
-                hard.Add(
+                var signal =
                     $"[{p.PartName}] Машинное время {p.MachiningTime:0.#}мин >= " +
                     $"норматива {p.SingleProductionTimePlan:0.#}мин " +
-                    $"({p.MachiningTime / p.SingleProductionTimePlan:0%})");
+                    $"({p.MachiningTime / p.SingleProductionTimePlan:0%})";
+
+                bool hasConcreteOneTimeReason =
+                    !string.IsNullOrWhiteSpace(p.MasterMachiningComment)
+                    && MachiningTimeSoftDowngradeReasons.Contains(p.MasterMachiningComment)
+                    && !string.IsNullOrWhiteSpace(p.MasterComment);
+
+                if (hasConcreteOneTimeReason)
+                    soft.Add(signal);
+                else
+                    hard.Add(signal);
             }
         }
 

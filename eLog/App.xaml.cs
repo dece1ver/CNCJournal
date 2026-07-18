@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using eLog.Infrastructure.Extensions;
 using libeLog.Extensions;
+using libeLog.Views;
 
 namespace eLog
 {
@@ -36,7 +37,7 @@ namespace eLog
             catch (Exception ex)
             {
                 Util.WriteLog(ex, "Критическая ошибка при запуске приложения");
-                MessageBox.Show($"Ошибка при запуске приложения: {ex.Message}",
+                MessageBoxWindow.Show($"Ошибка при запуске приложения: {ex.Message}",
                     "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 Shutdown(1);
             }

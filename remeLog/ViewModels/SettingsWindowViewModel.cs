@@ -12,8 +12,8 @@ using System.IO;
 using System.Security.AccessControl;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Forms;
 using System.Windows.Input;
+using libeLog.Views;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 
 namespace remeLog.ViewModels
@@ -302,7 +302,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка проверки", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка проверки", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

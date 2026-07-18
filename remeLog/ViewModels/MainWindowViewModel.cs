@@ -13,6 +13,7 @@ using remeLog.Views;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -23,7 +24,7 @@ using System.Windows.Input;
 using static libeLog.Constants;
 using static remeLog.Models.CombinedParts;
 using Application = System.Windows.Application;
-using MessageBox = System.Windows.MessageBox;
+using libeLog.Views;
 
 namespace remeLog.ViewModels
 {
@@ -97,6 +98,12 @@ namespace remeLog.ViewModels
             get => _InProgress;
             set => Set(ref _InProgress, value);
         }
+
+        public bool IsAiAvailable => AiHealthMonitor.Instance.IsAiAvailable;
+        public bool IsServerAvailable => AiHealthMonitor.Instance.IsServerAvailable;
+        public bool IsOllamaAvailable => AiHealthMonitor.Instance.IsOllamaAvailable;
+        public string? HealthError => AiHealthMonitor.Instance.HealthError;
+        public string? HealthTooltip => AiHealthMonitor.Instance.HealthTooltip;
 
         private DateTime _FromDate = DateTime.Today.AddDays(-1);
         public DateTime FromDate
@@ -176,12 +183,26 @@ namespace remeLog.ViewModels
         public bool HasFeatureAdvancedEdit => Util.HasFeature(RemeLogFeature.AdvancedEdit);
         public bool HasFeatureInstances => Util.HasFeature(RemeLogFeature.Instances);
 
+        private void OnAiHealthChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(AiHealthMonitor.IsServerAvailable))
+                OnPropertyChanged(nameof(IsServerAvailable));
+            if (e.PropertyName == nameof(AiHealthMonitor.IsOllamaAvailable))
+                OnPropertyChanged(nameof(IsOllamaAvailable));
+            if (e.PropertyName == nameof(AiHealthMonitor.IsAiAvailable))
+                OnPropertyChanged(nameof(IsAiAvailable));
+            if (e.PropertyName == nameof(AiHealthMonitor.HealthError))
+                OnPropertyChanged(nameof(HealthError));
+            if (e.PropertyName == nameof(AiHealthMonitor.HealthTooltip))
+                OnPropertyChanged(nameof(HealthTooltip));
+        }
+
         public string WindowTitle
         {
             get
             {
                 var title = "Отчеты электронного журнала";
-                if (!Util.IsAppAdmin() && AppSettings.EnabledFeatures != RemeLogFeature.None)
+                if ((!Util.IsAppAdmin() || AppSettings.FeaturesExplicitlySet) && AppSettings.EnabledFeatures != RemeLogFeature.None)
                 {
                     var flags = new List<string>();
                     if (HasFeatureAi) flags.Add("Ai");
@@ -333,7 +354,7 @@ namespace remeLog.ViewModels
             var longSetupParts = Parts.SelectMany(cp => cp.Parts.Where(p => p.SetupTimeFactIncludePartialAndDowntimes > AppSettings.LongSetupLimit)).OrderBy(p => p.StartSetupTime);
             if (!longSetupParts.Any())
             {
-                MessageBox.Show("За выбранный период нет длительных наладок", "Неа", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBoxWindow.Show("За выбранный период нет длительных наладок", "Неа", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
             using (Overlay = new())
@@ -386,13 +407,13 @@ namespace remeLog.ViewModels
                 if (HasFeatureAdvancedEdit) features.Add("AdvancedEdit");
                 if (HasFeatureInstances) features.Add("Instances");
                 var featuresText = features.Count > 0 ? string.Join(", ", features) : "—";
-                if (IsAdministrator) featuresText = "Все (администратор)";
+                if (IsAdministrator && !AppSettings.FeaturesExplicitlySet) featuresText = "Все (администратор)";
 
                 var version = App.CreateUniqueEventName();
                 var msg = $"Пользователь: {Environment.UserName}\n" +
                           $"Активные фичи: {featuresText}\n" +
                           $"Версия: {version}";
-                MessageBox.Show(msg, "О программе", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBoxWindow.Show(msg, "О программе", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
         private bool CanShowAboutCommandExecute(object p) => !InProgress;
@@ -529,7 +550,7 @@ namespace remeLog.ViewModels
         {
             if (string.IsNullOrWhiteSpace(AppSettings.Instance.ConnectionString))
             {
-                MessageBox.Show("Строка подключения не настроена.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show("Строка подключения не настроена.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -543,7 +564,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при получении данных:\n{ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show($"Ошибка при получении данных:\n{ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
             finally
@@ -554,7 +575,7 @@ namespace remeLog.ViewModels
 
             if (!instances.Any())
             {
-                MessageBox.Show("Активных экземпляров не обнаружено.", "Активные экземпляры", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBoxWindow.Show("Активных экземпляров не обнаружено.", "Активные экземпляры", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
@@ -623,7 +644,7 @@ namespace remeLog.ViewModels
 
                 if (string.IsNullOrWhiteSpace(AppSettings.Instance.ConnectionString))
                 {
-                    MessageBox.Show(
+                    MessageBoxWindow.Show(
                         "Перейдите в параметры приложения и настройте строку подключения к базе данных.",
                         "Приложение не настроено.",
                         MessageBoxButton.OK,
@@ -662,6 +683,12 @@ namespace remeLog.ViewModels
                     OnPropertyChanged(nameof(HasFeatureInstances));
                     OnPropertyChanged(nameof(WindowTitle));
                     Util.WriteLog($"[LoadParts] UpdateAppSettings: {(sw.Elapsed - t0).TotalMilliseconds:F0} ms");
+
+                    if (HasFeatureAi)
+                    {
+                        AiHealthMonitor.Instance.PropertyChanged += OnAiHealthChanged;
+                        AiHealthMonitor.Instance.Start();
+                    }
 
                     // Справочники
                     var t1 = sw.Elapsed;
@@ -828,13 +855,13 @@ namespace remeLog.ViewModels
                                     _ => $"Ошибка БД №{sqlEx.Number}\n{sqlEx.Message}",
                                 };
                                 await Application.Current.Dispatcher.InvokeAsync(
-                                    () => MessageBox.Show(message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error));
+                                    () => MessageBoxWindow.Show(message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error));
                             }
                             catch (Exception ex)
                             {
                                 Util.WriteLog(ex, $"[LoadParts] Exception при загрузке {part.Machine}");
                                 await Application.Current.Dispatcher.InvokeAsync(
-                                    () => MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error));
+                                    () => MessageBoxWindow.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error));
                             }
                         });
 
@@ -853,7 +880,7 @@ namespace remeLog.ViewModels
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Непредвиденная ошибка: {ex.Message}", "Ошибка",
+                MessageBoxWindow.Show($"Непредвиденная ошибка: {ex.Message}", "Ошибка",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -867,7 +894,7 @@ namespace remeLog.ViewModels
                 DbResult.NoConnection => "Нет соединения с базой данных.",
                 _ => $"Не удалось получить {entity} из-за ошибки.",
             };
-            MessageBox.Show(message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBoxWindow.Show(message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
 
@@ -950,8 +977,8 @@ namespace remeLog.ViewModels
                 {
                     using (Overlay = new())
                     {
-                        var result = MessageBox.Show(
-                            "Для обновления закройте приложение и подождите 5-10 минут.\nЗакрыть сейчас?",
+                        var result = MessageBoxWindow.Show(
+                            "Для обновления перезапустите приложение.\nЗакрыть сейчас?",
                             "Доступно обновление электронного журнала",
                             MessageBoxButton.YesNo,
                             MessageBoxImage.Question);
@@ -973,6 +1000,7 @@ namespace remeLog.ViewModels
         public void StopBackgroundWorker()
         {
             _bgCts.Cancel();
+            AiHealthMonitor.Instance.Stop();
         }
     }
 }

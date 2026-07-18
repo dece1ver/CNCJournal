@@ -99,7 +99,8 @@ namespace remeLog.Infrastructure
             AiExplanation    = @AiExplanation,
             AiModelVersion   = @AiModelVersion,
             AiPromptVersion   = @AiPromptVersion,
-            AiAnalyzedAt     = @AiAnalyzedAt
+            AiAnalyzedAt     = @AiAnalyzedAt,
+            AiFeedback       = NULL
         WHERE Id = @Id";
             try
             {
@@ -299,6 +300,27 @@ namespace remeLog.Infrastructure
                 Util.WriteLog(ex, "GetPartFlagsAsync");
             }
             return result;
+        }
+
+        public static async Task<DbResult<string>>
+            ClearPartFlagsAsync(int dayReviewId)
+        {
+            const string sql = "DELETE FROM ai_part_flags WHERE DayReviewId = @DayReviewId";
+
+            try
+            {
+                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@DayReviewId", dayReviewId);
+                await cmd.ExecuteNonQueryAsync();
+                return DbResult<string>.Ok("OK");
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "ClearPartFlagsAsync");
+                return DbResult<string>.FailWithError(ex.Message);
+            }
         }
 
         private static DayReview ReadDayReview(SqlDataReader r) => new()

@@ -13,6 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using libeLog.Views;
 
 namespace remeLog
 {
@@ -40,7 +41,7 @@ namespace remeLog
             catch (Exception ex)
             {
                 Util.WriteLog(ex, "Критическая ошибка при запуске приложения");
-                MessageBox.Show($"Ошибка при запуске приложения: {ex.Message}",
+                MessageBoxWindow.Show($"Ошибка при запуске приложения: {ex.Message}",
                     "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 Shutdown(1);
             }
@@ -345,6 +346,7 @@ namespace remeLog
         {
             var featureArg = args.FirstOrDefault(a => a.StartsWith("--features=", StringComparison.OrdinalIgnoreCase));
             if (featureArg == null) return;
+            AppSettings.FeaturesExplicitlySet = true;
 
             var value = featureArg["--features=".Length..];
             if (value.Equals("all", StringComparison.OrdinalIgnoreCase))
@@ -393,7 +395,7 @@ namespace remeLog
 
             Util.WriteLog(message);
 
-            MessageBox.Show("Произошла критическая ошибка. Приложение будет закрыто.",
+            MessageBoxWindow.Show("Произошла критическая ошибка. Приложение будет закрыто.",
                 "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
 
             Shutdown(1);
@@ -404,7 +406,7 @@ namespace remeLog
             string message = $"Необработанное исключение в UI потоке: {e.Exception.Message}\n{e.Exception.StackTrace}";
             Util.WriteLog(message);
 
-            MessageBox.Show("Произошла ошибка в пользовательском интерфейсе. Приложение будет закрыто.",
+            MessageBoxWindow.Show("Произошла ошибка в пользовательском интерфейсе. Приложение будет закрыто.",
                 "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
 
             e.Handled = true; 

@@ -1,0 +1,28 @@
+{
+  "profiles": {
+    "remeLog": {
+      "commandName": "Project",
+      "remoteDebugEnabled": false
+    },
+    "remeLog (No Features)": {
+      "commandName": "Project",
+      "commandLineArgs": "--features=None",
+      "remoteDebugEnabled": false
+    },
+    "remeLog (Ai only)": {
+      "commandName": "Project",
+      "commandLineArgs": "--features=Ai",
+      "remoteDebugEnabled": false
+    },
+    "remeLog (Ai + AdvancedEdit)": {
+      "commandName": "Project",
+      "commandLineArgs": "--features=Ai,AdvancedEdit",
+      "remoteDebugEnabled": false
+    },
+    "remeLog (All features)": {
+      "commandName": "Project",
+      "commandLineArgs": "--features=all",
+      "remoteDebugEnabled": false
+    }
+  }
+}

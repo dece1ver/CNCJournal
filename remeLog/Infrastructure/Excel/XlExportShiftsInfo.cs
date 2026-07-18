@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using libeLog.Views;
 using CM = remeLog.Infrastructure.ColumnManager;
 using Part = remeLog.Models.Part;
 
@@ -52,13 +53,13 @@ namespace remeLog.Infrastructure
             switch (shiftsResult.Status)
             {
                 case libeLog.Models.DbResult.AuthError:
-                    MessageBox.Show("AuthError");
+                    MessageBoxWindow.Show("AuthError");
                     return "";
                 case libeLog.Models.DbResult.Error:
-                    MessageBox.Show("Error");
+                    MessageBoxWindow.Show("Error");
                     return "";
                 case libeLog.Models.DbResult.NoConnection:
-                    MessageBox.Show("NoConnection");
+                    MessageBoxWindow.Show("NoConnection");
                     return "";
             }
             var shifts = shiftsResult.Value.OrderBy(s => s.Machine).ToList();

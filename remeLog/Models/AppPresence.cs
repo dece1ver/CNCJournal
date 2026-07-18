@@ -1,5 +1,8 @@
-﻿using System;
+﻿using remeLog.Infrastructure.Types;
+using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace remeLog.Models
@@ -10,6 +13,25 @@ namespace remeLog.Models
         public string MachineName { get; init; } = string.Empty;
         public string UserName { get; init; } = string.Empty;
         public string AppVersion { get; init; } = string.Empty;
+        public string IpAddress { get; init; } = string.Empty;
+
+        /// <summary>Битовая маска активных фич экземпляра.</summary>
+        public int EnabledFeatures { get; init; }
+
+        /// <summary>Человекочитаемый список фич экземпляра.</summary>
+        public string FeaturesText
+        {
+            get
+            {
+                var features = (RemeLogFeature)EnabledFeatures;
+                var names = new List<string>();
+                if (features.HasFlag(RemeLogFeature.Ai)) names.Add("Ai");
+                if (features.HasFlag(RemeLogFeature.AdvancedEdit)) names.Add("AdvancedEdit");
+                if (features.HasFlag(RemeLogFeature.Instances)) names.Add("Instances");
+                return names.Count > 0 ? string.Join(", ", names) : "—";
+            }
+        }
+
         public DateTime StartedLocal { get; init; }
         public DateTime LastSeenLocal { get; init; }
 

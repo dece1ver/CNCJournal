@@ -1,4 +1,5 @@
-﻿using System;
+﻿using libeLog.Views;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -63,7 +64,7 @@ namespace libeLog.Infrastructure
                 {
                     if (i == 2)
                     {
-                        MessageBox.Show($"Отправь этот текст разработчику:\n{e.GetBaseException()}", $"{e.Message}", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBoxWindow.Show($"Отправь этот текст разработчику:\n{e.GetBaseException()}", $"{e.Message}", MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                     await Task.Delay(1000);
                 }
@@ -103,7 +104,7 @@ namespace libeLog.Infrastructure
                 {
                     if (i == 2)
                     {
-                        MessageBox.Show($"Покажи этот текст разработчику:\n{e.GetBaseException()}", $"{e.Message}", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBoxWindow.Show($"Покажи этот текст разработчику:\n{e.GetBaseException()}", $"{e.Message}", MessageBoxButton.OK, MessageBoxImage.Error);
                         semaphore.Release();
                         return;
                     }

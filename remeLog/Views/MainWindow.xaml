@@ -8,7 +8,7 @@
         xmlns:vm="clr-namespace:remeLog.ViewModels" d:DataContext="{d:DesignInstance Type=vm:MainWindowViewModel}"
         xmlns:cnt="clr-namespace:remeLog.Views.Controls"
         mc:Ignorable="d"
-        Title="{Binding WindowTitle}" Height="704" Width="1080" WindowStartupLocation="CenterScreen" ResizeMode="CanResizeWithGrip" Loaded="Window_Loaded" Unloaded="Window_Unloaded" Closing="Window_Closing">
+        Title="{Binding WindowTitle}" Height="704" Width="1080" WindowStartupLocation="CenterScreen" ResizeMode="CanResize" Loaded="Window_Loaded" Unloaded="Window_Unloaded" Closing="Window_Closing">
     <Window.DataContext>
         <vm:MainWindowViewModel/>
     </Window.DataContext>
@@ -84,6 +84,66 @@
             <StatusBar DockPanel.Dock="Bottom">
                 <StatusBarItem>
                     <TextBlock Text="{Binding Status}" FontSize="16" Margin="0 -1"/>
+                </StatusBarItem>
+                <StatusBarItem HorizontalAlignment="Right">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding HasFeatureAi, Converter={StaticResource VisibilityConverter}}">
+                        <TextBlock Text="🖥️" FontSize="14" ToolTip="Это вы"/>
+                        <TextBlock FontSize="16" Margin="1 -2"
+                                   ToolTip="{Binding HealthTooltip, TargetNullValue=''}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="⥇"/>
+                                    <Setter Property="Foreground" Value="DarkRed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsServerAvailable}" Value="True">
+                                            <Setter Property="Text" Value="⇄"/>
+                                            <Setter Property="Foreground" Value="Green"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Text="⚙️" FontSize="14" ToolTip="Это сервер с ИИ">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="DarkRed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsServerAvailable}" Value="True">
+                                            <Setter Property="Foreground" Value="Black"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock FontSize="16" Margin="1 -2"
+                                   ToolTip="{Binding HealthTooltip, TargetNullValue=''}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="⥇"/>
+                                    <Setter Property="Foreground" Value="DarkRed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsOllamaAvailable}" Value="True">
+                                            <Setter Property="Text" Value="⇄"/>
+                                            <Setter Property="Foreground" Value="Green"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Text="🧠" FontSize="14" ToolTip="Это ИИ">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="DarkRed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsOllamaAvailable}" Value="True">
+                                            <Setter Property="Foreground" Value="Black"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
                 </StatusBarItem>
             </StatusBar>
             <ProgressBar DockPanel.Dock="Bottom" IsIndeterminate="{Binding InProgress}" Height="2" />

@@ -5,6 +5,7 @@ using libeLog.Extensions;
 using libeLog.Infrastructure;
 using libeLog.Infrastructure.Enums;
 using libeLog.Models;
+using libeLog.Views;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -168,7 +169,7 @@ namespace eLog.Infrastructure.Extensions
             {
                 progress.Report("Ошибка");
                 if (AppSettings.Instance.DebugMode) { WriteLog(argEx); }
-                MessageBox.Show($"{argEx.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show($"{argEx.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             catch (Exception e)
             {

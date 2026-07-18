@@ -1,4 +1,6 @@
 ﻿using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace QCTasks.Views;
 
@@ -6,7 +8,34 @@ public partial class ConfirmDialog : DialogBase
 {
     public bool? Result { get; private set; }
 
-    private ConfirmDialog() => InitializeComponent();
+    private ConfirmDialog()
+    {
+        InitializeComponent();
+        Loaded += (_, _) =>
+        {
+            var btn = GetDefaultButton();
+            if (btn is not null) btn.Focus();
+        };
+        PreviewMouseDown += OnPreviewMouseDown;
+    }
+
+    private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Middle)
+        {
+            e.Handled = true;
+            var btn = GetDefaultButton();
+            btn?.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        }
+    }
+
+    private Button? GetDefaultButton()
+    {
+        if (YesButton.IsDefault) return YesButton;
+        if (NoButton.IsDefault) return NoButton;
+        if (CancelButton.IsDefault) return CancelButton;
+        return null;
+    }
 
     /// <summary>
     /// Показывает диалог подтверждения.
@@ -18,6 +47,7 @@ public partial class ConfirmDialog : DialogBase
     /// <param name="noText">Подпись кнопки «Нет».</param>
     /// <param name="detail">Дополнительный текст под сообщением (необязательно).</param>
     /// <param name="cancelText">Подпись кнопки «Отмена»; null — кнопка скрыта.</param>
+    /// <param name="defaultIsYes">true — дефолт кнопка «Да» (Enter/MMB), false — «Нет» (Enter/MMB). По умолчанию true.</param>
     /// <returns>true — Yes, false — No, null — Cancel / закрыли крестиком.</returns>
     public static bool? Show(
         Window? owner,
@@ -26,7 +56,8 @@ public partial class ConfirmDialog : DialogBase
         string yesText = "Да",
         string noText = "Нет",
         string? detail = null,
-        string? cancelText = null)
+        string? cancelText = null,
+        bool defaultIsYes = true)
     {
         var dlg = new ConfirmDialog
         {
@@ -37,6 +68,15 @@ public partial class ConfirmDialog : DialogBase
         dlg.MessageText.Text = message;
         dlg.YesButton.Content = yesText;
         dlg.NoButton.Content = noText;
+
+        if (defaultIsYes)
+        {
+            dlg.YesButton.IsDefault = true;
+        }
+        else
+        {
+            dlg.NoButton.IsDefault = true;
+        }
 
         if (detail is not null)
         {

@@ -2,6 +2,7 @@
 using remeLog.ViewModels;
 using System;
 using System.Windows;
+using libeLog.Views;
 
 namespace remeLog.Views
 {
@@ -36,7 +37,7 @@ namespace remeLog.Views
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
 
             }

@@ -11,6 +11,7 @@
 	<Title>Электронный журнал (Отчёты)</Title>
 	<Description />
 	<AssemblyTitle>Электронный журнал (Отчёты)</AssemblyTitle>
+	<Version>1.0.3</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -45,6 +46,7 @@
     <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.0-rc5.4" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.2" />
+
     <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.142" />
     <PackageReference Include="NCalcSync" Version="6.3.1" />
     <PackageReference Include="System.IO.Packaging" Version="6.0.2" />

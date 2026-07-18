@@ -11,6 +11,7 @@ using libeLog.Infrastructure;
 using libeLog.Infrastructure.Enums;
 using libeLog.Interfaces;
 using libeLog.Models;
+using libeLog.Views;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -25,7 +26,6 @@ using static eLog.Infrastructure.Extensions.Util;
 using Application = System.Windows.Application;
 using Database = eLog.Infrastructure.Database;
 using Machine = eLog.Models.Machine;
-using MessageBox = System.Windows.MessageBox;
 using Text = eLog.Infrastructure.Text;
 
 namespace eLog.ViewModels
@@ -405,7 +405,7 @@ namespace eLog.ViewModels
                     }
                     else
                     {
-                        MessageBox.Show("В списке нет заданий под данный станок.", "Задания на производство");
+                        MessageBoxWindow.Show("В списке нет заданий под данный станок.", "Задания на производство");
                     }
                 }
 
@@ -488,12 +488,12 @@ namespace eLog.ViewModels
             {
                 if (!Parts.Any())
                 {
-                    MessageBox.Show("Без детали не положено", "Нет", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBoxWindow.Show("Без детали не положено", "Нет", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
                 else if (Parts[0].IsFinished != Part.State.InProgress)
                 {
-                    MessageBox.Show("Без детали не положено", "Нет", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBoxWindow.Show("Без детали не положено", "Нет", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
                 string message;
@@ -718,7 +718,7 @@ namespace eLog.ViewModels
                 {
                     if (type is DownTime.Types.CreateNcProgram && (Part)p is { SetupIsFinished: true })
                     {
-                        MessageBox.Show($"{Text.DownTimes.CreateNcProgram} может быть только в наладке.", "Молодой человек, это не для вас простой.", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        MessageBoxWindow.Show($"{Text.DownTimes.CreateNcProgram} может быть только в наладке.", "Молодой человек, это не для вас простой.", MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
                     var part = (Part)p;
@@ -752,15 +752,16 @@ namespace eLog.ViewModels
                 var index = Parts.IndexOf((Part)p);
 
                 if (part.LastDownTime is { InProgress: true }
-                    && MessageBox.Show($"Завершить простой {part.LastDownTimeName}?",
+                    && MessageBoxWindow.Show($"Завершить простой {part.LastDownTimeName}?",
                         "Подтверждение",
                         MessageBoxButton.OKCancel,
-                        MessageBoxImage.Question)
+                        MessageBoxImage.Question,
+                        MessageBoxDefaultButton.Ok)
                     == MessageBoxResult.OK)
                 {
                     if (part.LastDownTime.Type == DownTime.Types.ToolSearching)
                     {
-                        switch (MessageBox.Show("Нашёл что искал?", "Нашёл?", MessageBoxButton.YesNo, MessageBoxImage.Question))
+                        switch (MessageBoxWindow.Show("Нашёл что искал?", "Нашёл?", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.Yes))
                         {
                             case MessageBoxResult.Yes:
                                 part.LastDownTime.IsSuccess = true;
@@ -1087,8 +1088,8 @@ namespace eLog.ViewModels
                     Thread.Sleep(30000);
                     if (!string.IsNullOrWhiteSpace(AppSettings.Instance.UpdatePath) && !askedForUpdate && App.CheckForUpdate(AppSettings.Instance.UpdatePath, false))
                     {
-                        if (MessageBox.Show("Доступно обновление.\n\nДобавлена поддержка новых видов маршрутных листов.\n\nПерезапустите программу.\nА в идеале перезагрузить компьютер и подождать 15 минут.\n\n" +
-                            "Можно нажать \"Да\", тогда всё закроется и попытается перезагрузиться само.", "Обновление", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                        if (MessageBoxWindow.Show("Доступно обновление.\n\nДобавлена поддержка новых видов маршрутных листов.\n\nПерезапустите программу.\nА в идеале перезагрузить компьютер и подождать 15 минут.\n\n" +
+                            "Можно нажать \"Да\", тогда всё закроется и попытается перезагрузиться само.", "Обновление", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.No) == MessageBoxResult.Yes)
                         {
                             Process.Start(new ProcessStartInfo
                             {
@@ -1208,7 +1209,7 @@ namespace eLog.ViewModels
                 }
                 catch (Exception e)
                 {
-                    MessageBox.Show(e.ToString());
+                    MessageBoxWindow.Show(e.ToString());
                     Status = e.Message;
                     WriteLog(e, "Ошибка синхронизации");
                 }

@@ -14,15 +14,47 @@ using System.Threading.Tasks;
 
 namespace remeLog.Infrastructure
 {
+    public record AiHealthResult(bool Server, bool Ollama, string? Error = null);
+
     public class AiServiceClient
     {
-        private static readonly HttpClient _http = new(new HttpClientHandler { AutomaticDecompression = System.Net.DecompressionMethods.None}) { Timeout = TimeSpan.FromSeconds(240) };
-        private readonly string _baseUrl;
+        private static readonly HttpClient _http = new(new HttpClientHandler { AutomaticDecompression = System.Net.DecompressionMethods.None}) { Timeout = TimeSpan.FromSeconds(300) };
+        private readonly string? _baseUrl;
 
         public AiServiceClient(string? baseUrl = null)
         {
-            _baseUrl = (baseUrl ?? $"http://{AppSettings.AiIp.GetIpOrDefault()}:5050")
-                .TrimEnd('/');
+            _baseUrl = baseUrl;
+        }
+
+        private string GetUrl() =>
+            (_baseUrl ?? $"http://{AppSettings.AiIp.GetIpOrDefault()}:{AppSettings.AiPort}").TrimEnd('/');
+
+        public async Task<AiHealthResult> CheckHealthAsync(CancellationToken ct = default)
+        {
+            try
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(10));
+                var response = await _http.GetAsync($"{GetUrl()}/api/analysis/health", cts.Token);
+                if (!response.IsSuccessStatusCode)
+                    return new AiHealthResult(false, false,
+                        $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}");
+                var json = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: cts.Token);
+                var ollama = json.TryGetProperty("ollama", out var o) && o.GetBoolean();
+                return new AiHealthResult(true, ollama);
+            }
+            catch (OperationCanceledException)
+            {
+                return new AiHealthResult(false, false, "Timeout: сервер не ответил за 10 с");
+            }
+            catch (HttpRequestException ex)
+            {
+                return new AiHealthResult(false, false, $"HTTP: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                return new AiHealthResult(false, false, ex.Message);
+            }
         }
 
         public async Task<AiAnalysisResult> AnalyzeAsync(
@@ -47,7 +79,7 @@ namespace remeLog.Infrastructure
             {
                 thinkingProgress?.Report("думает (немного)");
                 var response = await _http.PostAsJsonAsync(
-                    $"{_baseUrl}/api/analysis", request, ct);
+                    $"{GetUrl()}/api/analysis", request, ct);
                 response.EnsureSuccessStatusCode();
                 var result = await response.Content
                     .ReadFromJsonAsync<AiAnalysisResult>(cancellationToken: ct);
@@ -75,7 +107,7 @@ namespace remeLog.Infrastructure
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 using var httpRequest = new HttpRequestMessage(
-                    HttpMethod.Post, $"{_baseUrl}/api/analysis/stream")
+                    HttpMethod.Post, $"{GetUrl()}/api/analysis/stream")
                 { Content = content };
 
                 using var response = await _http.SendAsync(
@@ -110,6 +142,12 @@ namespace remeLog.Infrastructure
 
                         switch (currentEvent)
                         {
+                            case "queue":
+                                var queueInfo = JsonSerializer.Deserialize<QueueInfo>(data);
+                                if (queueInfo != null)
+                                    thinkingProgress?.Report($"Анализ в очереди: позиция {queueInfo.Position}");
+                                break;
+
                             case "thinking":
                                 var thought = JsonSerializer.Deserialize<string>(data);
                                 if (!string.IsNullOrWhiteSpace(thought))
@@ -146,26 +184,26 @@ namespace remeLog.Infrastructure
         /// подгружает и агрегирует историю той же детали за прошлые даты на том же станке.
         /// Ключ словаря — (PartName, Order), Machine один для всего вызова.
         /// </summary>
-        private static async Task<Dictionary<(string PartName, string Order), PartsHistorySummary>>
+        private static async Task<Dictionary<(string PartName, string Order, int Setup), PartsHistorySummary>>
             LoadPartsHistoriesAsync(
                 string machine, DateTime shiftDate, List<Part> parts, CancellationToken ct)
         {
-            var result = new Dictionary<(string, string), PartsHistorySummary>();
+            var result = new Dictionary<(string, string, int), PartsHistorySummary>();
 
-            var uniqueParties = parts
-                .Select(p => (p.PartName, p.Order))
+            var uniqueParts = parts
+                .Select(p => (p.PartName, p.Order, p.Setup))
                 .Distinct()
                 .ToList();
 
-            foreach (var (partName, order) in uniqueParties)
+            foreach (var (partName, order, setup) in uniqueParts)
             {
                 ct.ThrowIfCancellationRequested();
                 var history = await Database.ReadPartsHistoryAsync(
-                    partName, order, machine, shiftDate,
+                    partName, order, machine, setup, shiftDate,
                     AppSettings.PartsHistoryMaxRecords,
                     AppSettings.PartsHistoryMaxDaysBack,
                     ct);
-                result[(partName, order)] = SummarizePartsHistory(history);
+                result[(partName, order, setup)] = SummarizePartsHistory(history);
             }
 
             return result;
@@ -235,7 +273,7 @@ namespace remeLog.Infrastructure
 
         private static object BuildRequest(
                 string machine, DateTime shiftDate, IEnumerable<Part> parts,
-                Dictionary<(string PartName, string Order), PartsHistorySummary> partsHistories)
+                Dictionary<(string PartName, string Order, int Setup), PartsHistorySummary> partsHistories)
         {
             var partList = parts.ToList();
             var partContexts = partList.Select(p => BuildPartContext(p, partsHistories)).ToList();
@@ -255,13 +293,13 @@ namespace remeLog.Infrastructure
 
         private static object BuildPartContext(
             Part p, 
-            Dictionary<(string PartName, string Order), PartsHistorySummary> partsHistories)
+            Dictionary<(string PartName, string Order, int Setup), PartsHistorySummary> partsHistories)
         {
             bool noSetup = p.StartSetupTime == p.StartMachiningTime;
-            bool noProduction = p.FinishedCount <= 0 && p.ProductionTimeFact <= 0;
+            bool noProduction = p.FinishedCountFact <= 0 && p.ProductionTimeFact <= 0;
             var manualComment = GetManualOperatorComment(p.OperatorComment);
 
-            partsHistories.TryGetValue((p.PartName, p.Order), out var history);
+            partsHistories.TryGetValue((p.PartName, p.Order, p.Setup), out var history);
 
             // Сериализуемое представление истории для JSON — анонимные типы,
             // null если истории нет (деталь делается впервые).
@@ -279,10 +317,10 @@ namespace remeLog.Infrastructure
                         : "б/н",
                     finishedCount = (int)l.FinishedCount,
                     analystDecision = l.AnalystDecision ?? "не проверено",
-analystComment = l.AnalystComment,
-                     aiExplanation = l.AiExplanation,
-                     aiFeedback = l.AiFeedback,
-                     hasUnexplainedLowEfficiency = l.HasUnexplainedLowEfficiency,
+                    analystComment = l.AnalystComment,
+                    aiExplanation = l.AiExplanation,
+                    aiFeedback = l.AiFeedback,
+                    hasUnexplainedLowEfficiency = l.HasUnexplainedLowEfficiency,
                  }).ToList();
 
                 partsHistoryObj = new
@@ -301,7 +339,7 @@ analystComment = l.AnalystComment,
                 setupRatio = SafeDouble(p.SetupRatio),
                 productionRatio = SafeDouble(p.ProductionRatio),
 
-                finishedCount = p.FinishedCount,
+                finishedCount = p.FinishedCountFact,
                 setupTimePlan = p.SetupTimePlan,
                 setupTimeFact = p.SetupTimeFact,
                 singleProductionTimePlan = p.SingleProductionTimePlan,
@@ -333,11 +371,10 @@ analystComment = l.AnalystComment,
             var s = new List<string>();
             var machMins = p.MachiningTime.TotalMinutes;
 
-            // Машинное время > штучного норматива более чем на 20%
-            // (небольшое превышение — погрешность измерения, существенное — реальная проблема)
+            // Машинное время >= штучного норматива (порог синхронизирован с серверным HardRuleEvaluator)
             if (machMins > 0.5 && p.SingleProductionTimePlan > 0
-                && machMins > p.SingleProductionTimePlan * 1.2)
-                s.Add($"Машинное время {machMins:0.#}мин > штучного норматива {p.SingleProductionTimePlan:0.#}мин ({machMins / p.SingleProductionTimePlan:0%})");
+                && machMins >= p.SingleProductionTimePlan)
+                s.Add($"Машинное время {machMins:0.#}мин >= штучного норматива {p.SingleProductionTimePlan:0.#}мин ({machMins / p.SingleProductionTimePlan:0%})");
 
             // КПД частичной наладки < 70%
             if (p.PartialSetupTime > 0 && p.SetupTimePlan > 0
@@ -382,7 +419,7 @@ analystComment = l.AnalystComment,
                 s.Add($"Время изготовления {p.ProductionTimeFact:0}мин но finishedCount = 0");
 
             // Машинное время = 0 при наличии изготовления
-            if (machMins < 0.5 && p.FinishedCount > 0 && p.SingleProductionTimePlan > 0)
+            if (machMins < 0.5 && p.FinishedCountFact > 0 && p.SingleProductionTimePlan > 0)
                 s.Add("Машинное время = 0 при наличии изготовления");
 
             return s;
@@ -393,7 +430,7 @@ analystComment = l.AnalystComment,
         private static List<string> DetectDaySignals(List<Part> parts)
         {
             var s = new List<string>();
-
+            return s;
             // Повторяющиеся жалобы на оборудование в ручных комментариях (≥2 записей)
             var withEquipment = parts
                 .Where(p => ContainsEquipmentKeywords(GetManualOperatorComment(p.OperatorComment)))
@@ -463,6 +500,8 @@ analystComment = l.AnalystComment,
         }
     }
 
+
+    public record QueueInfo(int Position);
 
     public class AiAnalysisResult
     {

@@ -16,6 +16,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Data;
+using libeLog.Views;
 
 namespace remeLog.ViewModels
 {
@@ -23,7 +24,7 @@ namespace remeLog.ViewModels
     {
         public DataTable? TimelineData { get; set; }
 
-        public WinnumInfoViewModel(string generalInfo, string ncProgramFolder, List<PriorityTagDuration> priorityTagDurations, List<TimeInterval> timeIntervals, DataTable? timeline = null)
+        public WinnumInfoViewModel(string generalInfo, string ncProgramFolder, List<PriorityTagDuration> priorityTagDurations, List<TimeInterval> timeIntervals, DataTable? timeline = null, string? winnumPageUrl = null)
         {
             OpenArchiveNcProgramFolderCommand = new LambdaCommand(OnOpenArchiveNcProgramFolderCommandExecuted, CanOpenArchiveNcProgramFolderCommandExecute);
             OpenIntermediateNcProgramFolderCommand = new LambdaCommand(OnOpenIntermediateNcProgramFolderCommandExecuted, CanOpenIntermediateNcProgramFolderCommandExecute);
@@ -37,6 +38,7 @@ namespace remeLog.ViewModels
             TimeIntervals = timeIntervals;
 
             TimelineData = timeline;
+            WinnumPageUrl = winnumPageUrl;
 
             var series = new ObservableCollection<ISeries>();
 
@@ -139,6 +141,7 @@ namespace remeLog.ViewModels
         public List<TimeInterval> TimeIntervals { get; set; }
         public Axis[] XAxes { get; set; }
         public Axis[] YAxes { get; set; }
+        public string? WinnumPageUrl { get; set; }
 
         void TryOpenDirectory(string path, bool tryParent = false)
         {
@@ -155,12 +158,12 @@ namespace remeLog.ViewModels
                 }
                 else 
                 {
-                    MessageBox.Show("Не открывается :с", "Ошибочка", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBoxWindow.Show("Не открывается :с", "Ошибочка", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "Ошибочка вышла", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show(ex.Message, "Ошибочка вышла", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }

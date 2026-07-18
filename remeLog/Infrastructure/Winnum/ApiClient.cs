@@ -22,6 +22,10 @@ namespace remeLog.Infrastructure.Winnum
             _httpClient = new HttpClient();
         }
 
+        public string BaseUrl => _baseUrl;
+        public string Usr => _usr;
+        public string Pwd => _pwd;
+
         internal async Task<string> ExecuteRequestAsync(Dictionary<string, string> parameters)
         {
             var query = HttpUtility.ParseQueryString(string.Empty);

@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:remeLog.Views"
         xmlns:vm="clr-namespace:remeLog.ViewModels"
         mc:Ignorable="d" WindowStartupLocation="CenterOwner"
-        Title="Экземпляры" Height="450" Width="840">
+        Title="Экземпляры" Height="450" Width="1020">
     <Window.DataContext>
         <vm:ActiveInstancesViewModel/>
     </Window.DataContext>
@@ -17,14 +17,29 @@
                           Command="{Binding ToggleAllCommand}"
                           Content="Выбрать всех" VerticalAlignment="Center"/>
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,0"/>
-                <Button Command="{Binding ForceCloseSelectedCommand}"
-                        Content="Принудительно закрыть" Padding="6,2" Margin="0,0,4,0"/>
-                <Button Command="{Binding NotifySelectedCommand}"
-                        Content="Уведомить" Padding="6,2" Margin="4,0,0,0"/>
+                <Menu VerticalAlignment="Center">
+                    <MenuItem Header="Действия">
+                        <MenuItem Header="Принудительно закрыть"
+                                  Command="{Binding ForceCloseSelectedCommand}"/>
+                        <MenuItem Header="Уведомить"
+                                   Command="{Binding NotifySelectedCommand}"/>
+                        <MenuItem Header="Уведомить об обновлении"
+                                  Command="{Binding NotifyUpdateSelectedCommand}"/>
+                    </MenuItem>
+                </Menu>
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,0"/>
-                <TextBlock VerticalAlignment="Center">
+                <TextBlock VerticalAlignment="Center" Cursor="Hand">
+                    <TextBlock.InputBindings>
+                        <MouseBinding MouseAction="LeftDoubleClick"
+                                      Command="{Binding ShowPendingCommandsCommand}"/>
+                    </TextBlock.InputBindings>
                     <Run Text="Команд в очереди:"/>
                     <Run FontWeight="Bold" Text="{Binding PendingCommandCount}"/>
+                </TextBlock>
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,0"/>
+                <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="300"
+                           ToolTip="{Binding LastCommandResult}">
+                    <Run Text="{Binding LastCommandResult, Mode=OneWay}"/>
                 </TextBlock>
             </StackPanel>
         </Border>
@@ -44,7 +59,9 @@
                                 <MenuItem Header="Принудительно закрыть"
                                           Command="{Binding ForceCloseCommand}"/>
                                 <MenuItem Header="Показать уведомление"
-                                          Command="{Binding ShowNotificationCommand}"/>
+                                           Command="{Binding ShowNotificationCommand}"/>
+                                <MenuItem Header="Уведомить об обновлении"
+                                          Command="{Binding NotifyUpdateCommand}"/>
                             </ContextMenu>
                         </Setter.Value>
                     </Setter>
@@ -62,11 +79,13 @@
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
-                    <GridViewColumn Header="Компьютер" DisplayMemberBinding="{Binding MachineName}" Width="140"/>
-                    <GridViewColumn Header="Пользователь" DisplayMemberBinding="{Binding UserName}" Width="140"/>
-                    <GridViewColumn Header="Версия" DisplayMemberBinding="{Binding AppVersion}" Width="180"/>
-                    <GridViewColumn Header="Запущено" DisplayMemberBinding="{Binding StartedLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="120"/>
-                    <GridViewColumn Header="Последний ответ" DisplayMemberBinding="{Binding LastSeenLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="120"/>
+                    <GridViewColumn Header="Пользователь" DisplayMemberBinding="{Binding UserName}" Width="100"/>
+                    <GridViewColumn Header="Компьютер" DisplayMemberBinding="{Binding MachineName}" Width="100"/>
+                    <GridViewColumn Header="IP" DisplayMemberBinding="{Binding IpAddress}" Width="120"/>
+                    <GridViewColumn Header="Версия" DisplayMemberBinding="{Binding AppVersion}" Width="140"/>
+                    <GridViewColumn Header="Фичи" DisplayMemberBinding="{Binding FeaturesText}" Width="200"/>
+                    <GridViewColumn Header="Запущено" DisplayMemberBinding="{Binding StartedLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="100"/>
+                    <GridViewColumn Header="Опрос" DisplayMemberBinding="{Binding LastSeenLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="100"/>
                     <GridViewColumn Header="Статус" Width="80">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate>

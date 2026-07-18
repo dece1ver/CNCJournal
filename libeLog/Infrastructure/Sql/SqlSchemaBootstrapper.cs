@@ -534,6 +534,8 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("DisplayName", 128)
                 .AddStringColumn("Status", 32, false, "'Online'")
                 .AddStringColumn("AppVersion", 32)
+                .AddStringColumn("IpAddress", 45)
+                .AddIntColumn("EnabledFeatures", false, 0)
                 .AddDateTimeColumn("StartedUtc", false)
                 .AddDateTimeColumn("LastSeenUtc", false)
                 .AddIndex(new[] { "LastSeenUtc" }, name: "IX_app_presence_alive")
@@ -555,6 +557,7 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("Payload", -1)
                 .AddDateTimeColumn("CreatedUtc", false)
                 .AddDateTimeColumn("ProcessedUtc")
+                .AddStringColumn("Result", -1)
 
                 .AddIndex(
                     columns: new[] { "TargetSessionId", "CreatedUtc" },

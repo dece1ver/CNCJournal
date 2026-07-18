@@ -11,6 +11,7 @@ using System.Windows.Input;
 using System.Windows;
 using Part = remeLog.Models.Part;
 using System.ComponentModel;
+using libeLog.Views;
 
 namespace remeLog.ViewModels
 {
@@ -31,7 +32,7 @@ namespace remeLog.ViewModels
             var mastersResult = Database.ReadMasters();
             if (!mastersResult.IsOk)
             {
-                MessageBox.Show("Не удалось получить список мастеров.");
+                MessageBoxWindow.Show("Не удалось получить список мастеров.");
             }
             else
             {
@@ -43,7 +44,7 @@ namespace remeLog.ViewModels
             var readDayDbResult = Database.ReadShiftInfo(new ShiftInfo(ShiftDate, ShiftType.Day, _Machine));
             if (!readDayDbResult.IsOk)
             {
-                MessageBox.Show("Не удалось получить доступ к дневным сменам в базе данных, внесение новой информации может привести к потере изначальных данных.", 
+                MessageBoxWindow.Show("Не удалось получить доступ к дневным сменам в базе данных, внесение новой информации может привести к потере изначальных данных.", 
                     "Сообщите разработчику.", 
                     MessageBoxButton.OK, 
                     MessageBoxImage.Warning); ;
@@ -70,7 +71,7 @@ namespace remeLog.ViewModels
                 
                 if (UnspecifiedDayDowntimes != shift.UnspecifiedDowntimes && shift.Master != "")
                 {
-                    MessageBox.Show("Время неотмеченных простоев изменилось с момента последнего сохранения отчета!\n\nПодробная информация будет добавлена в комментарий мастера.", 
+                    MessageBoxWindow.Show("Время неотмеченных простоев изменилось с момента последнего сохранения отчета!\n\nПодробная информация будет добавлена в комментарий мастера.", 
                         "Внимание.",
                         MessageBoxButton.OK, 
                         MessageBoxImage.Warning);
@@ -82,7 +83,7 @@ namespace remeLog.ViewModels
             var readNightDbResult = Database.ReadShiftInfo(new ShiftInfo(ShiftDate, ShiftType.Night, _Machine));
             if (!readNightDbResult.IsOk)
             {
-                MessageBox.Show("Не удалось получить доступ к ночным сменам в базе данных, внесение новой информации может привести к потере изначальных данных.", 
+                MessageBoxWindow.Show("Не удалось получить доступ к ночным сменам в базе данных, внесение новой информации может привести к потере изначальных данных.", 
                     "Сообщите разработчику.", 
                     MessageBoxButton.OK, 
                     MessageBoxImage.Warning); ;
@@ -109,7 +110,7 @@ namespace remeLog.ViewModels
                 _NightRecieverCoolantConcentration = shift.RecieverСoolantСoncentration;
                 if (UnspecifiedNightDowntimes != shift.UnspecifiedDowntimes && shift.Master != "")
                 {
-                    MessageBox.Show("Время неотмеченных простоев изменилось с момента последнего сохранения отчета!\n\nПрошлое значение будет добавлено в комментарий мастера.",
+                    MessageBoxWindow.Show("Время неотмеченных простоев изменилось с момента последнего сохранения отчета!\n\nПрошлое значение будет добавлено в комментарий мастера.",
                         "Внимание.",
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     _NightMasterComment += "\n\n===\n" +
@@ -482,10 +483,10 @@ namespace remeLog.ViewModels
         {
             if (!string.IsNullOrEmpty(Error))
             {
-                MessageBox.Show("Некорректное заполнение.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show("Некорректное заполнение.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
-            if (MessageBox.Show("Обновить информацию?", "Вы точно уверены?", MessageBoxButton.YesNo, MessageBoxImage.Question) is MessageBoxResult.No) 
+            if (MessageBoxWindow.Show("Обновить информацию?", "Вы точно уверены?", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.No) is MessageBoxResult.No) 
                 return;
             var dayShift = new ShiftInfo(null, ShiftDate, ShiftType.Day, Machine, CurrentMaster, UnspecifiedDayDowntimes, DayDowntimesReason, DayMasterComment, IsChecked, DayGiverWorkplaceCleaned, DayGiverFailures, DayGiverExtraneousNoises, DayGiverLiquidLeaks, DayGiverToolBreakage, DayGiverCoolantConcentration, DayRecieverWorkplaceCleaned, DayRecieverFailures, DayRecieverExtraneousNoises, DayRecieverLiquidLeaks, DayRecieverToolBreakage, DayRecieverCoolantConcentration);
             var nightShift = new ShiftInfo(null, ShiftDate, ShiftType.Night, Machine, CurrentMaster, UnspecifiedNightDowntimes, NightDowntimesReason, NightMasterComment, IsChecked, NightGiverWorkplaceCleaned, NightGiverFailures, NightGiverExtraneousNoises, NightGiverLiquidLeaks, NightGiverToolBreakage, NightGiverCoolantConcentration, NightRecieverWorkplaceCleaned, NightRecieverFailures, NightRecieverExtraneousNoises, NightRecieverLiquidLeaks, NightRecieverToolBreakage, NightRecieverCoolantConcentration);

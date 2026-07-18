@@ -308,7 +308,7 @@ namespace remeLog.Infrastructure
             var featureRow = await conn.QueryFirstOrDefaultAsync<(string UserName, int EnabledFeatures)>(
                 "SELECT UserName, EnabledFeatures FROM cnc_remelog_feature_permissions WHERE UserName = @UserName",
                 new { UserName = Environment.UserName });
-            if (featureRow.UserName != null)
+            if (featureRow.UserName != null && !AppSettings.FeaturesExplicitlySet)
                 AppSettings.EnabledFeatures |= (RemeLogFeature)featureRow.EnabledFeatures;
 
             AppSettings.Save();

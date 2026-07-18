@@ -595,8 +595,14 @@
                 <DataTemplate>
                     <TextBox Text="{Binding FixedSetupTimePlan, Converter={StaticResource ExpressionToDoubleConverter}}"
                              Style="{StaticResource TableTextBox}"
-                             IsReadOnly="{Binding IsEditEnabled, Converter={StaticResource InvertedBoolConverter}}"
-                             IsEnabled="{Binding IsEditEnabled}"/>
+                             IsEnabled="{Binding IsEditEnabled}">
+                        <TextBox.IsReadOnly>
+                            <MultiBinding Converter="{StaticResource BoolOrMultiConverter}">
+                                <Binding Path="IsEditEnabled" Converter="{StaticResource InvertedBoolConverter}"/>
+                                <Binding Path="DataContext.HasFeatureAdvancedEdit" Source="{x:Reference partsInfoWindow}" Converter="{StaticResource InvertedBoolConverter}"/>
+                            </MultiBinding>
+                        </TextBox.IsReadOnly>
+                    </TextBox>
                 </DataTemplate>
             </DataGridTemplateColumn.CellEditingTemplate>
         </DataGridTemplateColumn>
@@ -617,8 +623,14 @@
                 <DataTemplate>
                     <TextBox Text="{Binding FixedProductionTimePlan, Converter={StaticResource ExpressionToDoubleConverter}}"
                              Style="{StaticResource TableTextBox}"
-                             IsReadOnly="{Binding IsEditEnabled, Converter={StaticResource InvertedBoolConverter}}"
-                             IsEnabled="{Binding IsEditEnabled}"/>
+                             IsEnabled="{Binding IsEditEnabled}">
+                        <TextBox.IsReadOnly>
+                            <MultiBinding Converter="{StaticResource BoolOrMultiConverter}">
+                                <Binding Path="IsEditEnabled" Converter="{StaticResource InvertedBoolConverter}"/>
+                                <Binding Path="DataContext.HasFeatureAdvancedEdit" Source="{x:Reference partsInfoWindow}" Converter="{StaticResource InvertedBoolConverter}"/>
+                            </MultiBinding>
+                        </TextBox.IsReadOnly>
+                    </TextBox>
                 </DataTemplate>
             </DataGridTemplateColumn.CellEditingTemplate>
         </DataGridTemplateColumn>
@@ -627,7 +639,8 @@
                             Visibility="{Binding DataContext.ViewMode, 
                             Source={x:Reference partsInfoWindow}, 
                             Converter={StaticResource UserRoleVisibilityConverter}, 
-                            ConverterParameter='Viewer, Engineer, Developer'}">
+                            ConverterParameter='Viewer, Engineer, Developer'}"
+                            IsReadOnly="{Binding DataContext.HasFeatureAdvancedEdit, Source={x:Reference partsInfoWindow}, Converter={StaticResource InvertedBoolConverter}}">
             <DataGridTextColumn.ElementStyle>
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
             </DataGridTextColumn.ElementStyle>
@@ -642,7 +655,8 @@
                     Visibility="{Binding DataContext.ViewMode, 
                     Source={x:Reference partsInfoWindow}, 
                     Converter={StaticResource UserRoleVisibilityConverter}, 
-                    ConverterParameter='Viewer, Engineer, Developer'}">
+                    ConverterParameter='Viewer, Engineer, Developer'}"
+                    IsReadOnly="{Binding DataContext.HasFeatureAdvancedEdit, Source={x:Reference partsInfoWindow}, Converter={StaticResource InvertedBoolConverter}}">
             <DataGridTextColumn.ElementStyle>
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
             </DataGridTextColumn.ElementStyle>
@@ -668,12 +682,17 @@
                                 Visibility="{Binding DataContext.ViewMode, 
                                 Source={x:Reference partsInfoWindow}, 
                                 Converter={StaticResource UserRoleVisibilityConverter}, 
-                                ConverterParameter='Viewer, Engineer, Developer'}">
+                                ConverterParameter='Viewer, Engineer, Developer'}"
+                                IsReadOnly="{Binding DataContext.HasFeatureAdvancedEdit, Source={x:Reference partsInfoWindow}, Converter={StaticResource InvertedBoolConverter}}">
             <DataGridCheckBoxColumn.ElementStyle>
-                <Style TargetType="CheckBox" BasedOn="{StaticResource TableCheckBox}"/>
+                <Style TargetType="CheckBox" BasedOn="{StaticResource TableCheckBox}">
+                    <Setter Property="IsEnabled" Value="{Binding DataContext.HasFeatureAdvancedEdit, Source={x:Reference partsInfoWindow}}"/>
+                </Style>
             </DataGridCheckBoxColumn.ElementStyle>
             <DataGridCheckBoxColumn.EditingElementStyle>
-                <Style TargetType="CheckBox" BasedOn="{StaticResource TableCheckBox}"/>
+                <Style TargetType="CheckBox" BasedOn="{StaticResource TableCheckBox}">
+                    <Setter Property="IsEnabled" Value="{Binding DataContext.HasFeatureAdvancedEdit, Source={x:Reference partsInfoWindow}}"/>
+                </Style>
             </DataGridCheckBoxColumn.EditingElementStyle>
         </DataGridCheckBoxColumn>
         <!--#endregion-->
@@ -756,11 +775,86 @@
         </Grid.ColumnDefinitions>
         <DockPanel Grid.ColumnSpan="2">
             <StatusBar DockPanel.Dock="Bottom">
-                <StatusBarItem HorizontalAlignment="Stretch">
-                    <TextBlock Text="{Binding Status}" FontSize="16" Margin="0 -1"/>
-                </StatusBarItem>
-                <StatusBarItem HorizontalAlignment="Right" VerticalContentAlignment="Stretch">
-                    <ProgressBar Width="199" IsIndeterminate="True" Visibility="{Binding BackgroundWorking, Converter={StaticResource VisibilityConverter}}"/>
+                <StatusBarItem HorizontalContentAlignment="Stretch">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0"
+                       Text="{Binding Status}"
+                       FontSize="16"
+                       Margin="0,-1"
+                       VerticalAlignment="Center"
+                       d:Text="Статус"/>
+
+                        <ProgressBar Grid.Column="1"
+                         Width="174"
+                         Margin="5,0,0,0"
+                         IsIndeterminate="True"
+                         Visibility="{Binding BackgroundWorking, Converter={StaticResource VisibilityConverter}}"/>
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0"
+                                    Visibility="{Binding HasFeatureAi, Converter={StaticResource VisibilityConverter}}">
+                            <TextBlock Text="🖥️" FontSize="14" ToolTip="Это вы"/>
+                            <TextBlock FontSize="12" Margin="1,0"
+                                       ToolTip="{Binding HealthTooltip, TargetNullValue=''}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="⥇"/>
+                                        <Setter Property="Foreground" Value="DarkRed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsServerAvailable}" Value="True">
+                                                <Setter Property="Text" Value="⇄"/>
+                                            <Setter Property="Foreground" Value="Green"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="⚙️" FontSize="14" ToolTip="Это сервер с ИИ">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="DarkRed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsServerAvailable}" Value="True">
+                                                <Setter Property="Foreground" Value="Black"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock FontSize="12" Margin="1,0"
+                                       ToolTip="{Binding HealthTooltip, TargetNullValue=''}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="⥇"/>
+                                        <Setter Property="Foreground" Value="DarkRed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsOllamaAvailable}" Value="True">
+                                                <Setter Property="Text" Value="⇄"/>
+                                            <Setter Property="Foreground" Value="Green"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="🧠" FontSize="14" ToolTip="Это ИИ">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="DarkRed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsOllamaAvailable}" Value="True">
+                                                <Setter Property="Foreground" Value="Black"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Grid>
                 </StatusBarItem>
             </StatusBar>
             <ProgressBar DockPanel.Dock="Bottom" IsIndeterminate="True"
@@ -1043,7 +1137,8 @@
                             </TextBlock>
 
                             <!-- Вызов AI -->
-                            <DockPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2">
+                            <DockPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                       Visibility="{Binding HasFeatureAi, Converter={StaticResource VisibilityConverter}}">
                                 <Button Margin="0 -1 0 0"
                                         Content="Призвать ИИ к ответу" Height="17"
                                         Padding="0 -1 0 0"
@@ -1694,22 +1789,22 @@
                                     <Setter Property="Foreground" Value="DarkRed"/>
                                 </Trigger>
                                 <DataTrigger Binding="{Binding IsFlagged}" Value="True">
-                                    <Setter Property="Background" Value="#FFEBEE"/>
                                     <Setter Property="ToolTip" Value="Отмечена как проблемная"/>
                                 </DataTrigger>
-
                             </Style.Triggers>
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.CellStyle>
                         <Style TargetType="DataGridCell">
                             <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsFlagged}" Value="True">
+                                    <Setter Property="Background" Value="#FFEBEE"/>
+                                </DataTrigger>
                                 <Trigger Property="IsSelected" Value="True">
                                     <Setter Property="Background" Value="LightBlue"/>
                                     <Setter Property="Foreground" Value="Black"/>
                                 </Trigger>
                             </Style.Triggers>
-
                         </Style>
                     </DataGrid.CellStyle>
                     <DataGrid.Resources>

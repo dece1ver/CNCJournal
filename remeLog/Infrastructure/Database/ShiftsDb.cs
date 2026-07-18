@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using libeLog.Views;
 
 namespace remeLog.Infrastructure
 {
@@ -26,7 +27,7 @@ namespace remeLog.Infrastructure
                 }
                 else if (readResult.IsOk && readResult.Value.Count > 1)
                 {
-                    MessageBox.Show("Найдена больше чем одна запись за смену, сообщите разработчику.", "Ошибка.", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBoxWindow.Show("Найдена больше чем одна запись за смену, сообщите разработчику.", "Ошибка.", MessageBoxButton.OK, MessageBoxImage.Error);
                     Util.WriteLog("Найдена больше чем одна запись за смену.");
                     return DbResult<bool>.Fail(DbResult.Error, "Найдена больше чем одна запись за смену.");
                 }

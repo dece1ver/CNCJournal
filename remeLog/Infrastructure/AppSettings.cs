@@ -52,6 +52,8 @@ namespace remeLog.Infrastructure
         public List<string> UnspecifiedDowntimesReasons = new();
         [JsonIgnore]
         public static RemeLogFeature EnabledFeatures { get; set; } = RemeLogFeature.None;
+        [JsonIgnore]
+        public static bool FeaturesExplicitlySet { get; set; }
 
         [JsonIgnore]
         public static double MaxSetupLimit { get; set; } = 2;
@@ -79,6 +81,7 @@ namespace remeLog.Infrastructure
         public static string? PcaReportPath { get; set; }
         [JsonIgnore]
         public static string AiIp { get; set; } = string.Empty;
+        public const int AiPort = 5050;
         [JsonIgnore]
         public static string AiModel { get; set; } = "qwen3:14b";
         [JsonIgnore]

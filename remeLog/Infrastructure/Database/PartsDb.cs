@@ -424,7 +424,7 @@ namespace remeLog.Infrastructure
         }
 
         public async static Task<List<PartsHistoryEntry>> ReadPartsHistoryAsync(
-            string partName, string order, string machine, DateTime beforeDate,
+            string partName, string order, string machine, int setup, DateTime beforeDate,
             int maxRecords, int maxDaysBack, CancellationToken cancellationToken)
         {
             using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
@@ -436,6 +436,7 @@ namespace remeLog.Infrastructure
                 "WHERE PartName = @PartName " +
                 "  AND [Order] = @Order " +
                 "  AND Machine = @Machine " +
+                "  AND Setup = @Setup " +
                 "  AND ShiftDate < @BeforeDate " +
                 "  AND ShiftDate >= @MinDate " +
                 "ORDER BY ShiftDate DESC, StartSetupTime DESC;";
@@ -447,6 +448,7 @@ namespace remeLog.Infrastructure
                 cmd.Parameters.AddWithValue("@PartName", partName);
                 cmd.Parameters.AddWithValue("@Order", order);
                 cmd.Parameters.AddWithValue("@Machine", machine);
+                cmd.Parameters.AddWithValue("@Setup", setup);
                 cmd.Parameters.AddWithValue("@BeforeDate", beforeDate.Date);
                 cmd.Parameters.AddWithValue("@MinDate", beforeDate.Date.AddDays(-maxDaysBack));
                 await FillPartsAsync(parts, cmd, cancellationToken);

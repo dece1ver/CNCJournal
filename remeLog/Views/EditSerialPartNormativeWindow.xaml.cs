@@ -16,6 +16,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using libeLog.Views;
 
 namespace remeLog.Views
 {
@@ -164,7 +165,7 @@ namespace remeLog.Views
 
             if (p is FrameworkElement fe && fe.DataContext is NormativeEntry normative)
             {
-                if (MessageBox.Show("Удалить норматив?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                if (MessageBoxWindow.Show("Удалить норматив?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.No) != MessageBoxResult.Yes) return;
                 await Database.RemoveNormativeAsync(normative);
             }
         }
