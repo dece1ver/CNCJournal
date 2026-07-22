@@ -17,6 +17,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -58,6 +59,7 @@ namespace remeLog.ViewModels
             IncreaseDateCommand = new LambdaCommand(OnIncreaseDateCommandExecuted, CanIncreaseDateCommandExecute);
             DecreaseDateCommand = new LambdaCommand(OnDecreaseDateCommandExecuted, CanDecreaseDateCommandExecute);
             SetYesterdayDateCommand = new LambdaCommand(OnSetYesterdayDateCommandExecuted, CanSetYesterdayDateCommandExecute);
+            SetSpecificDateCommand = new LambdaCommand(OnSetSpecificDateCommandExecuted, CanSetSpecificDateCommandExecute);
             SetWeekDateCommand = new LambdaCommand(OnSetWeekDateCommandExecuted, CanSetWeekDateCommandExecute);
             SetMonthDateCommand = new LambdaCommand(OnSetMonthDateCommandExecuted, CanSetMonthDateCommandExecute);
             SetYearDateCommand = new LambdaCommand(OnSetYearDateCommandExecuted, CanSetYearDateCommandExecute);
@@ -182,6 +184,7 @@ namespace remeLog.ViewModels
         public bool HasFeatureAi => Util.HasFeature(RemeLogFeature.Ai);
         public bool HasFeatureAdvancedEdit => Util.HasFeature(RemeLogFeature.AdvancedEdit);
         public bool HasFeatureInstances => Util.HasFeature(RemeLogFeature.Instances);
+        public bool HasFeatureValidationOverride => Util.HasFeature(RemeLogFeature.ValidationOverride);
 
         private void OnAiHealthChanged(object? sender, PropertyChangedEventArgs e)
         {
@@ -204,11 +207,7 @@ namespace remeLog.ViewModels
                 var title = "Отчеты электронного журнала";
                 if ((!Util.IsAppAdmin() || AppSettings.FeaturesExplicitlySet) && AppSettings.EnabledFeatures != RemeLogFeature.None)
                 {
-                    var flags = new List<string>();
-                    if (HasFeatureAi) flags.Add("Ai");
-                    if (HasFeatureAdvancedEdit) flags.Add("AdvancedEdit");
-                    if (HasFeatureInstances) flags.Add("Instances");
-                    title += $" [{string.Join(", ", flags)}]";
+                    title += $" [{string.Join(", ", AppSettings.EnabledFeatures.Names())}]";
                 }
                 return title;
             }
@@ -402,17 +401,19 @@ namespace remeLog.ViewModels
         {
             using (Overlay = new())
             {
-                var features = new List<string>();
-                if (HasFeatureAi) features.Add("Ai");
-                if (HasFeatureAdvancedEdit) features.Add("AdvancedEdit");
-                if (HasFeatureInstances) features.Add("Instances");
-                var featuresText = features.Count > 0 ? string.Join(", ", features) : "—";
-                if (IsAdministrator && !AppSettings.FeaturesExplicitlySet) featuresText = "Все (администратор)";
+                var features = AppSettings.EnabledFeatures.Names();
+                var featuresText = features.Length > 0 ? $"\n{string.Join("\n", features.Select(f => $"• {f}"))}" : "—";
+                if (IsAdministrator && !AppSettings.FeaturesExplicitlySet)
+                    featuresText = "Все (администратор)\n" + string.Join("\n", RemeLogFeatureExtensions.All.Names().Select(f => $"• {f}"));
 
                 var version = App.CreateUniqueEventName();
-                var msg = $"Пользователь: {Environment.UserName}\n" +
-                          $"Активные фичи: {featuresText}\n" +
-                          $"Версия: {version}";
+                var title = Assembly.GetExecutingAssembly()
+                    .GetCustomAttribute<AssemblyTitleAttribute>()?.Title ?? "remeLog";
+                var msg = $"{title}\n" +
+                          $"Версия: {version}\n\n" +
+                          $"Пользователь: {Environment.UserName}\n" +
+                          $"Компьютер: {Environment.MachineName}\n\n" +
+                          $"Активные фичи: {featuresText}";
                 MessageBoxWindow.Show(msg, "О программе", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
@@ -474,6 +475,20 @@ namespace remeLog.ViewModels
             UnlockUpdate();
         }
         private bool CanSetYesterdayDateCommandExecute(object p) => true;
+        #endregion
+
+        #region SetSpecificDateCommand
+        public ICommand SetSpecificDateCommand { get; }
+        /// <summary> Устанавливает выбранную в пикере дату сразу в оба календаря (От и До). </summary>
+        private void OnSetSpecificDateCommandExecuted(object p)
+        {
+            if (p is not DateTime date) return;
+            LockUpdate();
+            FromDate = date.Date;
+            ToDate = date.Date;
+            UnlockUpdate();
+        }
+        private bool CanSetSpecificDateCommandExecute(object p) => true;
         #endregion
 
         #region SetWeekDateCommand

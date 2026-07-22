@@ -18,7 +18,18 @@ public class RequestLog(IConfiguration configuration, ILogger<RequestLog> logger
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    public async Task WriteAsync(AnalyzeRequest request, AnalyzeResponse response, string endpoint)
+    public Task WriteAsync(AnalyzeRequest request, AnalyzeResponse response, string endpoint) =>
+        WriteCoreAsync(request.Machine, request.ShiftDate, response.PromptVersion, request, response, endpoint);
+
+    // Префикс "verify_" в имени файла отделяет проверки строк от дневных анализов,
+    // чтобы tools/ai-replay и ручной разбор не смешивали разноформатные логи.
+    public Task WriteVerifyAsync(VerifyPartRequest request, VerifyPartResponse response) =>
+        WriteCoreAsync(request.Machine, request.ShiftDate, response.PromptVersion, request, response,
+            "verify-part", filePrefix: "verify_");
+
+    private async Task WriteCoreAsync(
+        string machine, string shiftDate, string? promptVersion,
+        object request, object response, string endpoint, string filePrefix = "")
     {
         try
         {
@@ -32,15 +43,15 @@ public class RequestLog(IConfiguration configuration, ILogger<RequestLog> logger
             var dir = Path.Combine(baseDir, now.ToString("yyyy-MM"));
             Directory.CreateDirectory(dir);
 
-            var machineSafe = string.Concat(request.Machine.Select(c =>
+            var machineSafe = string.Concat(machine.Select(c =>
                 char.IsLetterOrDigit(c) ? c : '_'));
-            var fileName = $"{request.ShiftDate}_{machineSafe}_{now:yyyyMMdd-HHmmss-fff}.json";
+            var fileName = $"{filePrefix}{shiftDate}_{machineSafe}_{now:yyyyMMdd-HHmmss-fff}.json";
 
             var payload = new
             {
                 loggedAt = now,
                 endpoint,
-                promptVersion = response.PromptVersion,
+                promptVersion,
                 request,
                 response,
             };
@@ -52,7 +63,7 @@ public class RequestLog(IConfiguration configuration, ILogger<RequestLog> logger
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Не удалось записать request-лог для {Machine} {Date}",
-                request.Machine, request.ShiftDate);
+                machine, shiftDate);
         }
     }
 }

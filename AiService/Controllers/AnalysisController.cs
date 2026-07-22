@@ -41,6 +41,12 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         try
         {
             RequestShaper.Shape(request);
+            var mastering = MasteringAutoApprover.Apply(request);
+            if (mastering.RemovedSignals.Count > 0)
+                logger.LogInformation(
+                    "Освоение подтверждено детерминированно ({Machine} {Date}), сняты сигналы: {Signals}",
+                    request.Machine, request.ShiftDate, string.Join(" | ", mastering.RemovedSignals));
+
             var hardRules = HardRuleEvaluator.Evaluate(request);
 
             var promptBuild = promptBuilder.Build(request, hardRules);
@@ -48,22 +54,20 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
             var (raw, thinking) = await ollama.GenerateAsync(promptBuild.Prompt, think: false, thinkingProgress: null, ct: ct, model: request.Model);
             var llmResult = ParseResponse(raw);
+            MergeAutoExcludes(llmResult, mastering.AutoExcludes);
             var notDowngraded = SoftSignalMatcher.GetNotDowngraded(
                 hardRules.SoftSignals, llmResult.DowngradedSignals);
 
-            var (filteredSignals, reset) = FalsePositiveFilter.Apply(
+            var (filteredSignals, reset, removedSignals) = FalsePositiveFilter.Apply(
                 request, hardRules, notDowngraded, llmResult.Signals);
             llmResult.Signals = filteredSignals;
+            LogFilteredSignals(request, removedSignals, reset);
 
             if (reset)
             {
                 llmResult.RequiresReview = false;
                 llmResult.Explanation = "";
                 llmResult.SuggestedReason = "";
-                logger.LogInformation(
-                    "Пост-фильтр сбросил requiresReview: {Machine} {Date} — " +
-                    "все сигналы LLM были галлюцинациями про б/н/б/и",
-                    request.Machine, request.ShiftDate);
             }
 
             var requiresReview = reset ? false
@@ -94,7 +98,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                     ? FallbackReason(hardRules, notDowngraded)
                     : llmResult.SuggestedReason,
                 Error = llmResult.Error,
-                SuggestExcludeFromReports = llmResult.SuggestExcludeFromReports,
+                SuggestExcludeFromReports = FilterExcludeSuggestions(llmResult.SuggestExcludeFromReports, request),
                 DowngradedSignals = llmResult.DowngradedSignals,
                 PromptVersion = promptBuild.Version,
             };
@@ -158,6 +162,85 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         }
     }
 
+    /// <summary>
+    /// Фоновая проверка ОДНОЙ записи сутко-станка: релевантно ли комментарии мастера
+    /// объясняют присланные клиентом аномалии. Совещательный контур (remeLog,
+    /// фича AiMasterCheck): компактный промпт, без thinking, ответ {ok, remark}.
+    /// Никакие пайплайны дневного анализа (hard rules, фильтры) здесь не участвуют.
+    /// </summary>
+    [HttpPost("verify-part")]
+    public async Task<ActionResult<VerifyPartResponse>> VerifyPart(
+        [FromBody] VerifyPartRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            if (request.Anomalies.Count == 0)
+                return Ok(new VerifyPartResponse { Ok = true });
+
+            var promptBuild = promptBuilder.BuildMasterCheck(request);
+
+            var (raw, _) = await ollama.GenerateAsync(
+                promptBuild.Prompt, think: false, thinkingProgress: null, ct: ct, model: request.Model);
+
+            var result = ParseVerifyResponse(raw);
+            result.PromptVersion = promptBuild.Version;
+
+            logger.LogInformation(
+                "Verify-part: {Machine} {Date} «{Part}» → Ok={Ok}{Remark}",
+                request.Machine, request.ShiftDate, request.Part.PartName, result.Ok,
+                result.Ok ? "" : $", remark: {result.Remark}");
+
+            await requestLog.WriteVerifyAsync(request, result);
+            return Ok(result);
+        }
+        catch (TaskCanceledException)
+        {
+            return StatusCode(504, new VerifyPartResponse { Ok = true, Error = "Ollama не ответила за отведённое время" });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Ошибка verify-part {Machine} {Date}", request.Machine, request.ShiftDate);
+            return StatusCode(500, new VerifyPartResponse { Ok = true, Error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Парсинг ответа verify-part. Совещательная безопасность: непарсибельный ответ
+    /// или отсутствие поля ok трактуются как Ok=true (+Error) — сбой модели не должен
+    /// выглядеть замечанием мастеру.
+    /// </summary>
+    private static VerifyPartResponse ParseVerifyResponse(string raw)
+    {
+        var json = ExtractJson(raw);
+        try
+        {
+            var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (!root.TryGetProperty("ok", out var ok) ||
+                (ok.ValueKind != JsonValueKind.True && ok.ValueKind != JsonValueKind.False))
+            {
+                return new VerifyPartResponse { Ok = true, Error = "Ответ модели без поля ok" };
+            }
+
+            var remark = root.TryGetProperty("remark", out var r) ? r.GetString() ?? "" : "";
+            return new VerifyPartResponse
+            {
+                Ok = ok.ValueKind == JsonValueKind.True || string.IsNullOrWhiteSpace(remark),
+                Remark = ok.ValueKind == JsonValueKind.True ? "" : remark.Trim(),
+            };
+        }
+        catch (JsonException)
+        {
+            return new VerifyPartResponse
+            {
+                Ok = true,
+                Error = $"Не удалось распарсить ответ модели: {raw[..Math.Min(200, raw.Length)]}",
+            };
+        }
+    }
+
     [HttpPost("stream")]
     public async Task AnalyzeWithStream(
     [FromBody] AnalyzeRequest request,
@@ -181,6 +264,12 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             request.Machine, request.ShiftDate);
 
         RequestShaper.Shape(request);
+        var mastering = MasteringAutoApprover.Apply(request);
+        if (mastering.RemovedSignals.Count > 0)
+            logger.LogInformation(
+                "Освоение подтверждено детерминированно ({Machine} {Date}), сняты сигналы: {Signals}",
+                request.Machine, request.ShiftDate, string.Join(" | ", mastering.RemovedSignals));
+
         var hardRules = HardRuleEvaluator.Evaluate(request);
         var promptBuild = promptBuilder.Build(request, hardRules);
 
@@ -261,6 +350,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         }
 
         var llmResult = ParseResponse(raw);
+        MergeAutoExcludes(llmResult, mastering.AutoExcludes);
+        CheckThinkingConsistency(request, thinking, llmResult);
 
         logger.LogDebug("ParseResponse: RequiresReview={R}, Error={E}, ExcludeFromReports={ExcludeCount} [{ExcludeList}]",
             llmResult.RequiresReview, llmResult.Error ?? "(нет)",
@@ -269,19 +360,16 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         var notDowngraded = SoftSignalMatcher.GetNotDowngraded(
             hardRules.SoftSignals, llmResult.DowngradedSignals);
 
-        var (filteredSignals, reset) = FalsePositiveFilter.Apply(
+        var (filteredSignals, reset, removedSignals) = FalsePositiveFilter.Apply(
             request, hardRules, notDowngraded, llmResult.Signals);
         llmResult.Signals = filteredSignals;
+        LogFilteredSignals(request, removedSignals, reset);
 
         if (reset)
         {
             llmResult.RequiresReview = false;
             llmResult.Explanation = "";
             llmResult.SuggestedReason = "";
-            logger.LogInformation(
-                "Пост-фильтр сбросил requiresReview: {Machine} {Date} — " +
-                "все сигналы LLM были галлюцинациями про б/н/б/и",
-                request.Machine, request.ShiftDate);
         }
 
         var requiresReview = reset ? false
@@ -296,7 +384,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             SuggestedReason = string.IsNullOrWhiteSpace(llmResult.SuggestedReason)
                 ? FallbackReason(hardRules, notDowngraded) : llmResult.SuggestedReason,
             ThinkingProcess = thinking,
-            SuggestExcludeFromReports = llmResult.SuggestExcludeFromReports,
+            SuggestExcludeFromReports = FilterExcludeSuggestions(llmResult.SuggestExcludeFromReports, request),
             DowngradedSignals = llmResult.DowngradedSignals,
             Error = llmResult.Error,
             PromptVersion = promptBuild.Version,
@@ -325,6 +413,84 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
         await requestLog.WriteAsync(request, result, "stream");
         await Send("result", JsonSerializer.Serialize(result, _camelCase));
+    }
+
+    /// <summary>
+    /// Добавляет авто-предложения исключения (детерминированно подтверждённое
+    /// освоение с КПД наладки &lt;100%) к предложениям модели, не дублируя строки,
+    /// которые модель предложила сама (ключ — PartName§Setup§Order).
+    /// </summary>
+    private static void MergeAutoExcludes(AnalyzeResponse llmResult, List<string> autoExcludes)
+    {
+        foreach (var entry in autoExcludes)
+        {
+            var key = RowKey(entry);
+            if (!llmResult.SuggestExcludeFromReports.Any(x => RowKey(x) == key))
+                llmResult.SuggestExcludeFromReports.Add(entry);
+        }
+    }
+
+    private static string RowKey(string excludeEntry) =>
+        string.Join('§', excludeEntry.Split('§').Take(3));
+
+    // Маркеры вывода об эскалации в самом конце рассуждения (не в середине —
+    // там модель может гипотетически рассматривать «если бы это требовало
+    // эскалации»; итог обычно в последних предложениях).
+    private static readonly string[] EscalationConclusionMarkers =
+    [
+        "требует эскалац",
+        "требуется эскалац",
+        "необходима эскалация",
+        "это требует эскалации",
+    ];
+
+    /// <summary>
+    /// Грубый детектор рассинхрона между рассуждением модели (&lt;think&gt;) и
+    /// финальным JSON: если в хвосте рассуждения модель заключает «требуется
+    /// эскалация», а requires_review в структурированном ответе всё равно false —
+    /// это НЕ баг FalsePositiveFilter (сигналов может вообще не быть, как в кейсе
+    /// 2026-06-30 Rontek HTC650M: response.signals=[] с самого начала, модель просто
+    /// не перенесла свой вывод в JSON), а самостоятельная нестабильность модели при
+    /// сжатии длинного рассуждения в короткий структурированный ответ. Только
+    /// логирование — эвристика по ключевым словам ненадёжна для авто-исправления.
+    /// </summary>
+    private void CheckThinkingConsistency(AnalyzeRequest request, string? thinking, AnalyzeResponse llmResult)
+    {
+        if (string.IsNullOrWhiteSpace(thinking) || llmResult.RequiresReview) return;
+
+        var tail = thinking[(thinking.Length * 2 / 3)..];
+        if (!EscalationConclusionMarkers.Any(m => tail.Contains(m, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        logger.LogWarning(
+            "Возможный рассинхрон рассуждения и ответа ({Machine} {Date}): " +
+            "requires_review=false в JSON, но в конце рассуждения модель писала об эскалации. " +
+            "Хвост рассуждения: {Tail}",
+            request.Machine, request.ShiftDate, tail[..Math.Min(400, tail.Length)]);
+    }
+
+    /// <summary>
+    /// Логирует КАЖДЫЙ сигнал, снятый FalsePositiveFilter, с указанием причины —
+    /// иначе постфактум невозможно отличить «фильтр верно погасил галлюцинацию»
+    /// от «фильтр по ошибке съел реальную аномалию» (см. память
+    /// ai-analysis-improvement-plan, кейс 2026-06-30 Rontek HTC650M: сигнал про
+    /// «кулачки» ошибочно попал под б/н-фильтр из-за других б/н-деталей того же дня).
+    /// </summary>
+    private void LogFilteredSignals(
+        AnalyzeRequest request, List<(string Signal, string Reason)> removed, bool reset)
+    {
+        if (removed.Count == 0) return;
+
+        foreach (var (signal, reason) in removed)
+            logger.LogInformation(
+                "Пост-фильтр снял сигнал ({Machine} {Date}): [{Reason}] {Signal}",
+                request.Machine, request.ShiftDate, reason, signal);
+
+        if (reset)
+            logger.LogInformation(
+                "Пост-фильтр сбросил requiresReview: {Machine} {Date} — " +
+                "после отсева не осталось оснований для эскалации",
+                request.Machine, request.ShiftDate);
     }
 
     private static string EnsureExplanation(
@@ -379,6 +545,38 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             return "Объяснение мастера не подтверждено";
         }
         return "Без замечаний";
+    }
+
+    /// <summary>
+    /// Не предлагаем исключать строки, которые и так не участвуют в расчёте премии:
+    /// наладка не считается при б/н или КПД=0, изготовление — при б/и, КПД=0 или
+    /// штучной партии (пороги регламента). Если у строки нет ни одной участвующей
+    /// категории, предложение исключить её бессмысленно и только отвлекает аналитика.
+    /// </summary>
+    private static List<string> FilterExcludeSuggestions(List<string> entries, AnalyzeRequest request)
+    {
+        if (entries.Count == 0) return entries;
+
+        return [.. entries.Where(e =>
+        {
+            var seg = e.Split('§');
+            if (seg.Length < 3) return true; // нераспознанный формат — не трогаем
+
+            var part = request.Parts.FirstOrDefault(p =>
+                p.PartName == seg[0]
+                && p.Setup.ToString() == seg[1]
+                && p.Order == seg[2]);
+            return part == null || AffectsReports(part);
+        })];
+    }
+
+    private static bool AffectsReports(PartContext p)
+    {
+        var setupCounts = !p.NoSetupHappened && p.SetupRatio is > 0;
+        var productionCounts = !p.NoProductionHappened
+            && p.ProductionRatio is > 0
+            && !p.IsSmallBatch;
+        return setupCounts || productionCounts;
     }
 
     /// <summary>

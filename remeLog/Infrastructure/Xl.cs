@@ -463,7 +463,7 @@ namespace remeLog.Infrastructure
         static bool IsInvalidRatio(double ratio) =>
             ratio == 0 || double.IsInfinity(ratio) || double.IsNaN(ratio);
 
-        static TimeSpan NotExcludedTime(Part part, double minPartsCount, double maxPartsCount)
+        static TimeSpan NotExcludedTime(Part part, bool includeSmallBatch)
         {
             var span = TimeSpan.Zero;
             if (!part.ExcludeFromReports)
@@ -472,7 +472,7 @@ namespace remeLog.Infrastructure
                 {
                     span = span.Add(TimeSpan.FromMinutes(part.SetupTimeFact)).Add(TimeSpan.FromMinutes(part.SetupDowntimes));
                 }
-                if (part.ProductionRatio != 0 && part.FinishedCountFact >= minPartsCount && part.FinishedCountFact < maxPartsCount)
+                if (!IsInvalidRatio(part.ProductionRatio) && (includeSmallBatch || !part.IsSmallBatch))
                 {
                     span = span.Add(TimeSpan.FromMinutes(part.ProductionTimeFact)).Add(TimeSpan.FromMinutes(part.MachiningDowntimes));
                 }

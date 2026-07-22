@@ -28,16 +28,16 @@ namespace remeLog.Infrastructure
         /// <param name="fromDate">Начальная дата</param>
         /// <param name="toDate">Конечная дата</param>
         /// <param name="path">Путь к формируемому файлу</param>
-        /// <param name="minPartsCount">Минимальное количество деталей</param>
-        /// <param name="maxPartsCount">Максимальное количество деталей</param>
+        /// <param name="includeSmallBatch">false (по умолчанию) — изготовление без штучных партий;
+        /// true — включая штучные (все записи). Штучная партия по регламенту: м/в &lt; 3 мин и ≤ 10 шт,
+        /// либо м/в ≥ 3 мин и ≤ 5 шт (Part.IsSmallBatch)</param>
         /// <param name="serialParts">Серийные детали (опционально)</param>
         /// <returns>При удачном выполнении возвращает путь к записанному файлу</returns>
         public static async Task<string> ExportOperatorReportAsync(IEnumerable<Part> parts,
                                                                     DateTime fromDate,
                                                                     DateTime toDate,
                                                                     string path,
-                                                                    int minPartsCount,
-                                                                    int maxPartsCount,
+                                                                    bool includeSmallBatch,
                                                                     HashSet<string>? serialParts = null,
                                                                     bool includeExcludedParts = false,
                                                                     IProgress<string>? progress = null)
@@ -46,8 +46,6 @@ namespace remeLog.Infrastructure
             if (parts == null) throw new ArgumentNullException(nameof(parts));
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Путь не может быть пустым", nameof(path));
             if (fromDate > toDate) throw new ArgumentException("Начальная дата не может быть позже конечной");
-            if (minPartsCount < 0) throw new ArgumentException("Минимальное количество деталей не может быть отрицательным");
-            if (maxPartsCount < minPartsCount) throw new ArgumentException("Максимальное количество не может быть меньше минимального");
 
             progress?.Report("Получения данных об операторах");
             var operatorsTask = Database.GetOperatorsAsync();
@@ -150,7 +148,7 @@ namespace remeLog.Infrastructure
                     .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
 
                 var productionRatio = groupParts
-                    .Where(p => p.FinishedCountFact >= minPartsCount && p.FinishedCountFact < maxPartsCount)
+                    .Where(p => includeSmallBatch || !p.IsSmallBatch)
                     .ProductionRatio();
                 ws.Cell(row, ci[CM.ProductionRatio])
                     .SetValue(productionRatio)
@@ -159,7 +157,7 @@ namespace remeLog.Infrastructure
                 var setupsCount = groupParts.Count(p =>
                     p.SetupRatio is not (0 or double.NaN or double.NegativeInfinity or double.PositiveInfinity));
                 var productionsCount = groupParts.Count(p =>
-                    p.ProductionRatio != 0 && p.FinishedCountFact >= minPartsCount && p.FinishedCountFact < maxPartsCount);
+                    !IsInvalidRatio(p.ProductionRatio) && (includeSmallBatch || !p.IsSmallBatch));
 
                 ws.Cell(row, ci[CM.SetupsCount]).SetValue(setupsCount);
                 ws.Cell(row, ci[CM.ProductionsCount]).SetValue(productionsCount);
@@ -225,7 +223,7 @@ namespace remeLog.Infrastructure
                     (Total: TimeSpan.Zero, Excluded: TimeSpan.Zero),
                     (acc, p) => (
                         Total: acc.Total + p.FullWorkedTime(),
-                        Excluded: acc.Excluded + NotExcludedTime(p, minPartsCount, maxPartsCount)
+                        Excluded: acc.Excluded + NotExcludedTime(p, includeSmallBatch)
                     )
                 );
 
@@ -334,10 +332,12 @@ namespace remeLog.Infrastructure
             minimumIncludedTimeRatioCell.SetValue(MinimumIncludedTimeRatio).Style.NumberFormat.SetNumberFormatId((int)XLPredefinedFormat.Number.PercentInteger);
 
             // Заголовок отчета
+            var batchScope = includeSmallBatch
+                ? "включая штучные партии"
+                : "без штучных партий (м/в < 3 мин и ≤ 10 шт или м/в ≥ 3 мин и ≤ 5 шт)";
             ws.Cell(1, 1).Value =
                 $"Отчёт по операторам за период с {fromDate:dd.MM.yyyy} по {toDate:dd.MM.yyyy} " +
-                $"(изготовление от {minPartsCount}{(maxPartsCount == int.MaxValue ? "" : $" до {maxPartsCount}")} шт." +
-                $"{(onlySerial ? " (Только серийка)" : "")})";
+                $"(изготовление: {batchScope}{(onlySerial ? "; только серийка" : "")})";
             ws.Range(1, ci[CM.Operator], 1, cm.Count).Merge();
             ws.Range(1, ci[CM.Operator], 1, 1).Style.Font.FontSize = 14;
             ws.Columns(ci[CM.SetupRatio], cm.Count).Width = 7;

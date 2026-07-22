@@ -49,6 +49,15 @@ public class PartContext
     // Детерминированные сигналы от remeLog
     public List<string> Signals { get; set; } = [];
     public PartsHistoryDto? PartsHistory { get; set; }
+
+    /// <summary>
+    /// Штучная партия по регламенту «Требования к заполнению и контролю»:
+    /// м/в &lt; 3 мин и изготовлено ≤ 10 деталей, либо м/в ≥ 3 мин и ≤ 5 деталей.
+    /// Штучные партии не участвуют в отчётах, данные на малой партии не показательны.
+    /// </summary>
+    public bool IsSmallBatch =>
+        (MachiningTime < 3 && FinishedCount <= 10)
+        || (MachiningTime >= 3 && FinishedCount <= 5);
 }
 
 public class PartsHistoryDto

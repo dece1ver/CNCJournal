@@ -1063,12 +1063,16 @@ namespace eLog.ViewModels
                             var edt = dt.EndTime == DateTime.MinValue ? DateTime.Now : dt.EndTime;
                             tempDowntimes.Add(new DownTime(Parts[0], dt) { EndTimeText = edt.ToString(Constants.DateTimeFormat) });
                         }
+                        // Формула зеркалит remeLog SetupTimeFact: стена − перерывы (GetBreaksBetween)
+                        // − простои наладки. Простой «частичная наладка» в этот момент существовать
+                        // не может (он создаётся только при закрытии наладки как частичной),
+                        // поэтому фильтр по Relation Setup покрывает всё.
                         var totalDowntime = tempDowntimes
-                        .Where(dt => dt.Type is not DownTime.Types.PartialSetup)
+                        .Where(dt => dt.Relation is DownTime.Relations.Setup)
                         .Aggregate(TimeSpan.Zero, (sum, dt) => sum.Add(dt.Time));
 
                         var setupTimeWithoutDowntime = DateTime.Now - Parts[0].StartSetupTime - totalDowntime;
-                        var breaks = TimeSpan.FromMinutes(DateTimes.GetPartialBreakBetween(Parts[0].StartSetupTime, DateTime.Now));
+                        var breaks = DateTimes.GetBreaksBetween(Parts[0].StartSetupTime, DateTime.Now);
                         var factSetupTime = setupTimeWithoutDowntime - breaks;
                         if (factSetupTime > TimeSpan.FromMinutes(limit))
                         {

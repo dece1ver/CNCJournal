@@ -299,6 +299,11 @@ namespace remeLog.Infrastructure
         public const string MasterComment = "masterComment";
 
         /// <summary>
+        /// Текст ошибок валидации записи (Part.this[columnName])
+        /// </summary>
+        public const string ValidationErrors = "validationErrors";
+
+        /// <summary>
         /// Норматив наладки (И)
         /// </summary>
         public const string FixedSetupTimePlan = "fixedSetupTimePlan";
@@ -754,6 +759,7 @@ namespace remeLog.Infrastructure
             { MasterSetupComment, $"Отклонения в{Environment.NewLine}наладке" },
             { ProductionRatioTitle, "Изготовление" },
             { MasterProductionComment, $"Отклонения в{Environment.NewLine}изготовлении" },
+            { ValidationErrors, $"Не заполнено{Environment.NewLine}(требует мастера)" },
             { MasterComment, "Комментарий мастера" },
             { FixedSetupTimePlan, "Норматив наладки (И)" },
             { FixedProductionTimePlan, "Норматив изготовления (И)" },

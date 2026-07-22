@@ -1,6 +1,7 @@
 ﻿using libeLog.Base;
 using libeLog.Extensions;
 using remeLog.Infrastructure;
+using remeLog.Infrastructure.Types;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -1213,12 +1214,31 @@ namespace remeLog.Models
             set => Set(ref _IsFlagged, value);
         }
 
+        private AiCheckStatus _AiCheckStatus;
+        /// <summary>
+        /// Статус фоновой ИИ-проверки комментариев мастера (фича AiMasterCheck).
+        /// Только в памяти, не сохраняется и НЕ трогает NeedUpdate — вердикт
+        /// совещательный и эфемерный, строка от него не становится «изменённой».
+        /// </summary>
+        public AiCheckStatus AiCheckStatus
+        {
+            get => _AiCheckStatus;
+            set => Set(ref _AiCheckStatus, value);
+        }
 
-        public double SingleProductionTime { get 
-            {
-                var partsCount = StartSetupTime != StartMachiningTime && FinishedCount > 1 ? FinishedCount - 1 : FinishedCount;
-                return ProductionTimeFact / partsCount;
-            } }
+        private string _AiCheckRemark = string.Empty;
+        /// <summary>
+        /// Текст замечания ИИ-проверки (или подсказка о недоступности проверки).
+        /// Только в памяти, не сохраняется, NeedUpdate не трогает.
+        /// </summary>
+        public string AiCheckRemark
+        {
+            get => _AiCheckRemark;
+            set => Set(ref _AiCheckRemark, value);
+        }
+
+
+        public double SingleProductionTime => FinishedCountFact > 0 ? ProductionTimeFact / FinishedCountFact : 0;
 
         //public double SetupRatio => PartialSetupTime == 0 
         //    ? SetupTimePlanForCalc / SetupTimeFact 
@@ -1234,14 +1254,16 @@ namespace remeLog.Models
             : SetupRatio > AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue) 
                 ? $"{SetupRatio:0%}\n({AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue):0%})" 
                 : $"{SetupRatio:0%}";
-        public double ProductionRatio => FinishedCountFact * ProductionTimePlanForCalc / ProductionTimeFact;
+        // Единственная деталь партии при наличии наладки (полноценной или частичной
+        // завершающей) считается выполненной в наладке: изготовления не было → б/и,
+        // а не КПД 0%.
+        public double ProductionRatio => FinishedCount > 0 && FinishedCountFact == 0
+            ? double.NaN
+            : FinishedCountFact * ProductionTimePlanForCalc / ProductionTimeFact;
         public string ProductionRatioTitle => ProductionRatio is double.NaN or double.PositiveInfinity or double.NegativeInfinity ? "б/и" : $"{ProductionRatio:0%}";
         public double SpecifiedDowntimesRatio => (SetupDowntimes + MachiningDowntimes) / (EndMachiningTime - StartSetupTime).TotalMinutes;
         public double PartReplacementTime => SingleProductionTime == 0 ? 0 : SingleProductionTime - MachiningTime.TotalMinutes;
-        public double PlanForBatch { get {
-                var partsCount = StartSetupTime != StartMachiningTime && FinishedCount > 1 ? FinishedCount - 1 : FinishedCount;
-                return partsCount * ProductionTimePlanForCalc;
-            } }
+        public double PlanForBatch => FinishedCountFact * ProductionTimePlanForCalc;
         private DateTime FixedDate(DateTime dateTime)
         {
             var year = ShiftDate.Year;
@@ -1269,11 +1291,24 @@ namespace remeLog.Models
                    requiresComment;
         }
 
-        private static bool IsSmallBatch(double machiningTimePerPiece, double finishedCount)
-        {
-            return (machiningTimePerPiece < 3 && finishedCount <= 10)
-                || (machiningTimePerPiece >= 3 && finishedCount <= 5);
-        }
+        /// <summary>
+        /// Штучная партия по регламенту «Требования к заполнению и контролю»:
+        /// м/в &lt; 3 мин и изготовлено ≤ 10 деталей, либо м/в ≥ 3 мин и ≤ 5 деталей.
+        /// Считается по FinishedCountFact (изготовлено с учётом наладки) — тому же
+        /// значению, что идёт в КПД и отчёты. Штучные партии не участвуют в отчётах
+        /// по изготовлению.
+        /// </summary>
+        public bool IsSmallBatch =>
+            (MachiningTime.TotalMinutes < 3 && FinishedCountFact <= 10)
+            || (MachiningTime.TotalMinutes >= 3 && FinishedCountFact <= 5);
+
+        /// <summary>
+        /// Есть реальный заказ (не «Без М/Л» и не пустой). Норматив привязан к
+        /// заказу/техпроцессу, а не к тому, была ли выполнена работа в эту смену —
+        /// используется, чтобы требовать объяснение отсутствующего норматива
+        /// независимо от б/н/б/и/частичной наладки (2026-07-21).
+        /// </summary>
+        private bool HasOrder => !string.IsNullOrWhiteSpace(Order) && !Order.EqualsOrdinalIgnoreCase("Без М/Л");
 
         public string Error
         {
@@ -1293,28 +1328,99 @@ namespace remeLog.Models
             }
         }
 
+        // Причины, при которых модель обязана свериться с историей детали
+        // (зеркало HistorySensitiveReasons в AiService PromptBuilder).
+        private static readonly string[] AiHistorySensitiveReasons =
+        {
+            "Освоение",
+            "Некорректные нормативы",
+            "Отсутствие нормативов",
+        };
+
+        /// <summary>
+        /// Причина из справочника комбобокса самодостаточна по регламенту — модели
+        /// проверять нечего: конкретика, если нужна (RequireComment), проверяется
+        /// отдельной аномалией по MasterComment, а некорректные комбинации
+        /// («Изготовление типовой детали» при низком КПД и т.п.) режет валидация.
+        /// Исключение — history-sensitive причины: их модель сверяет с историей.
+        /// </summary>
+        private static bool IsSelfSufficientReason(string? comment, Dictionary<string, bool> reasonsDict) =>
+            !string.IsNullOrWhiteSpace(comment)
+            && reasonsDict.ContainsKey(comment)
+            && !AiHistorySensitiveReasons.Contains(comment.Trim(), StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Аномалии строки, требующие комментария мастера — для фоновой ИИ-проверки
+        /// релевантности (фича AiMasterCheck). Условия зеркалят this[columnName],
+        /// но БЕЗ клаузы «комментарий пуст»: пустые ловит валидация, ИИ проверяет
+        /// смысл уже заполненного. Field — имя поля комментария, Description —
+        /// текст аномалии с числами (уходит в промпт).
+        /// </summary>
+        public List<(string Field, string Description)> GetAiCheckAnomalies()
+        {
+            var result = new List<(string, string)>();
+
+            if (!IsSelfSufficientReason(MasterSetupComment, SetupReasonsRequireComment))
+            {
+                if (SetupTimePlanForCalc <= 0 && HasOrder)
+                    result.Add((nameof(MasterSetupComment), "Отсутствует норматив наладки при реальном заказе"));
+                if ((SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0)
+                    result.Add((nameof(MasterSetupComment), $"КПД наладки {SetupRatio:0%} вне нормы (70–{AppSettings.MaxSetupLimit:0%})"));
+                if (PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695)
+                    result.Add((nameof(MasterSetupComment), $"Частичная наладка {PartialSetupTime:0} мин превышает норматив {SetupTimePlanForCalc:0} мин"));
+            }
+
+            if (!IsSelfSufficientReason(MasterMachiningComment, MachiningReasonsRequireComment))
+            {
+                if (ProductionTimePlanForCalc <= 0 && HasOrder)
+                    result.Add((nameof(MasterMachiningComment), "Отсутствует норматив изготовления при реальном заказе"));
+                if (ProductionRatio is < 0.695 or > 1.2)
+                    result.Add((nameof(MasterMachiningComment), $"КПД изготовления {ProductionRatio:0%} вне нормы (70–120%)"));
+            }
+
+            if (RequiresComment(MasterSetupComment, SetupReasonsRequireComment))
+                result.Add((nameof(MasterComment), $"Причина наладки «{MasterSetupComment}» требует уточнения в комментарии"));
+            if (RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment))
+                result.Add((nameof(MasterComment), $"Причина изготовления «{MasterMachiningComment}» требует уточнения в комментарии"));
+
+            if (SpecifiedDowntimesRatio > 0.5)
+                result.Add((nameof(SpecifiedDowntimesComment), $"Простои {SpecifiedDowntimesRatio:0%} — более 50% времени работы"));
+
+            return result;
+        }
+
+        /// <summary>
+        /// Строка готова к ИИ-проверке: есть аномалии и все требуемые комментарии
+        /// заполнены (Error непуст ровно тогда, когда какой-то из них пуст или
+        /// причина выбрана некорректно — такие случаи закрывает валидация).
+        /// </summary>
+        public bool IsReadyForAiCheck => string.IsNullOrWhiteSpace(Error) && GetAiCheckAnomalies().Count > 0;
+
         public string this[string columnName]
         {
             get
             {
                 return columnName switch
                 {
-                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && SetupRatio == 0 && SetupTimeFact > 0 => "Необходимо указать причину отсутствия норматива наладки.",
+                    // Норматив=0 при реальном заказе требует объяснения ВСЕГДА, независимо от того,
+                    // была ли выполнена работа в эту смену (б/н/б/и/частичная наладка) — норматив
+                    // привязан к заказу/техпроцессу, а не к факту работы (см. HasOrder).
+                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && SetupTimePlanForCalc <= 0 && HasOrder => "Необходимо указать причину отсутствия норматива наладки.",
                     nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0 => "Необходимо указать причину невыполнения норматива наладки.",
                     nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695 => "Необходимо указать причину превышения частичной наладки.",
-                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio == 0 => "Необходимо указать причину отсутствия норматива изготовления.",
+                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionTimePlanForCalc <= 0 && HasOrder => "Необходимо указать причину отсутствия норматива изготовления.",
                     nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2 => "Необходимо указать причину невыполнения норматива изготовления.",
                     nameof(MasterSetupComment) when
                         !string.IsNullOrWhiteSpace(MasterSetupComment)
                         && MasterSetupComment == "Изготовление типовой детали"
-                        && SetupTimeFact > 0
-                        && SetupRatio < 0.695
-                        => "«Изготовление типовой детали» не объясняет низкий показатель наладки",
+                        && ((SetupTimeFact > 0 && SetupRatio < 0.695)
+                            || (PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695))
+                        => "«Изготовление типовой детали» объясняет только превышение норматива наладки (>200%) — не низкий показатель и не превышение частичной наладки",
                     nameof(MasterMachiningComment) when
                         !string.IsNullOrWhiteSpace(MasterMachiningComment)
                         && MasterMachiningComment == "Штучная/длительная работа"
                         && FinishedCount > 0
-                        && !IsSmallBatch(MachiningTime.TotalMinutes, FinishedCount)
+                        && !IsSmallBatch
                         => "Причина «Штучная/длительная работа» применима только при малой партии: м/в < 3 мин и изготовлено ≤ 10 деталей или м/в ≥ 3 мин и изготовлено ≤ 5 деталей",
                     nameof(MasterComment) when string.IsNullOrWhiteSpace(MasterComment) &&
                                         (RequiresComment(MasterSetupComment, SetupReasonsRequireComment) ||

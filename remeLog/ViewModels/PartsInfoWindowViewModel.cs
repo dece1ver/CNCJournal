@@ -43,6 +43,15 @@ namespace remeLog.ViewModels
         private static readonly AiServiceClient _aiClient = new();
         private static bool lockUpdate;
 
+        // Фоновая ИИ-проверка комментариев мастера (фича AiMasterCheck): дебаунс и
+        // версия последнего редактирования на строку. Версия отбрасывает устаревшие
+        // результаты, если строку переправили, пока запрос был в полёте.
+        private readonly Dictionary<Part, CancellationTokenSource> _aiCheckDebounce = new();
+        private readonly Dictionary<Part, int> _aiCheckVersion = new();
+        // Клиентская сериализация проверок: сервер и так обрабатывает по одному
+        // (семафор Ollama), но очередь на клиенте дешевле оборванных http-запросов.
+        private static readonly SemaphoreSlim _aiCheckGate = new(1, 1);
+
         public PartsInfoWindowViewModel(CombinedParts parts)
         {
             lockUpdate = true;
@@ -81,6 +90,7 @@ namespace remeLog.ViewModels
             ExportShiftsInfoReportCommand = new LambdaCommand(OnExportShiftsInfoReportCommandExecuted, CanExportShiftsInfoReportCommandExecute);
             ExportToExcelCommand = new LambdaCommand(OnExportToExcelCommandExecuted, CanExportToExcelCommandExecute);
             ExportToolSearchCasesToExcelCommand = new LambdaCommand(OnExportToolSearchCasesToExcelCommandExecuted, CanExportToolSearchCasesToExcelCommandExecute);
+            ExportValidationErrorsCommand = new LambdaCommand(OnExportValidationErrorsCommandExecuted, CanExportValidationErrorsCommandExecute);
             ExportVerevkinReportCommand = new LambdaCommand(OnExportVerevkinReportCommandExecuted, CanExportVerevkinReportCommandExecute);
             HideAllMachinesCommand = new LambdaCommand(OnHideAllMachinesCommandExecuted, CanHideAllMachinesCommandExecute);
             IncreaseDateCommand = new LambdaCommand(OnIncreaseDateCommandExecuted, CanIncreaseDateCommandExecute);
@@ -103,6 +113,7 @@ namespace remeLog.ViewModels
             SetVerMillMachinesCommand = new LambdaCommand(OnSetVerMillMachinesCommandExecuted, CanSetVerMillMachinesCommandExecute);
             SetYearDateCommand = new LambdaCommand(OnSetYearDateCommandExecuted, CanSetYearDateCommandExecute);
             SetYesterdayDateCommand = new LambdaCommand(OnSetYesterdayDateCommandExecuted, CanSetYesterdayDateCommandExecute);
+            SetSpecificDateCommand = new LambdaCommand(OnSetSpecificDateCommandExecuted, CanSetSpecificDateCommandExecute);
             SetSpecificMonthCommand = new LambdaCommand(OnSetSpecificMonthCommandExecuted, CanSetSpecificMonthCommandExecute);
             SetSpecificYearCommand = new LambdaCommand(OnSetSpecificYearCommandExecuted, CanSetSpecificYearCommandExecute);
             ShowAllMachinesCommand = new LambdaCommand(OnShowAllMachinesCommandExecuted, CanShowAllMachinesCommandExecute);
@@ -177,7 +188,16 @@ namespace remeLog.ViewModels
 
             if (e.OldItems != null)
                 foreach (Part item in e.OldItems)
+                {
                     item.PropertyChanged -= Part_PropertyChanged!;
+                    if (_aiCheckDebounce.TryGetValue(item, out var cts))
+                    {
+                        cts.Cancel();
+                        cts.Dispose();
+                        _aiCheckDebounce.Remove(item);
+                    }
+                    _aiCheckVersion.Remove(item);
+                }
         }
 
         async Task Init()
@@ -201,6 +221,113 @@ namespace remeLog.ViewModels
         private void Part_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
             UpdateHasErrors();
+            if (sender is Part part && IsAiCheckTrigger(e.PropertyName))
+                ScheduleAiCheck(part);
+        }
+
+        // Кросс-рейзы этих имён от сеттеров времён/нормативов тоже триггерят проверку —
+        // это желаемо (изменение времени меняет КПД и состав аномалий); per-keystroke
+        // события от TextBox (UpdateSourceTrigger=PropertyChanged) гасит дебаунс.
+        private static bool IsAiCheckTrigger(string? propertyName) =>
+            propertyName == nameof(Part.MasterSetupComment)
+            || propertyName == nameof(Part.MasterMachiningComment)
+            || propertyName == nameof(Part.MasterComment)
+            || propertyName == nameof(Part.SpecifiedDowntimesComment);
+
+        /// <summary>
+        /// Планирует фоновую ИИ-проверку строки с дебаунсом 2.5с. Совещательный контур:
+        /// ничего не блокирует, статус живёт только в памяти (Part.AiCheckStatus).
+        /// </summary>
+        private void ScheduleAiCheck(Part part)
+        {
+            if (!HasFeatureAiMasterCheck || lockUpdate || InProgress) return;
+
+            int version = (_aiCheckVersion.TryGetValue(part, out var v) ? v : 0) + 1;
+            _aiCheckVersion[part] = version;
+
+            if (_aiCheckDebounce.TryGetValue(part, out var oldCts))
+            {
+                oldCts.Cancel();
+                oldCts.Dispose();
+            }
+            var cts = new CancellationTokenSource();
+            _aiCheckDebounce[part] = cts;
+
+            if (!part.IsReadyForAiCheck)
+            {
+                // Аномалия ушла или требуемый комментарий опустел — детерминированная
+                // валидация берёт своё, ИИ-статус сбрасываем.
+                part.AiCheckStatus = AiCheckStatus.None;
+                part.AiCheckRemark = string.Empty;
+                return;
+            }
+
+            part.AiCheckStatus = AiCheckStatus.Pending;
+            var token = cts.Token;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(2500, token);
+                    await RunAiCheckAsync(part, version, token);
+                }
+                catch (OperationCanceledException) { /* строку переправили или окно закрыто */ }
+            }, token);
+        }
+
+        private async Task RunAiCheckAsync(Part part, int version, CancellationToken token)
+        {
+            await _aiCheckGate.WaitAsync(token);
+            try
+            {
+                if (!_aiCheckVersion.TryGetValue(part, out var current) || current != version) return;
+                if (!part.IsReadyForAiCheck) return;
+
+                var machine = part.Machine;
+                var shiftDate = part.ShiftDate;
+                var result = await _aiClient.VerifyPartAsync(machine, shiftDate, part, token);
+
+                if (!_aiCheckVersion.TryGetValue(part, out current) || current != version) return;
+
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    if (result.HasError)
+                    {
+                        part.AiCheckStatus = AiCheckStatus.Error;
+                        part.AiCheckRemark = $"ИИ-проверка недоступна: {result.Error}";
+                    }
+                    else if (result.Ok)
+                    {
+                        part.AiCheckStatus = AiCheckStatus.Ok;
+                        part.AiCheckRemark = string.Empty;
+                    }
+                    else
+                    {
+                        part.AiCheckStatus = AiCheckStatus.Remark;
+                        part.AiCheckRemark = result.Remark;
+                    }
+                });
+            }
+            finally
+            {
+                _aiCheckGate.Release();
+            }
+        }
+
+        /// <summary>
+        /// Отменяет все запланированные/выполняющиеся ИИ-проверки и чистит словари
+        /// (иначе утекают ссылки на старые Part после перезагрузки коллекции).
+        /// Статусы строк не трогаем — коллекция либо пересоздаётся, либо окно закрывается.
+        /// </summary>
+        public void CancelAllAiChecks()
+        {
+            foreach (var cts in _aiCheckDebounce.Values)
+            {
+                cts.Cancel();
+                cts.Dispose();
+            }
+            _aiCheckDebounce.Clear();
+            _aiCheckVersion.Clear();
         }
 
         private void MachineFiltersSource_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
@@ -227,11 +354,12 @@ namespace remeLog.ViewModels
         public bool HasErrors
         {
             get => _HasErrors;
-            set 
+            set
             {
                 if (Set(ref _HasErrors, value))
                 {
                     OnPropertyChanged(nameof(HasErrors));
+                    OnPropertyChanged(nameof(CanOpenDailyReportButton));
                 }
             }
         }
@@ -472,13 +600,27 @@ namespace remeLog.ViewModels
             get => _Parts;
             set
             {
+                if (_Parts != null)
+                {
+                    _Parts.CollectionChanged -= _Parts_CollectionChanged!;
+                    foreach (var part in _Parts) part.PropertyChanged -= Part_PropertyChanged!;
+                }
+
                 Set(ref _Parts, value);
+
+                if (_Parts != null)
+                {
+                    _Parts.CollectionChanged += _Parts_CollectionChanged!;
+                    foreach (var part in _Parts) part.PropertyChanged += Part_PropertyChanged!;
+                }
+
                 OnPropertyChanged(nameof(SetupTimeRatio));
                 OnPropertyChanged(nameof(AverageSetupRatio));
                 OnPropertyChanged(nameof(ProductionTimeRatio));
                 OnPropertyChanged(nameof(AverageProductionRatio));
                 OnPropertyChanged(nameof(SpecifiedDowntimesRatio));
                 OnPropertyChanged(nameof(UnspecifiedDowntimesRatio));
+                UpdateHasErrors();
             }
         }
 
@@ -736,6 +878,15 @@ namespace remeLog.ViewModels
 
         public bool HasFeatureAi => Util.HasFeature(RemeLogFeature.Ai);
         public bool HasFeatureAdvancedEdit => Util.HasFeature(RemeLogFeature.AdvancedEdit);
+        public bool HasFeatureValidationOverride => Util.HasFeature(RemeLogFeature.ValidationOverride);
+        public bool HasFeatureAiMasterCheck => Util.HasFeature(RemeLogFeature.AiMasterCheck);
+
+        /// <summary>
+        /// Кнопка суточного отчёта: доступна, если ошибок нет, либо есть фича
+        /// ValidationOverride (тогда при ошибках вместо блока покажется диалог
+        /// с подтверждением — см. OnOpenDailyReportWindowCommandExecuted).
+        /// </summary>
+        public bool CanOpenDailyReportButton => !HasErrors || HasFeatureValidationOverride;
         public bool IsAiAvailable => AiHealthMonitor.Instance.IsAiAvailable;
         public bool IsServerAvailable => AiHealthMonitor.Instance.IsServerAvailable;
         public bool IsOllamaAvailable => AiHealthMonitor.Instance.IsOllamaAvailable;
@@ -976,6 +1127,20 @@ namespace remeLog.ViewModels
             UnlockUpdate();
         }
         private bool CanSetYesterdayDateCommandExecute(object p) => true;
+        #endregion
+
+        #region SetSpecificDateCommand
+        public ICommand SetSpecificDateCommand { get; }
+        /// <summary> Устанавливает выбранную в пикере дату сразу в оба календаря (От и До). </summary>
+        private void OnSetSpecificDateCommandExecuted(object p)
+        {
+            if (p is not DateTime date) return;
+            LockUpdate();
+            FromDate = date.Date;
+            ToDate = date.Date;
+            UnlockUpdate();
+        }
+        private bool CanSetSpecificDateCommandExecute(object p) => true;
         #endregion
 
         #region SetWeekDateCommand
@@ -1380,7 +1545,7 @@ namespace remeLog.ViewModels
                         var serialParts = dx.OnlySerialParts ? (await libeLog.Infrastructure.Database.GetSerialPartsAsync(AppSettings.Instance.ConnectionString!)).PartNamesHashSet(EnumerableExtensions.PartNameNormalizeOption.NormalizeAndRemoveParentheses) : null;
                         var includeExcludedParts = dx.IncludeExcludedlParts;
                         InProgress = true;
-                        Status = await Xl.ExportOperatorReportAsync(Parts, FromDate, ToDate, path, dx.Type.ToLowerInvariant() == "до" ? 1 : dx.Count, dx.Type.ToLowerInvariant() == "до" ? dx.Count : int.MaxValue, serialParts, includeExcludedParts);
+                        Status = await Xl.ExportOperatorReportAsync(Parts, FromDate, ToDate, path, dx.IncludeSmallBatch, serialParts, includeExcludedParts);
                     }
                 }
             }
@@ -1558,6 +1723,40 @@ namespace remeLog.ViewModels
             finally { InProgress = false; }
         }
         private static bool CanExportLongSetupsCommandExecute(object p) => true;
+        #endregion
+
+        #region ExportValidationErrors
+        public ICommand ExportValidationErrorsCommand { get; }
+        private async void OnExportValidationErrorsCommandExecuted(object p)
+        {
+            try
+            {
+                if (!Xl.HasValidationErrors(Parts))
+                {
+                    MessageBoxWindow.Show("За выбранный период записей без объяснения мастера не найдено.",
+                        "Ошибок валидации нет", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                var path = Util.GetXlsxPath();
+                if (string.IsNullOrEmpty(path))
+                {
+                    Status = "Выбор файла отменён";
+                    return;
+                }
+                await Task.Run(() =>
+                {
+                    InProgress = true;
+                    Status = Xl.ExportValidationErrors(Parts, path);
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBoxWindow.Show(ex.Message);
+            }
+            finally { InProgress = false; }
+        }
+        private static bool CanExportValidationErrorsCommandExecute(object p) => true;
         #endregion
 
         #region ExportHistoryToExcel
@@ -2253,9 +2452,43 @@ namespace remeLog.ViewModels
             }
             if (HasErrors)
             {
-                MessageBoxWindow.Show("Не всё заполнено корректно.", "Предупреждение.",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
+                if (!Util.HasFeature(RemeLogFeature.ValidationOverride))
+                {
+                    MessageBoxWindow.Show("Не всё заполнено корректно.", "Предупреждение.",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var errorCount = Parts.Count(x => !string.IsNullOrEmpty(x.Error));
+                var choice = MessageBoxWindow.Show(
+                    $"Найдены записи без объяснения мастера.\n\n" +
+                    "Всё равно открыть отчёт?",
+                    "Не всё заполнено корректно",
+                    MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+                if (choice != MessageBoxResult.Yes) return;
+            }
+
+            // Совещательная сводка ИИ-замечаний (фича AiMasterCheck): в отличие от
+            // валидации выше, НЕ блокирует — жёсткие ограничения остаются за
+            // детерминированными проверками.
+            if (HasFeatureAiMasterCheck)
+            {
+                var remarkParts = Parts.Where(x => x.AiCheckStatus == AiCheckStatus.Remark).ToList();
+                if (remarkParts.Count > 0)
+                {
+                    var pendingCount = Parts.Count(x => x.AiCheckStatus == AiCheckStatus.Pending);
+                    var preview = string.Join("\n", remarkParts.Take(5)
+                        .Select(x => $"• {x.PartName} (уст. {x.Setup}): {x.AiCheckRemark}"));
+                    var aiChoice = MessageBoxWindow.Show(
+                        $"ИИ-проверка нашла замечания к комментариям мастера ({remarkParts.Count} шт.)" +
+                        (pendingCount > 0 ? $", ещё {pendingCount} проверяются" : "") +
+                        ":\n\n" + preview +
+                        "\n\nЗамечания совещательные. Всё равно открыть отчёт?",
+                        "Замечания ИИ-проверки",
+                        MessageBoxButton.YesNo, MessageBoxImage.Information);
+                    if (aiChoice != MessageBoxResult.Yes) return;
+                }
             }
 
             using (Overlay = new())
@@ -2500,11 +2733,23 @@ namespace remeLog.ViewModels
 
                 if (CurrentDayReview != null && !result.HasError)
                 {
-                    await Database.SaveAiAnalysisAsync(
+                    var saveResult = await Database.SaveAiAnalysisAsync(
                         CurrentDayReview.Id, result, AppSettings.AiModel, AiThinkingEnabled);
-                    var refreshed = await Database.GetDayReviewAsync(machine, FromDate.Date);
-                    if (refreshed != null)
-                        CurrentDayReview = refreshed;
+                    if (saveResult.IsOk)
+                    {
+                        var refreshed = await Database.GetDayReviewAsync(machine, FromDate.Date);
+                        if (refreshed != null)
+                            CurrentDayReview = refreshed;
+                    }
+                    else
+                    {
+                        // Не бросаем диалог — сам анализ прошёл успешно (AiResult уже показан),
+                        // но CurrentDayReview.AiAnalyzedAt останется от предыдущего прогона, если
+                        // не сообщить об этом явно (симптом «дата анализа не обновляется»).
+                        Status = $"ИИ подумал, но результат не сохранён в БД: {saveResult.Error}";
+                        ProcessExcludeFromReportsSuggestions(result);
+                        return;
+                    }
                 }
                 Status = "ИИ подумал";
                 ProcessExcludeFromReportsSuggestions(result);
@@ -2607,6 +2852,9 @@ namespace remeLog.ViewModels
         private async Task<bool> LoadPartsAsync(bool first = false)
         {
             if (lockUpdate) return false;
+            // Перезагрузка пересоздаёт коллекцию — эфемерные ИИ-статусы строк пропадают
+            // by design (вердикт совещательный и нигде не сохраняется).
+            CancelAllAiChecks();
             _cancellationTokenSource.Cancel();
             _cancellationTokenSource = new();
             var cancellationToken = _cancellationTokenSource.Token;

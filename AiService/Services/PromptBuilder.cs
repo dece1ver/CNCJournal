@@ -12,6 +12,7 @@ public class PromptBuilder
     private const string PromptsSubfolder = "prompts";
     private const string DefaultSystemPromptFile = "system_prompt.txt";
     private const string SoftSignalPromptFile = "soft_signal_explanation.txt";
+    private const string MasterCheckPromptFile = "master_check.txt";
 
     private static readonly string AssemblyLocation = Assembly.GetExecutingAssembly().Location;
     private static readonly string? AssemblyDir = Path.GetDirectoryName(AssemblyLocation);
@@ -39,6 +40,7 @@ public class PromptBuilder
         if (!defaultExists)
             throw new FileNotFoundException($"Не найден базовый промпт '{DefaultSystemPromptFile}' (ни внешний файл, ни embedded resource).");
         GetPrompt(SoftSignalPromptFile, allowEmbeddedFallback: true);
+        GetPrompt(MasterCheckPromptFile, allowEmbeddedFallback: true);
     }
 
     /// <summary>
@@ -218,90 +220,7 @@ public class PromptBuilder
         sb.AppendLine();
 
         foreach (var p in req.Parts)
-        {
-            var setupR = p.SetupRatio.HasValue ? $"{p.SetupRatio.Value:0%}" : "б/н";
-            var prodR = p.ProductionRatio.HasValue ? $"{p.ProductionRatio.Value:0%}" : "б/и";
-            var dtR = p.DowntimeRatio.HasValue ? $"{p.DowntimeRatio.Value:0%}" : "—";
-
-            sb.Append($"▸ Деталь: «{p.PartName}» | М/Л: «{p.Order}» | Уст. №{p.Setup}");
-            if (p.NoSetupHappened) sb.Append(" [наладки не было]");
-            if (p.NoProductionHappened) sb.Append(" [изготовления не было]");
-            sb.AppendLine();
-
-            sb.AppendLine($"Наладка: план={p.SetupTimePlan:0}мин, факт={p.SetupTimeFact:0}мин, КПД={setupR}" +
-                          (p.PartialSetup > 0 ? $", частичная={p.PartialSetup:0}мин" : ""));
-            sb.AppendLine($"Изготовление: норматив={p.SingleProductionTimePlan:0.#}мин/дет, " +
-                          $"выполнено={p.FinishedCount:0}шт, КПД={prodR}");
-
-            if (p.MachiningTime > 0 || p.SingleProductionTimePlan > 0)
-                sb.AppendLine($"Машинное время/дет: {p.MachiningTime:0.#}мин | Простои: {dtR}");
-
-            var comments = new List<string>();
-            static string Safe(string s) => s.Trim().Replace("\r", "").Replace("\n", " / ");
-            if (!string.IsNullOrWhiteSpace(p.OperatorComment)) comments.Add($"оператор: «{Safe(p.OperatorComment)}»");
-            if (p.NoManualOperatorComment && p.DowntimeRatio > 0.15) comments.Add("(оператор не написал ручного комментария)");
-            if (!string.IsNullOrWhiteSpace(p.MasterSetupComment)) comments.Add($"причина наладки: «{Safe(p.MasterSetupComment)}»");
-            if (!string.IsNullOrWhiteSpace(p.MasterMachiningComment)) comments.Add($"причина изгот.: «{Safe(p.MasterMachiningComment)}»");
-            if (!string.IsNullOrWhiteSpace(p.MasterComment)) comments.Add($"мастер: «{Safe(p.MasterComment)}»");
-            if (comments.Count > 0)
-                sb.AppendLine($"  Комментарии: {string.Join("; ", comments)}");
-
-            if (!string.IsNullOrWhiteSpace(p.SpecifiedDowntimesList))
-                sb.AppendLine($"  {p.SpecifiedDowntimesList.Trim()}");
-            if (!string.IsNullOrWhiteSpace(p.SpecifiedDowntimesComment))
-                sb.AppendLine($"  Комментарий к простоям (мастер): «{p.SpecifiedDowntimesComment.Trim()}»");
-
-            if (!string.IsNullOrWhiteSpace(p.SpecifiedDowntimesList) ||
-                !string.IsNullOrWhiteSpace(p.SpecifiedDowntimesComment))
-                sb.AppendLine();
-
-            if (p.Signals is { Count: > 0 })
-            {
-                sb.AppendLine("  Сигналы системы (числовые факты):");
-                foreach (var sig in p.Signals)
-                    sb.AppendLine($"    ⚠ {sig}");
-            }
-            if (p.PartsHistory is { RecordsFound: > 0 } ph && HistoryIsRelevant(p))
-            {
-                sb.AppendLine($"  История этой детали ({ph.RecordsFound} прошлых смен, от новых к старым):");
-                foreach (var line in ph.Lines)
-                {
-                    var flag = line.HasUnexplainedLowEfficiency ? " ⚠низкий КПД" : "";
-
-                    var decision = line.AnalystDecision switch
-                    {
-                        "escalated" => "эскалация",
-                        "ok" => "ок",
-                        _ => "не проверено",
-                    };
-
-                    sb.Append($"    {line.ShiftDate}");
-                    sb.Append($" | КПД изгот.={line.ProductionRatio}");
-                    sb.Append($" | КПД нал.={line.SetupRatio}");
-                    sb.Append($" | изгот.={line.FinishedCount}шт");
-                    sb.Append($" | аналитик: {decision}{flag}");
-
-                    if (!string.IsNullOrWhiteSpace(line.AnalystComment))
-                        sb.Append($" — «{line.AnalystComment}»");
-
-                    sb.AppendLine();
-
-                    if (!string.IsNullOrWhiteSpace(line.AiExplanation)
-                        && line.AnalystDecision == "escalated")
-                    {
-                        sb.AppendLine($"      AI тогда: {line.AiExplanation}");
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(line.AiFeedback)
-                        && line.AnalystDecision == "escalated")
-                    {
-                        sb.AppendLine($"      Коррекция аналитика: {line.AiFeedback}");
-                    }
-                }
-            }
-
-            sb.AppendLine();
-        }
+            AppendPartBlock(sb, p);
 
         sb.AppendLine();
         sb.AppendLine("════════════════════════════════════════");
@@ -337,12 +256,154 @@ public class PromptBuilder
           "confidence": число от 0.0 до 1.0,
           "signals": ["краткие описания необъяснённых проблем, если есть"],
           "downgraded_signals": ["soft-сигналы из списка выше, которые ты решил НЕ эскалировать — если таких нет, пустой массив"],
-          "suggest_exclude_from_reports": ["PartName§SetupNumber§Order§Причина для деталей с адекватно объяснённой разовой проблемой ИЛИ «Освоением» с КПД < 90% — если таких нет, пустой массив. Причина — 3-10 слов КОНКРЕТНО про эту деталь (что именно объяснил мастер), НЕ общий вывод по суткам"],
+          "suggest_exclude_from_reports": ["PartName§SetupNumber§Order§Причина для деталей с адекватно объяснённой разовой проблемой ИЛИ подтверждённым «Освоением» с КПД наладки < 100% — если таких нет, пустой массив. Причина — 3-10 слов КОНКРЕТНО про эту деталь, НЕ общий вывод по суткам; для освоения укажи, что КПД ниже 100% может негативно повлиять на К1 оператора"],
           "explanation": "1-2 предложения — ОБЯЗАТЕЛЬНОЕ непустое поле",
           "suggested_reason": "краткая причина в 3-7 слов — ОБЯЗАТЕЛЬНОЕ непустое поле"
         }
         """);
 
         return new PromptBuildResult(sb.ToString(), promptVersion);
+    }
+
+    /// <summary>
+    /// Компактный промпт проверки ОДНОЙ записи: релевантно ли комментарии мастера
+    /// объясняют присланные клиентом аномалии. Использует тот же формат блока
+    /// детали, что и полный анализ (AppendPartBlock), — модели знаком формат,
+    /// а форматы не разъезжаются.
+    /// </summary>
+    public PromptBuildResult BuildMasterCheck(VerifyPartRequest req)
+    {
+        var (systemPrompt, promptVersion, _) = GetPrompt(MasterCheckPromptFile, allowEmbeddedFallback: true);
+
+        var sb = new StringBuilder();
+        sb.AppendLine(systemPrompt);
+
+        sb.AppendLine();
+        sb.AppendLine($"Станок: {req.Machine}");
+        sb.AppendLine($"Дата: {req.ShiftDate}");
+        sb.AppendLine();
+
+        AppendPartBlock(sb, req.Part);
+
+        sb.AppendLine("Проверяемые аномалии:");
+        foreach (var a in req.Anomalies)
+        {
+            var comment = FieldValue(req.Part, a.Field);
+            sb.AppendLine($" • [{FieldTitle(a.Field)}] {a.Description} — объясняется комментарием: «{comment.Trim()}»");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("Ответь СТРОГО в этом формате, без markdown, без преамбулы:");
+        sb.AppendLine("""
+        {
+          "ok": true или false,
+          "remark": "при ok=false — 1-2 предложения, ЧТО именно не объяснено и по какой аномалии; при ok=true пустая строка"
+        }
+        """);
+
+        return new PromptBuildResult(sb.ToString(), promptVersion);
+    }
+
+    private static string FieldValue(PartContext p, string field) => field switch
+    {
+        "MasterSetupComment" => p.MasterSetupComment,
+        "MasterMachiningComment" => p.MasterMachiningComment,
+        "MasterComment" => p.MasterComment,
+        "SpecifiedDowntimesComment" => p.SpecifiedDowntimesComment,
+        _ => "",
+    };
+
+    private static string FieldTitle(string field) => field switch
+    {
+        "MasterSetupComment" => "причина наладки",
+        "MasterMachiningComment" => "причина изготовления",
+        "MasterComment" => "комментарий мастера",
+        "SpecifiedDowntimesComment" => "комментарий к простоям",
+        _ => field,
+    };
+
+    private static void AppendPartBlock(StringBuilder sb, PartContext p)
+    {
+        var setupR = p.SetupRatio.HasValue ? $"{p.SetupRatio.Value:0%}" : "б/н";
+        var prodR = p.ProductionRatio.HasValue ? $"{p.ProductionRatio.Value:0%}" : "б/и";
+        var dtR = p.DowntimeRatio.HasValue ? $"{p.DowntimeRatio.Value:0%}" : "—";
+
+        sb.Append($"▸ Деталь: «{p.PartName}» | М/Л: «{p.Order}» | Уст. №{p.Setup}");
+        if (p.NoSetupHappened) sb.Append(" [наладки не было]");
+        if (p.NoProductionHappened) sb.Append(" [изготовления не было]");
+        sb.AppendLine();
+
+        sb.AppendLine($"Наладка: план={p.SetupTimePlan:0}мин, факт={p.SetupTimeFact:0}мин, КПД={setupR}" +
+                      (p.PartialSetup > 0 ? $", частичная={p.PartialSetup:0}мин" : ""));
+        sb.AppendLine($"Изготовление: норматив={p.SingleProductionTimePlan:0.#}мин/дет, " +
+                      $"выполнено={p.FinishedCount:0}шт, КПД={prodR}");
+
+        if (p.MachiningTime > 0 || p.SingleProductionTimePlan > 0)
+            sb.AppendLine($"Машинное время/дет: {p.MachiningTime:0.#}мин | Простои: {dtR}");
+
+        var comments = new List<string>();
+        static string Safe(string s) => s.Trim().Replace("\r", "").Replace("\n", " / ");
+        if (!string.IsNullOrWhiteSpace(p.OperatorComment)) comments.Add($"оператор: «{Safe(p.OperatorComment)}»");
+        if (!string.IsNullOrWhiteSpace(p.MasterSetupComment)) comments.Add($"причина наладки: «{Safe(p.MasterSetupComment)}»");
+        if (!string.IsNullOrWhiteSpace(p.MasterMachiningComment)) comments.Add($"причина изгот.: «{Safe(p.MasterMachiningComment)}»");
+        if (!string.IsNullOrWhiteSpace(p.MasterComment)) comments.Add($"мастер: «{Safe(p.MasterComment)}»");
+        if (comments.Count > 0)
+            sb.AppendLine($"  Комментарии: {string.Join("; ", comments)}");
+
+        if (!string.IsNullOrWhiteSpace(p.SpecifiedDowntimesList))
+            sb.AppendLine($"  {p.SpecifiedDowntimesList.Trim()}");
+        if (!string.IsNullOrWhiteSpace(p.SpecifiedDowntimesComment))
+            sb.AppendLine($"  Комментарий к простоям (мастер): «{p.SpecifiedDowntimesComment.Trim()}»");
+
+        if (!string.IsNullOrWhiteSpace(p.SpecifiedDowntimesList) ||
+            !string.IsNullOrWhiteSpace(p.SpecifiedDowntimesComment))
+            sb.AppendLine();
+
+        if (p.Signals is { Count: > 0 })
+        {
+            sb.AppendLine("  Сигналы системы (числовые факты):");
+            foreach (var sig in p.Signals)
+                sb.AppendLine($"    ⚠ {sig}");
+        }
+        if (p.PartsHistory is { RecordsFound: > 0 } ph && HistoryIsRelevant(p))
+        {
+            sb.AppendLine($"  История этой детали ({ph.RecordsFound} прошлых смен, от новых к старым):");
+            foreach (var line in ph.Lines)
+            {
+                var flag = line.HasUnexplainedLowEfficiency ? " ⚠низкий КПД" : "";
+
+                var decision = line.AnalystDecision switch
+                {
+                    "escalated" => "эскалация",
+                    "ok" => "ок",
+                    _ => "не проверено",
+                };
+
+                sb.Append($"    {line.ShiftDate}");
+                sb.Append($" | КПД изгот.={line.ProductionRatio}");
+                sb.Append($" | КПД нал.={line.SetupRatio}");
+                sb.Append($" | изгот.={line.FinishedCount}шт");
+                sb.Append($" | аналитик: {decision}{flag}");
+
+                if (!string.IsNullOrWhiteSpace(line.AnalystComment))
+                    sb.Append($" — «{line.AnalystComment}»");
+
+                sb.AppendLine();
+
+                if (!string.IsNullOrWhiteSpace(line.AiExplanation)
+                    && line.AnalystDecision == "escalated")
+                {
+                    sb.AppendLine($"      AI тогда: {line.AiExplanation}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(line.AiFeedback)
+                    && line.AnalystDecision == "escalated")
+                {
+                    sb.AppendLine($"      Коррекция аналитика: {line.AiFeedback}");
+                }
+            }
+        }
+
+        sb.AppendLine();
     }
 }

@@ -23,12 +23,8 @@ namespace remeLog.Models
         {
             get
             {
-                var features = (RemeLogFeature)EnabledFeatures;
-                var names = new List<string>();
-                if (features.HasFlag(RemeLogFeature.Ai)) names.Add("Ai");
-                if (features.HasFlag(RemeLogFeature.AdvancedEdit)) names.Add("AdvancedEdit");
-                if (features.HasFlag(RemeLogFeature.Instances)) names.Add("Instances");
-                return names.Count > 0 ? string.Join(", ", names) : "—";
+                var names = ((RemeLogFeature)EnabledFeatures).Names();
+                return names.Length > 0 ? string.Join(", ", names) : "—";
             }
         }
 

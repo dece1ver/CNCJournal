@@ -142,9 +142,15 @@ public static class HardRuleEvaluator
             // несоответствующие заготовки) при непустом MasterComment → soft.
             // LLM решает по правилам soft_signal_explanation.txt.
             // Без исключения или с пустым MasterComment — остаётся HARD.
+            //
+            // 2026-07-18: не сигналим для штучных партий (в отчёты не попадают,
+            // на малой партии данные не показательны) и при КПД изготовления > 100%
+            // (показатели эффективности не пострадали — эскалация подождёт проблем).
             if (p.MachiningTime > 0.5 && p.SingleProductionTimePlan > 0
                 && p.MachiningTime >= p.SingleProductionTimePlan
-                && !p.NoProductionHappened)
+                && !p.NoProductionHappened
+                && !p.IsSmallBatch
+                && p.ProductionRatio is not > 1)
             {
                 var signal =
                     $"[{p.PartName}] Машинное время {p.MachiningTime:0.#}мин >= " +
@@ -184,6 +190,8 @@ public static class HardRuleEvaluator
 
         return l.Contains("норматив") || l.Contains("не соответствует")
             || l.Contains("некорректн") || l.Contains("режимы не")
-            || l.Contains("программа не соответ") || l.Contains("скорректировать");
+            || l.Contains("программа не соответ") || l.Contains("скорректировать")
+            // жалоба числами без слова «норматив»: «время наладки на 1 шт 320 мин»
+            || l.Contains("на 1 шт") || l.Contains("на 1шт");
     }
 }

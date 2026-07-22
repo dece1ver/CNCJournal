@@ -579,6 +579,93 @@
             </DataGridTemplateColumn.CellEditingTemplate>
         </DataGridTemplateColumn>
 
+        <!-- Фоновая ИИ-проверка комментариев мастера (фича AiMasterCheck): совещательный
+             статус строки, tooltip с текстом замечания. Видна только при включённой фиче. -->
+        <DataGridTemplateColumn x:Key="AiCheckColumn" Header="ИИ" Width="24" IsReadOnly="True"
+                                Visibility="{Binding DataContext.HasFeatureAiMasterCheck,
+                                Source={x:Reference partsInfoWindow},
+                                Converter={StaticResource VisibilityConverter}}">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <!-- Tooltip на растянутом Grid с Background=Transparent: без фона hit-test
+                         работает только на пикселях символа — в узкие «✓»/«!» курсором не попасть. -->
+                    <Grid Background="Transparent">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding AiCheckStatus}" Value="Ok">
+                                        <Setter Property="ToolTip" Value="ИИ: комментарии релевантны"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding AiCheckStatus}" Value="Remark">
+                                        <Setter Property="ToolTip" Value="{Binding AiCheckRemark}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding AiCheckStatus}" Value="Error">
+                                        <Setter Property="ToolTip" Value="{Binding AiCheckRemark}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}">
+                                    <Setter Property="Text" Value=""/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding AiCheckStatus}" Value="Ok">
+                                            <Setter Property="Text" Value="✓"/>
+                                            <Setter Property="Foreground" Value="Green"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding AiCheckStatus}" Value="Remark">
+                                            <Setter Property="Text" Value="!"/>
+                                            <Setter Property="Foreground" Value="DarkOrange"/>
+                                            <Setter Property="FontWeight" Value="Bold"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding AiCheckStatus}" Value="Error">
+                                            <Setter Property="Text" Value="?"/>
+                                            <Setter Property="Foreground" Value="Gray"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <!-- Мини-версия SpinnerArcs (крутящиеся дуги, как на поиске в Windchill) -->
+                        <Viewbox x:Name="AiCheckSpinner" Width="12" Height="12"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                                 Visibility="Collapsed" ToolTip="ИИ проверяет комментарии…">
+                            <Canvas Width="80" Height="80" Background="Transparent">
+                                <Canvas.RenderTransform>
+                                    <RotateTransform x:Name="AiCheckSpinnerRotate" CenterX="40" CenterY="40"/>
+                                </Canvas.RenderTransform>
+                                <Path Stroke="Gray" StrokeThickness="8"
+                                      Data="M 40,10 A 30,30 0 0 1 70,40"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                <Path Stroke="Gray" StrokeThickness="8"
+                                      Data="M 40,70 A 30,30 0 0 1 10,40"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            </Canvas>
+                        </Viewbox>
+                    </Grid>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding AiCheckStatus}" Value="Pending">
+                            <Setter TargetName="AiCheckSpinner" Property="Visibility" Value="Visible"/>
+                            <DataTrigger.EnterActions>
+                                <BeginStoryboard x:Name="AiCheckSpinnerStoryboard">
+                                    <Storyboard RepeatBehavior="Forever">
+                                        <DoubleAnimation Storyboard.TargetName="AiCheckSpinnerRotate"
+                                                         Storyboard.TargetProperty="Angle"
+                                                         From="0" To="360"
+                                                         Duration="0:0:1"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </DataTrigger.EnterActions>
+                            <DataTrigger.ExitActions>
+                                <StopStoryboard BeginStoryboardName="AiCheckSpinnerStoryboard"/>
+                            </DataTrigger.ExitActions>
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+
         <DataGridTemplateColumn x:Key="FixedSetupTimePlanColumn" Header="(И) Норматив наладки" Width="36"
                                 Visibility="{Binding DataContext.ViewMode, 
                                 Source={x:Reference partsInfoWindow}, 
@@ -889,7 +976,7 @@
                     </Button.Resources>
                 </Button>-->
                 <Button DockPanel.Dock="Right" Margin="1 10 1 1" Width="100"
-                        IsEnabled="{Binding HasErrors, Converter={StaticResource InvertedBoolConverter}, UpdateSourceTrigger=PropertyChanged, Mode=OneWay}"
+                        IsEnabled="{Binding CanOpenDailyReportButton, UpdateSourceTrigger=PropertyChanged, Mode=OneWay}"
                         Command="{Binding OpenDailyReportWindowCommand}" CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:PartsInfoWindow}}">
                     <Button.Content>
                         <TextBlock Text="Сформировать отчет за смену" TextWrapping="Wrap" />
@@ -1245,6 +1332,7 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="auto"/>
                             <ColumnDefinition Width="auto"/>
+                            <ColumnDefinition Width="24"/>
                             <ColumnDefinition Width="60"/>
                             <ColumnDefinition Width="60"/>
                             <ColumnDefinition Width="60"/>
@@ -1259,7 +1347,7 @@
                         <Border Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Background="DarkGray"/>
                         <Border Grid.Row="1" Grid.Column="4" Grid.ColumnSpan="1" Margin="0 0 19 0" Background="DarkGray"/>
                         <Border Grid.Row="1" Grid.Column="9" Margin="0 0 4 0" Grid.ColumnSpan="1" Background="Gray"/>
-                        <Border Grid.Row="1" Grid.Column="10" Grid.ColumnSpan="3" Background="Gray"/>
+                        <Border Grid.Row="1" Grid.Column="11" Grid.ColumnSpan="3" Background="Gray"/>
                         <DockPanel Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2">
                             <Button DockPanel.Dock="Right" Width="22" Margin="0 0 0 -1"
                                     Command="{Binding OpenMultiValueEditorCommand}" 
@@ -1412,31 +1500,34 @@
                             <controls:IncDecControl Value="{Binding ToDate, Mode=TwoWay}" Width="23" Margin="0 -1 4 0"/>
                         </StackPanel>
 
-                        <Button Grid.Row="0" Grid.Column="10" Content="+ сутки" 
+                        <ToggleButton x:Name="PickDateToggle" Grid.Row="0" Grid.RowSpan="3" Grid.Column="10" Content="📅"
+                                      Margin="0" Padding="-2" FontSize="16"
+                                      BorderThickness="1 1 0 1"
+                                      ToolTip="Выбрать дату — установится в оба календаря (От и До)">
+                            <ToggleButton.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="1 0 0 1"/>
+                                </Style>
+                            </ToggleButton.Resources>
+                        </ToggleButton>
+                        <Popup PlacementTarget="{Binding ElementName=PickDateToggle}" Placement="Bottom" StaysOpen="False"
+                               AllowsTransparency="True"
+                               IsOpen="{Binding IsChecked, ElementName=PickDateToggle, Mode=TwoWay}">
+                            <Calendar SelectedDatesChanged="SpecificDateCalendar_SelectedDatesChanged"/>
+                        </Popup>
+                        <Button Grid.Row="0" Grid.Column="11" Content="+ сутки"
                                 Margin="0" BorderThickness="1 1 0 0"
-                                Command="{Binding IncreaseDateCommand}">
-                            <Button.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="1 0 0 0"/>
-                                </Style>
-                            </Button.Resources>
-                        </Button>
-                        <Button Grid.Row="2" Grid.Column="10" Content="- сутки" 
+                                Command="{Binding IncreaseDateCommand}"/>
+                        <Button Grid.Row="2" Grid.Column="11" Content="- сутки"
                                 Margin="0" BorderThickness="1 0 0 1"
-                                Command="{Binding DecreaseDateCommand}">
-                            <Button.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="0 0 0 1"/>
-                                </Style>
-                            </Button.Resources>
-                        </Button>
-                        <Button Grid.Row="0" Grid.Column="11" Content="Вчера" 
+                                Command="{Binding DecreaseDateCommand}"/>
+                        <Button Grid.Row="0" Grid.Column="12" Content="Вчера"
                                 Margin="0" BorderThickness="1 1 0 0"
                                 Command="{Binding SetYesterdayDateCommand}"/>
-                        <Button Grid.Row="2" Grid.Column="11" Content="Неделя" 
+                        <Button Grid.Row="2" Grid.Column="12" Content="Неделя"
                                 Margin="0" BorderThickness="1 0 0 1"
                                 Command="{Binding SetWeekDateCommand}"/>
-                        <Button Grid.Row="0" Grid.Column="12" Content="Месяц" 
+                        <Button Grid.Row="0" Grid.Column="13" Content="Месяц"
                                 Margin="0" BorderThickness="1 1 0 0"
                                 Command="{Binding SetMonthDateCommand}"
                                 Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
@@ -1457,7 +1548,7 @@
                                 </ContextMenu>
                             </Button.ContextMenu>
                         </Button>
-                        <Button Grid.Row="2" Grid.Column="12" Content="Год" 
+                        <Button Grid.Row="2" Grid.Column="13" Content="Год"
                                 Margin="0" BorderThickness="1 0 0 1"
                                 Command="{Binding SetYearDateCommand}"
                                 Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
@@ -1476,7 +1567,7 @@
                                 </ContextMenu>
                             </Button.ContextMenu>
                         </Button>
-                        <Button Grid.Row="0" Grid.Column="13" Grid.RowSpan="3" Content="*"
+                        <Button Grid.Row="0" Grid.Column="14" Grid.RowSpan="3" Content="*"
                                 Margin="0 0 0 0" BorderThickness="1 1 1 1" Padding="0 2 0 0"
                                 Command="{Binding SetAllDateCommand}">
                             <Button.Resources>
@@ -1661,6 +1752,9 @@
                         <MenuItem Header="Длительные наладки" Icon="{StaticResource CalendarIcon}"
                                   Command="{Binding ExportLongSetupsCommand}"
                                   ToolTip="Длительные наладки" HorizontalAlignment="Stretch"/>
+                        <MenuItem Header="Записи без объяснения мастера" Icon="{StaticResource ColumnComponent}"
+                                  Command="{Binding ExportValidationErrorsCommand}"
+                                  ToolTip="Записи за период, не прошедшие валидацию мастера (пустая причина/комментарий там, где они обязательны) — то, что сейчас блокирует закрытие суточного отчёта" HorizontalAlignment="Stretch"/>
                         <MenuItem Header="Поиски инструмента" Command="{Binding ExportToolSearchCasesToExcelCommand}"
                                   Icon="{StaticResource FindPartIcon}"
                                   ToolTip="Экспорт отчёта по поискам" HorizontalAlignment="Stretch"/>
@@ -1882,6 +1976,7 @@
                         <StaticResource ResourceKey="ProductionRatioTitleColumn"/>
                         <StaticResource ResourceKey="MasterMachiningCommentColumn"/>
                         <StaticResource ResourceKey="MasterCommentColumn"/>
+                        <StaticResource ResourceKey="AiCheckColumn"/>
                         <StaticResource ResourceKey="FixedSetupTimePlanColumn"/>
                         <StaticResource ResourceKey="FixedProductionTimePlanColumn"/>
                         <StaticResource ResourceKey="EngineerCommentColumn"/>

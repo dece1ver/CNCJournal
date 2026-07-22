@@ -351,7 +351,7 @@ namespace remeLog
             var value = featureArg["--features=".Length..];
             if (value.Equals("all", StringComparison.OrdinalIgnoreCase))
             {
-                AppSettings.EnabledFeatures = RemeLogFeature.Ai | RemeLogFeature.AdvancedEdit | RemeLogFeature.Instances;
+                AppSettings.EnabledFeatures = RemeLogFeatureExtensions.All;
                 return;
             }
 

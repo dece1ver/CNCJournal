@@ -73,6 +73,61 @@ namespace remeLog.Infrastructure
                 : await AnalyzeSimpleAsync(request, thinkingProgress, ct);
         }
 
+        /// <summary>
+        /// Фоновая проверка ОДНОЙ записи (фича AiMasterCheck): релевантно ли комментарии
+        /// мастера объясняют аномалии строки. Без thinking, компактный промпт. Совещательная
+        /// семантика: ЛЮБАЯ ошибка (транспорт, таймаут, пустой ответ) → Ok=true + Error,
+        /// чтобы сбой не выглядел замечанием и ничего не блокировал.
+        /// </summary>
+        public async Task<AiVerifyResult> VerifyPartAsync(
+            string machine, DateTime shiftDate, Part part, CancellationToken ct = default)
+        {
+            try
+            {
+                var anomalies = part.GetAiCheckAnomalies();
+                if (anomalies.Count == 0)
+                    return new AiVerifyResult { Ok = true };
+
+                var partsHistories = await LoadPartsHistoriesAsync(
+                    machine, shiftDate, new List<Part> { part }, ct);
+
+                var request = new
+                {
+                    machine = machine,
+                    shiftDate = shiftDate.ToString("yyyy-MM-dd"),
+                    part = BuildPartContext(part, partsHistories),
+                    anomalies = anomalies
+                        .Select(a => new { field = a.Field, description = a.Description })
+                        .ToList(),
+                    model = AppSettings.AiModel,
+                };
+
+                // Не держим строку заложницей 300-секундного таймаута статического клиента:
+                // задержка в очереди Ollama (дневной анализ) тоже съедает этот бюджет.
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(120));
+
+                var response = await _http.PostAsJsonAsync(
+                    $"{GetUrl()}/api/analysis/verify-part", request, cts.Token);
+                response.EnsureSuccessStatusCode();
+                var result = await response.Content
+                    .ReadFromJsonAsync<AiVerifyResult>(cancellationToken: cts.Token);
+                return result ?? new AiVerifyResult { Ok = true, Error = "Пустой ответ сервиса" };
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw; // отмена вызвавшим кодом (строку переправили/окно закрыто) — не результат
+            }
+            catch (OperationCanceledException)
+            {
+                return new AiVerifyResult { Ok = true, Error = "Превышено время ожидания" };
+            }
+            catch (Exception ex)
+            {
+                return new AiVerifyResult { Ok = true, Error = $"Ошибка связи с AI сервисом: {ex.Message}" };
+            }
+        }
+
         private async Task<AiAnalysisResult> AnalyzeSimpleAsync(
             object request, IProgress<string>? thinkingProgress, CancellationToken ct)
         {
@@ -320,7 +375,11 @@ namespace remeLog.Infrastructure
             Dictionary<(string PartName, string Order, int Setup), PartsHistorySummary> partsHistories)
         {
             bool noSetup = p.StartSetupTime == p.StartMachiningTime;
-            bool noProduction = p.FinishedCountFact <= 0 && p.ProductionTimeFact <= 0;
+            // Изготовления не было: деталей по факту нет И времени нет, ЛИБО единственная
+            // деталь партии выполнена в наладке (FinishedCount=1 при наладке → Fact=0) — б/и.
+            // Случай «время есть, деталей нет вообще» (raw=0) остаётся противоречием данных.
+            bool noProduction = p.FinishedCountFact <= 0
+                && (p.FinishedCount > 0 || p.ProductionTimeFact <= 0);
             var manualComment = GetManualOperatorComment(p.OperatorComment);
 
             partsHistories.TryGetValue((p.PartName, p.Order, p.Setup), out var history);
@@ -395,10 +454,14 @@ namespace remeLog.Infrastructure
             var s = new List<string>();
             var machMins = p.MachiningTime.TotalMinutes;
 
-            // Машинное время >= штучного норматива (порог синхронизирован с серверным HardRuleEvaluator)
-            // При б/и не имеет смысла: норматив штучный, а изготовления не было.
+            // Машинное время >= штучного норматива (условия синхронизированы с серверным HardRuleEvaluator).
+            // Не шлём: при б/и (норматив штучный, изготовления не было), для штучных партий
+            // (в отчёты не попадают, малая партия не показательна) и при КПД изготовления > 100%
+            // (показатели не пострадали — эскалация подождёт проблем).
             if (!noProduction && machMins > 0.5 && p.SingleProductionTimePlan > 0
-                && machMins >= p.SingleProductionTimePlan)
+                && machMins >= p.SingleProductionTimePlan
+                && !p.IsSmallBatch
+                && !(p.ProductionRatio > 1))
                 s.Add($"Машинное время {machMins:0.#}мин >= штучного норматива {p.SingleProductionTimePlan:0.#}мин ({machMins / p.SingleProductionTimePlan:0%})");
 
             // КПД частичной наладки < 70%
@@ -429,14 +492,9 @@ namespace remeLog.Infrastructure
                 && string.IsNullOrWhiteSpace(p.MasterMachiningComment))
                 s.Add($"КПД изготовления {pr:0%} > 120% — возможно норматив занижен");
 
-            // Простои > 30% без ручного комментария (авто-раздел не считается объяснением)
-            var dt = p.SpecifiedDowntimesRatio;
-            if (IsValidRatio(dt) && dt > 0.30
-                && string.IsNullOrWhiteSpace(manualComment)
-                && string.IsNullOrWhiteSpace(p.MasterComment))
-                s.Add($"Простои {dt:0%} без пояснений");
-
-            
+            // Сигнала по простоям нет: порога аномальности у простоев не существует,
+            // комментарий мастера при >50% собирает валидация (Part.Error) — модель
+            // проверяет только его релевантность.
 
             // Время изготовления записано но деталей нет — противоречие в данных
             if (p.ProductionTimeFact > 5 && p.FinishedCount == 0
@@ -507,7 +565,9 @@ namespace remeLog.Infrastructure
 
             return l.Contains("норматив") || l.Contains("не соответствует")
                 || l.Contains("некорректн") || l.Contains("режимы не")
-                || l.Contains("программа не соответ") || l.Contains("скорректировать");
+                || l.Contains("программа не соответ") || l.Contains("скорректировать")
+                // жалоба числами без слова «норматив»: «время наладки на 1 шт 320 мин»
+                || l.Contains("на 1 шт") || l.Contains("на 1шт");
         }
 
         private static bool OperatorMentionsExcusableReason(string manual)
@@ -527,6 +587,20 @@ namespace remeLog.Infrastructure
 
 
     public record QueueInfo(int Position);
+
+    /// <summary>
+    /// Результат фоновой проверки одной записи (verify-part). Ok=true по умолчанию:
+    /// проверка совещательная, любой сбой должен выглядеть как «проверка недоступна»,
+    /// а не как замечание.
+    /// </summary>
+    public class AiVerifyResult
+    {
+        [JsonPropertyName("ok")] public bool Ok { get; set; } = true;
+        [JsonPropertyName("remark")] public string Remark { get; set; } = "";
+        [JsonPropertyName("error")] public string? Error { get; set; }
+        [JsonPropertyName("promptVersion")] public string? PromptVersion { get; set; }
+        public bool HasError => !string.IsNullOrEmpty(Error);
+    }
 
     public class AiAnalysisResult
     {

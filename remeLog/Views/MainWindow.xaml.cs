@@ -2,6 +2,7 @@
 using remeLog.ViewModels;
 using System;
 using System.Windows;
+using System.Windows.Controls;
 using libeLog.Views;
 
 namespace remeLog.Views
@@ -58,6 +59,20 @@ namespace remeLog.Views
             {
                 dx.StopBackgroundWorker();
             }
+        }
+
+        /// <summary>
+        /// Кнопка-пикер даты в группе смены дат: выбранная дата уходит сразу в
+        /// оба календаря (От и До), попап закрывается.
+        /// </summary>
+        private void SpecificDateCalendar_SelectedDatesChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (sender is Calendar { SelectedDate: DateTime date }
+                && DataContext is MainWindowViewModel vm)
+            {
+                vm.SetSpecificDateCommand.Execute(date);
+            }
+            PickDateToggle.IsChecked = false;
         }
     }
 } 

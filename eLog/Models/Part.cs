@@ -386,9 +386,9 @@ namespace eLog.Models
                 double downTimesMinutes = 0;
                 foreach (var downTime in downTimes)
                 {
-                    var partialBreaks = DateTimes.GetPartialBreakBetween(downTime.StartTime, downTime.EndTime);
-
-                    if (downTime.Time.TotalMinutes > 0) downTimesMinutes += downTime.Time.TotalMinutes - partialBreaks;
+                    // DownTime.Time уже за вычетом перерывов — дополнительное вычитание
+                    // частичных перерывов занижало простои против БД и remeLog.
+                    if (downTime.Time.TotalMinutes > 0) downTimesMinutes += downTime.Time.TotalMinutes;
                 }
                 var endSetupTime = SetupIsFinished ? StartMachiningTime : StartSetupTime
                     .AddMinutes(SetupTimePlan)
@@ -451,9 +451,9 @@ namespace eLog.Models
                 double downTimesMinutes = 0;
                 foreach (var downTime in downTimes)
                 {
-                    var partialBreaks = DateTimes.GetPartialBreakBetween(downTime.StartTime, downTime.EndTime);
-
-                    if (downTime.Time.TotalMinutes > 0) downTimesMinutes += downTime.Time.TotalMinutes - partialBreaks;
+                    // DownTime.Time уже за вычетом перерывов — дополнительное вычитание
+                    // частичных перерывов занижало простои против БД и remeLog.
+                    if (downTime.Time.TotalMinutes > 0) downTimesMinutes += downTime.Time.TotalMinutes;
                 }
                 var totalCount = TotalCount + DefectiveCount;
                 totalCount = totalCount > 1 ? totalCount - 1 : totalCount;
@@ -479,7 +479,8 @@ namespace eLog.Models
                 var planInfo = SingleProductionTimePlan > 0
                     ? $" (Плановое: {totalCount} шт по {SingleProductionTimePlan} мин{breaksInfo})"
                     : string.Empty;
-                var finishedCount = StartMachiningTime > StartSetupTime ? FinishedCount - 1 : FinishedCount;
+                // Первая деталь уходит в наладку — как FinishedCountFact в remeLog
+                var finishedCount = StartSetupTime != StartMachiningTime && FinishedCount != 0 ? FinishedCount - 1 : FinishedCount;
                 var productivity = SingleProductionTimePlan > 0
                     ? finishedCount * SingleProductionTimePlan / ProductionTimeFact.TotalMinutes * 100
                     : 0;

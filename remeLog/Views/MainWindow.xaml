@@ -203,6 +203,8 @@
                     </StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="26"/>
+                            <ColumnDefinition Width="1"/>
                             <ColumnDefinition Width="100"/>
                             <ColumnDefinition Width="1"/>
                             <ColumnDefinition Width="100"/>
@@ -214,30 +216,47 @@
                             <RowDefinition Height="1"/>
                             <RowDefinition/>
                         </Grid.RowDefinitions>
-                        <Border Grid.Row="1" Background="Gray" Grid.ColumnSpan="5"/>
+                        <Border Grid.Row="1" Grid.Column="2" Background="Gray" Grid.ColumnSpan="5"/>
                         <Border Grid.Column="1" Background="Gray" Grid.RowSpan="3"/>
                         <Border Grid.Column="3" Background="Gray" Grid.RowSpan="3"/>
-                        <Button Grid.Row="0" Grid.Column="0" Content="+ сутки" 
+                        <Border Grid.Column="5" Background="Gray" Grid.RowSpan="3"/>
+                        <ToggleButton x:Name="PickDateToggle" Grid.Row="0" Grid.RowSpan="3" Grid.Column="0" Content="📅"
+                                      IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}"
+                                      Margin="0 0 0 0" FontSize="18" Padding="-2"
+                                      BorderThickness="1 1 0 1"
+                                      ToolTip="Выбрать дату — установится в оба календаря (От и До)">
+                            <ToggleButton.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="2 0 0 2"/>
+                                </Style>
+                            </ToggleButton.Resources>
+                        </ToggleButton>
+                        <Popup PlacementTarget="{Binding ElementName=PickDateToggle}" Placement="Bottom" StaysOpen="False"
+                               AllowsTransparency="True"
+                               IsOpen="{Binding IsChecked, ElementName=PickDateToggle, Mode=TwoWay}">
+                            <Calendar SelectedDatesChanged="SpecificDateCalendar_SelectedDatesChanged"/>
+                        </Popup>
+                        <Button Grid.Row="0" Grid.Column="2" Content="+ сутки"
                                 IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}"
-                                Margin="0 0 0 0" BorderThickness="1 1 0 0"
+                                Margin="0 0 0 0" BorderThickness="0 1 0 0"
                                 Command="{Binding IncreaseDateCommand}">
                             <Button.Resources>
                                 <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="2 0 0 0"/>
+                                    <Setter Property="CornerRadius" Value="0 0 0 0"/>
                                 </Style>
                             </Button.Resources>
                         </Button>
-                        <Button Grid.Row="2" Grid.Column="0" Content="- сутки" 
+                        <Button Grid.Row="2" Grid.Column="2" Content="- сутки"
                                 IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}"
-                                Margin="0 0 0 0" BorderThickness="1 0 0 1"
+                                Margin="0 0 0 0" BorderThickness="0 0 0 1"
                                 Command="{Binding DecreaseDateCommand}">
                             <Button.Resources>
                                 <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="0 0 0 2"/>
+                                    <Setter Property="CornerRadius" Value="0 0 0 0"/>
                                 </Style>
                             </Button.Resources>
                         </Button>
-                        <Button Grid.Row="0" Grid.Column="2" Content="Вчера"
+                        <Button Grid.Row="0" Grid.Column="4" Content="Вчера"
                                 IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}"
                                 Margin="0 0 0 0" BorderThickness="0 1 0 0"
                                 Command="{Binding SetYesterdayDateCommand}">
@@ -247,7 +266,7 @@
                                 </Style>
                             </Button.Resources>
                         </Button>
-                        <Button Grid.Row="2" Grid.Column="2" Content="Неделя" 
+                        <Button Grid.Row="2" Grid.Column="4" Content="Неделя"
                                 IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}"
                                 Margin="0 0 0 0" BorderThickness="0 0 0 1"
                                 Command="{Binding SetWeekDateCommand}">
@@ -257,7 +276,7 @@
                                 </Style>
                             </Button.Resources>
                         </Button>
-                        <Button Grid.Row="0" Grid.Column="4" Content="Месяц"
+                        <Button Grid.Row="0" Grid.Column="6" Content="Месяц"
                                 IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}"
                                 Margin="0 0 0 0" BorderThickness="0 1 1 0"
                                 Command="{Binding SetMonthDateCommand}"
@@ -284,7 +303,7 @@
                                 </ContextMenu>
                             </Button.ContextMenu>
                         </Button>
-                        <Button Grid.Row="2" Grid.Column="4" Content="Год"
+                        <Button Grid.Row="2" Grid.Column="6" Content="Год"
                                 IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}"
                                 Margin="0 0 0 0" BorderThickness="0 0 1 1"
                                 Command="{Binding SetYearDateCommand}"
