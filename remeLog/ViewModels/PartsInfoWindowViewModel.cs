@@ -2521,9 +2521,8 @@ namespace remeLog.ViewModels
                 "Operator" => "Оператор",
                 "Order" => "М/Л",
                 _ when fieldKey.StartsWith("col:", StringComparison.OrdinalIgnoreCase)
-                    && int.TryParse(fieldKey.AsSpan(4), out int colIndex)
-                    && PartColumnMeta.Map.TryGetValue(colIndex, out var metaByIndex)
-                        => metaByIndex.DisplayName,
+                    && PartColumnMeta.Map.TryGetValue(fieldKey[4..], out var metaById)
+                        => metaById.DisplayName,
 
                 _ => PartColumnMeta.Map.Values
                          .FirstOrDefault(m => m.SqlColumn == fieldKey)?.DisplayName
@@ -2555,10 +2554,9 @@ namespace remeLog.ViewModels
                     default:
                         ColumnMeta? meta = null;
 
-                        if (fieldKey.StartsWith("col:") &&
-                            int.TryParse(fieldKey[4..], out int colIndex))
+                        if (fieldKey.StartsWith("col:"))
                         {
-                            PartColumnMeta.Map.TryGetValue(colIndex, out meta);
+                            PartColumnMeta.Map.TryGetValue(fieldKey[4..], out meta);
                         }
                         else
                         {
@@ -3380,10 +3378,9 @@ namespace remeLog.ViewModels
             meta = null;
 
             if (fieldKey.StartsWith("col:", StringComparison.OrdinalIgnoreCase) &&
-                int.TryParse(fieldKey.AsSpan(4), out int colIndex) &&
-                PartColumnMeta.Map.TryGetValue(colIndex, out var byIndex))
+                PartColumnMeta.Map.TryGetValue(fieldKey[4..], out var byId))
             {
-                meta = byIndex;
+                meta = byId;
                 return true;
             }
 

@@ -70,8 +70,14 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 llmResult.SuggestedReason = "";
             }
 
+            // llmResult.HasError (сбой парсинга/вырожденная генерация модели — см.
+            // память ai-analysis-improvement-plan, кейс 2026-06-30 Rontek HTC650M:
+            // модель зациклилась на повторе одной фразы, съела весь NumPredict до
+            // JSON) ВСЕГДА форсирует эскалацию — сбой системы должен привлечь
+            // внимание аналитика, а не молча выглядеть как «Всё в порядке».
             var requiresReview = reset ? false
-                : hardRules.MustEscalate || notDowngraded.Count > 0 || llmResult.RequiresReview;
+                : hardRules.MustEscalate || notDowngraded.Count > 0
+                    || llmResult.RequiresReview || llmResult.HasError;
 
             logger.LogDebug(
                 "ДИАГНОСТИКА {Machine} {Date}: " +
@@ -95,7 +101,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                     : llmResult.Confidence,
                 Explanation = EnsureExplanation(llmResult, hardRules, notDowngraded),
                 SuggestedReason = string.IsNullOrWhiteSpace(llmResult.SuggestedReason)
-                    ? FallbackReason(hardRules, notDowngraded)
+                    ? FallbackReason(hardRules, notDowngraded, llmResult.HasError)
                     : llmResult.SuggestedReason,
                 Error = llmResult.Error,
                 SuggestExcludeFromReports = FilterExcludeSuggestions(llmResult.SuggestExcludeFromReports, request),
@@ -372,8 +378,10 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             llmResult.SuggestedReason = "";
         }
 
+        // llmResult.HasError форсирует эскалацию — см. комментарий в Analyze().
         var requiresReview = reset ? false
-            : hardRules.MustEscalate || notDowngraded.Count > 0 || llmResult.RequiresReview;
+            : hardRules.MustEscalate || notDowngraded.Count > 0
+                || llmResult.RequiresReview || llmResult.HasError;
 
         var result = new AnalyzeResponse
         {
@@ -382,7 +390,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 ? Math.Max(llmResult.Confidence, 0.85) : llmResult.Confidence,
             Explanation = EnsureExplanation(llmResult, hardRules, notDowngraded),
             SuggestedReason = string.IsNullOrWhiteSpace(llmResult.SuggestedReason)
-                ? FallbackReason(hardRules, notDowngraded) : llmResult.SuggestedReason,
+                ? FallbackReason(hardRules, notDowngraded, llmResult.HasError) : llmResult.SuggestedReason,
             ThinkingProcess = thinking,
             SuggestExcludeFromReports = FilterExcludeSuggestions(llmResult.SuggestExcludeFromReports, request),
             DowngradedSignals = llmResult.DowngradedSignals,
@@ -527,9 +535,10 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             : "Явных отклонений не обнаружено.";
     }
 
-    private static string FallbackReason(HardRuleResult hardRules, List<string> notDowngraded)
+    private static string FallbackReason(HardRuleResult hardRules, List<string> notDowngraded, bool hasError = false)
     {
         if (hardRules.MustEscalate) return hardRules.HardSignals.FirstOrDefault() ?? "Требует проверки";
+        if (hasError) return "Сбой анализа — требуется ручная проверка";
         if (notDowngraded.Count > 0)
         {
             var kinds = notDowngraded.Select(SoftSignalMatcher.Classify).ToHashSet();

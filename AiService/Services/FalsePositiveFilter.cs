@@ -294,15 +294,22 @@ public static class FalsePositiveFilter
     }
 
     /// <summary>
-    /// Претензия к порогам «Штучной/длительной работы». Пороги считает C#
-    /// (<see cref="PartContext.IsSmallBatch"/>), модель их регулярно пересчитывает
-    /// с ошибками вплоть до галлюцинаций «MachiningTime не указано». Вызывающий
-    /// код применяет отсев только когда все детали с этой причиной штучные.
+    /// Претензия к «Штучной/длительной работе» — либо к порогам (их считает C#,
+    /// <see cref="PartContext.IsSmallBatch"/>, модель регулярно пересчитывает с
+    /// ошибками вплоть до галлюцинаций «MachiningTime не указано»), либо
+    /// требование конкретики в MasterComment (причина по регламенту САМОДОСТАТОЧНА
+    /// при попадании в пороги — конкретика не нужна, в отличие от «Другое»/
+    /// «Доработка»; модель формулирует это разными словами прогон от прогона —
+    /// «порог», «конкретика», «детализация», «релевантное объяснение» — все они
+    /// сводятся к одной и той же ошибочной претензии). Вызывающий код применяет
+    /// отсев только когда все детали дня с этой причиной штучные.
     /// </summary>
     private static bool IsSmallBatchThresholdClaim(string signal)
     {
         var lower = signal.ToLowerInvariant();
-        return lower.Contains("штучн") && lower.Contains("порог");
+        if (!lower.Contains("штучн")) return false;
+        return lower.Contains("порог") || lower.Contains("конкретик")
+            || lower.Contains("детализ") || lower.Contains("релевантн");
     }
 
     /// <summary>
@@ -334,7 +341,8 @@ public static class FalsePositiveFilter
         return lower.Contains("конкретик")
             || lower.Contains("не подтвержд")
             || lower.Contains("уточнен")
-            || lower.Contains("уверенност");
+            || lower.Contains("уверенност")
+            || lower.Contains("требует проверк"); // «требует проверки подтверждения» — та же претензия другими словами
     }
 
     private static bool TryParsePercent(string text, out double value) =>

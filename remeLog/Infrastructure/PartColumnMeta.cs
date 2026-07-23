@@ -87,28 +87,35 @@ namespace remeLog.Infrastructure
         public const string H_ExcludeFromReports = "Исключить";
 
         // ── Карта колонок ─────────────────────────────────────────────────
-        public static readonly IReadOnlyDictionary<int, ColumnMeta> Map =
-            new ReadOnlyDictionary<int, ColumnMeta>(
-                new Dictionary<int, ColumnMeta>
+        // Ключ — стабильный ID колонки, НЕ позиция. Тот же ID проставлен как
+        // Tag у соответствующего DataGridColumn в PartsInfoWindow.xaml (см.
+        // x:Key="<Id>Column" там же) и используется в code-behind/ViewModel
+        // вместо DisplayIndex. Единственная точка синхронизации — совпадение
+        // строк здесь и в XAML; добавление/удаление/перестановка колонок в
+        // <DataGrid.Columns> больше не требует правок нигде, кроме как здесь
+        // (при добавлении новой колонки) — порядок в словаре не имеет значения.
+        public static readonly IReadOnlyDictionary<string, ColumnMeta> Map =
+            new ReadOnlyDictionary<string, ColumnMeta>(
+                new Dictionary<string, ColumnMeta>
                 {
-                    {  0, new() { SqlColumn="Machine",                  DisplayName=H_Machine,                   Kind=FilterKind.Text   } },
-                    {  1, new() { SqlColumn="ShiftDate",                DisplayName=H_ShiftDate,                 Kind=FilterKind.None   } }, // основной фильтр по датам
-                    {  2, new() { SqlColumn="Shift",                    DisplayName=H_Shift,                     Kind=FilterKind.Text   } },
-                    {  3, new() { SqlColumn="Operator",                 DisplayName=H_Operator,                  Kind=FilterKind.Text   } },
-                    {  4, new() { SqlColumn="PartName",                 DisplayName=H_PartName,                  Kind=FilterKind.Text   } },
-                    {  5, new() { SqlColumn="[Order]",                  DisplayName=H_Order,                     Kind=FilterKind.Text   } },
-                    {  6, new() { SqlColumn="TotalCount",               DisplayName=H_TotalCount,                Kind=FilterKind.Number } },
-                    {  7, new() { SqlColumn="FinishedCount",            DisplayName=H_FinishedCount,             Kind=FilterKind.Number } },
-                    {  8, new() { SqlColumn="DefectiveCount",           DisplayName=H_DefectiveCount,            Kind=FilterKind.Number } },
-                    {  9, new() { SqlColumn="Setup",                    DisplayName=H_Setup,                     Kind=FilterKind.Number } },
-                    { 10, new() { SqlColumn="",                         DisplayName=H_StartSetupTime,            Kind=FilterKind.None   } }, // HH:mm ≠ datetime в БД
-                    { 11, new() { SqlColumn="",                         DisplayName=H_StartMachiningTime,        Kind=FilterKind.None   } },
-                    { 12, new() { SqlColumn="",                         DisplayName=H_EndMachiningTime,          Kind=FilterKind.None   } },
-                    { 13, new() { SqlColumn="SetupTimePlan",            DisplayName=H_SetupTimePlan,             Kind=FilterKind.Number } },
-                    { 14, new() { SqlColumn="SetupTimeFact",            DisplayName=H_SetupTimeFact,             Kind=FilterKind.Number } },
-                    { 15, new() { SqlColumn="SingleProductionTimePlan", DisplayName=H_SingleProductionTimePlan,  Kind=FilterKind.Number } },
+                    { "Machine",                  new() { SqlColumn="Machine",                  DisplayName=H_Machine,                   Kind=FilterKind.Text   } },
+                    { "ShiftDate",                new() { SqlColumn="ShiftDate",                DisplayName=H_ShiftDate,                 Kind=FilterKind.None   } }, // основной фильтр по датам
+                    { "Shift",                    new() { SqlColumn="Shift",                    DisplayName=H_Shift,                     Kind=FilterKind.Text   } },
+                    { "Operator",                 new() { SqlColumn="Operator",                 DisplayName=H_Operator,                  Kind=FilterKind.Text   } },
+                    { "PartName",                 new() { SqlColumn="PartName",                 DisplayName=H_PartName,                  Kind=FilterKind.Text   } },
+                    { "Order",                    new() { SqlColumn="[Order]",                  DisplayName=H_Order,                     Kind=FilterKind.Text   } },
+                    { "TotalCount",               new() { SqlColumn="TotalCount",               DisplayName=H_TotalCount,                Kind=FilterKind.Number } },
+                    { "FinishedCount",            new() { SqlColumn="FinishedCount",            DisplayName=H_FinishedCount,             Kind=FilterKind.Number } },
+                    { "DefectiveCount",           new() { SqlColumn="DefectiveCount",           DisplayName=H_DefectiveCount,            Kind=FilterKind.Number } },
+                    { "Setup",                    new() { SqlColumn="Setup",                    DisplayName=H_Setup,                     Kind=FilterKind.Number } },
+                    { "StartSetupTime",           new() { SqlColumn="",                         DisplayName=H_StartSetupTime,            Kind=FilterKind.None   } }, // HH:mm ≠ datetime в БД
+                    { "StartMachiningTime",       new() { SqlColumn="",                         DisplayName=H_StartMachiningTime,        Kind=FilterKind.None   } },
+                    { "EndMachiningTime",         new() { SqlColumn="",                         DisplayName=H_EndMachiningTime,          Kind=FilterKind.None   } },
+                    { "SetupTimePlan",            new() { SqlColumn="SetupTimePlan",            DisplayName=H_SetupTimePlan,             Kind=FilterKind.Number } },
+                    { "SetupTimeFact",            new() { SqlColumn="SetupTimeFact",            DisplayName=H_SetupTimeFact,             Kind=FilterKind.Number } },
+                    { "SingleProductionTimePlan", new() { SqlColumn="SingleProductionTimePlan", DisplayName=H_SingleProductionTimePlan,  Kind=FilterKind.Number } },
 
-                    { 16, new() {
+                    { "MachiningTime", new() {
                         SqlColumn   = "",
                         DisplayName = H_MachiningTime,
                         Kind        = FilterKind.InMemory,
@@ -116,29 +123,28 @@ namespace remeLog.Infrastructure
                             p.MachiningTime.ToString(@"hh\:mm\:ss") == val.Trim(),
                     }},
 
+                    { "PartReplacementTime",      new() { SqlColumn="",                         DisplayName=H_PartReplacementTime,       Kind=FilterKind.None   } }, // вычисляемое
+                    { "SingleProductionTime",     new() { SqlColumn="",                         DisplayName=H_SingleProductionTime,      Kind=FilterKind.None   } }, // вычисляемое
 
-                    { 17, new() { SqlColumn="",                         DisplayName=H_PartReplacementTime,       Kind=FilterKind.None   } }, // вычисляемое
-                    { 18, new() { SqlColumn="",                         DisplayName=H_SingleProductionTime,      Kind=FilterKind.None   } }, // вычисляемое
-
-                    { 19, new() { SqlColumn="ProductionTimeFact",       DisplayName=H_ProductionTimeFact,        Kind=FilterKind.Number } },
-                    { 20, new() { SqlColumn="",                         DisplayName=H_PlanForBatch,              Kind=FilterKind.None   } }, // вычисляемое
-                    { 21, new() { SqlColumn="OperatorComment",          DisplayName=H_OperatorComment,           Kind=FilterKind.Text   } },
-                    { 22, new() { SqlColumn="",                         DisplayName=H_Problems,                  Kind=FilterKind.None   } }, // вычисляемое
-                    { 23, new() { SqlColumn="SetupDowntimes",           DisplayName=H_SetupDowntimes,            Kind=FilterKind.Number } },
-                    { 24, new() { SqlColumn="MachiningDowntimes",       DisplayName=H_MachiningDowntimes,        Kind=FilterKind.Number } },
-                    { 25, new() { SqlColumn="PartialSetupTime",         DisplayName=H_PartialSetupTime,          Kind=FilterKind.Number } },
-                    { 26, new() { SqlColumn="CreateNcProgramTime",      DisplayName=H_CreateNcProgramTime,       Kind=FilterKind.Number } },
-                    { 27, new() { SqlColumn="MaintenanceTime",          DisplayName=H_MaintenanceTime,           Kind=FilterKind.Number } },
-                    { 28, new() { SqlColumn="ToolSearchingTime",        DisplayName=H_ToolSearchingTime,         Kind=FilterKind.Number } },
-                    { 29, new() { SqlColumn="ToolChangingTime",         DisplayName=H_ToolChangingTime,          Kind=FilterKind.Number } },
-                    { 30, new() { SqlColumn="MentoringTime",            DisplayName=H_MentoringTime,             Kind=FilterKind.Number } },
-                    { 31, new() { SqlColumn="ContactingDepartmentsTime",DisplayName=H_ContactingDepartmentsTime, Kind=FilterKind.Number } },
-                    { 32, new() { SqlColumn="FixtureMakingTime",        DisplayName=H_FixtureMakingTime,         Kind=FilterKind.Number } },
-                    { 33, new() { SqlColumn="HardwareFailureTime",      DisplayName=H_HardwareFailureTime,       Kind=FilterKind.Number } },
-                    { 34, new() { SqlColumn="SpecialDowntimeTime",      DisplayName=H_SpecialDowntimeTime,       Kind=FilterKind.Number } },
+                    { "ProductionTimeFact",       new() { SqlColumn="ProductionTimeFact",       DisplayName=H_ProductionTimeFact,        Kind=FilterKind.Number } },
+                    { "PlanForBatch",             new() { SqlColumn="",                         DisplayName=H_PlanForBatch,              Kind=FilterKind.None   } }, // вычисляемое
+                    { "OperatorComment",          new() { SqlColumn="OperatorComment",          DisplayName=H_OperatorComment,           Kind=FilterKind.Text   } },
+                    { "Problems",                 new() { SqlColumn="",                         DisplayName=H_Problems,                  Kind=FilterKind.None   } }, // вычисляемое
+                    { "SetupDowntimes",           new() { SqlColumn="SetupDowntimes",           DisplayName=H_SetupDowntimes,            Kind=FilterKind.Number } },
+                    { "MachiningDowntimes",       new() { SqlColumn="MachiningDowntimes",       DisplayName=H_MachiningDowntimes,        Kind=FilterKind.Number } },
+                    { "PartialSetupTime",         new() { SqlColumn="PartialSetupTime",         DisplayName=H_PartialSetupTime,          Kind=FilterKind.Number } },
+                    { "CreateNcProgramTime",      new() { SqlColumn="CreateNcProgramTime",      DisplayName=H_CreateNcProgramTime,       Kind=FilterKind.Number } },
+                    { "MaintenanceTime",          new() { SqlColumn="MaintenanceTime",          DisplayName=H_MaintenanceTime,           Kind=FilterKind.Number } },
+                    { "ToolSearchingTime",        new() { SqlColumn="ToolSearchingTime",        DisplayName=H_ToolSearchingTime,         Kind=FilterKind.Number } },
+                    { "ToolChangingTime",         new() { SqlColumn="ToolChangingTime",         DisplayName=H_ToolChangingTime,          Kind=FilterKind.Number } },
+                    { "MentoringTime",            new() { SqlColumn="MentoringTime",            DisplayName=H_MentoringTime,             Kind=FilterKind.Number } },
+                    { "ContactingDepartmentsTime",new() { SqlColumn="ContactingDepartmentsTime",DisplayName=H_ContactingDepartmentsTime, Kind=FilterKind.Number } },
+                    { "FixtureMakingTime",        new() { SqlColumn="FixtureMakingTime",        DisplayName=H_FixtureMakingTime,         Kind=FilterKind.Number } },
+                    { "HardwareFailureTime",      new() { SqlColumn="HardwareFailureTime",      DisplayName=H_HardwareFailureTime,       Kind=FilterKind.Number } },
+                    { "SpecialDowntimeTime",      new() { SqlColumn="SpecialDowntimeTime",      DisplayName=H_SpecialDowntimeTime,       Kind=FilterKind.Number } },
 
                     // SpecifiedDowntimesRatio — вычисляется в модели из нескольких полей
-                    { 35, new() {
+                    { "SpecifiedDowntimesRatio", new() {
                         SqlColumn   = "",
                         DisplayName = H_SpecifiedDowntimesRatio,
                         Kind        = FilterKind.InMemory,
@@ -154,10 +160,10 @@ namespace remeLog.Infrastructure
                         },
                     }},
 
-                    { 36, new() { SqlColumn="SpecifiedDowntimesComment", DisplayName=H_SpecifiedDowntimesComment, Kind=FilterKind.Text } },
+                    { "SpecifiedDowntimesComment", new() { SqlColumn="SpecifiedDowntimesComment", DisplayName=H_SpecifiedDowntimesComment, Kind=FilterKind.Text } },
 
                     // SetupRatioTitle — строка, вычисляемая в модели
-                    { 37, new() {
+                    { "SetupRatioTitle", new() {
                         SqlColumn   = "",
                         DisplayName = H_SetupRatioTitle,
                         Kind        = FilterKind.InMemory,
@@ -165,10 +171,10 @@ namespace remeLog.Infrastructure
                             string.Equals(p.SetupRatioTitle, val, StringComparison.OrdinalIgnoreCase),
                     }},
 
-                    { 38, new() { SqlColumn="MasterSetupComment",       DisplayName=H_MasterSetupComment,        Kind=FilterKind.Text   } },
+                    { "MasterSetupComment",       new() { SqlColumn="MasterSetupComment",       DisplayName=H_MasterSetupComment,        Kind=FilterKind.Text   } },
 
                     // ProductionRatioTitle — строка, вычисляемая в модели
-                    { 39, new() {
+                    { "ProductionRatioTitle", new() {
                         SqlColumn   = "",
                         DisplayName = H_ProductionRatioTitle,
                         Kind        = FilterKind.InMemory,
@@ -176,14 +182,15 @@ namespace remeLog.Infrastructure
                             string.Equals(p.ProductionRatioTitle, val, StringComparison.OrdinalIgnoreCase),
                     }},
 
-                    { 40, new() { SqlColumn="MasterMachiningComment",   DisplayName=H_MasterMachiningComment,    Kind=FilterKind.Text   } },
-                    { 41, new() { SqlColumn="MasterComment",            DisplayName=H_MasterComment,             Kind=FilterKind.Text   } },
-                    { 42, new() { SqlColumn="FixedSetupTimePlan",       DisplayName=H_FixedSetupTimePlan,        Kind=FilterKind.Number } },
-                    { 43, new() { SqlColumn="FixedProductionTimePlan",  DisplayName=H_FixedProductionTimePlan,   Kind=FilterKind.Number } },
-                    { 44, new() { SqlColumn="EngineerComment",          DisplayName=H_EngineerComment,           Kind=FilterKind.Text   } },
-                    { 45, new() { SqlColumn="ExcludedOperationsTime",   DisplayName=H_ExcludedOperationsTime,    Kind=FilterKind.Number } },
-                    { 46, new() { SqlColumn="IncreaseReason",           DisplayName=H_IncreaseReason,            Kind=FilterKind.Text   } },
-                    { 47, new() { SqlColumn="ExcludeFromReports",       DisplayName=H_ExcludeFromReports,        Kind=FilterKind.Bool   } },
+                    { "MasterMachiningComment",   new() { SqlColumn="MasterMachiningComment",   DisplayName=H_MasterMachiningComment,    Kind=FilterKind.Text   } },
+                    { "MasterComment",            new() { SqlColumn="MasterComment",            DisplayName=H_MasterComment,             Kind=FilterKind.Text   } },
+                    { "AiCheck",                  new() { SqlColumn="",                         DisplayName="ИИ-проверка",               Kind=FilterKind.None   } }, // вычисляемое, не фильтруется
+                    { "FixedSetupTimePlan",       new() { SqlColumn="FixedSetupTimePlan",       DisplayName=H_FixedSetupTimePlan,        Kind=FilterKind.Number } },
+                    { "FixedProductionTimePlan",  new() { SqlColumn="FixedProductionTimePlan",  DisplayName=H_FixedProductionTimePlan,   Kind=FilterKind.Number } },
+                    { "EngineerComment",          new() { SqlColumn="EngineerComment",          DisplayName=H_EngineerComment,           Kind=FilterKind.Text   } },
+                    { "ExcludedOperationsTime",   new() { SqlColumn="ExcludedOperationsTime",   DisplayName=H_ExcludedOperationsTime,    Kind=FilterKind.Number } },
+                    { "IncreaseReason",           new() { SqlColumn="IncreaseReason",           DisplayName=H_IncreaseReason,            Kind=FilterKind.Text   } },
+                    { "ExcludeFromReports",       new() { SqlColumn="ExcludeFromReports",       DisplayName=H_ExcludeFromReports,        Kind=FilterKind.Bool   } },
                 });
     }
 }

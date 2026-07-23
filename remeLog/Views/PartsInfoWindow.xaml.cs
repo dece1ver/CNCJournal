@@ -121,24 +121,24 @@ namespace remeLog.Views
                     object value = cell.DataContext;
                     if (DataContext is PartsInfoWindowViewModel d && value is Part p)
                     {
-                        switch (column.DisplayIndex)
+                        switch (ColumnId.GetId(column))
                         {
-                            case 2:
+                            case "Shift":
                                 d.ShiftFilter = d.ShiftFilter.FilterText == p.Shift ? new Shift(Infrastructure.Types.ShiftType.All) : new Shift(p.Shift);
                                 break;
-                            case 3:
+                            case "Operator":
                                 d.OperatorFilter = d.OperatorFilter == p.Operator ? "" : p.Operator;
                                 break;
-                            case 4:
+                            case "PartName":
                                 d.PartNameFilter = d.PartNameFilter == p.PartName ? "" : p.PartName;
                                 break;
-                            case 5:
+                            case "Order":
                                 d.OrderFilter = d.OrderFilter == p.Order ? "" : p.Order;
                                 break;
-                            case 9:
+                            case "Setup":
                                 d.SetupFilter = d.SetupFilter == p.Setup ? null : p.Setup;
                                 break;
-                            case 44:
+                            case "EngineerComment":
                                 var comments = AppSettings.EngineerComments;
                                 int i = Array.IndexOf(comments, p.EngineerComment);
                                 p.EngineerComment = i == comments.Length - 1
@@ -171,10 +171,10 @@ namespace remeLog.Views
 
                 if (DataContext is PartsInfoWindowViewModel d && value is Part p)
                 {
-                    switch (column.DisplayIndex)
+                    switch (ColumnId.GetId(column))
                     {
                         // Оператор и М/Л — добавление в MultiValueEditor
-                        case 3 or 5:
+                        case "Operator" or "Order":
                             e.Handled = true;
                             cell.Focus();
                             var multiMenu = (ContextMenu)FindResource("MultiFilterValueContextMenu");
@@ -183,7 +183,7 @@ namespace remeLog.Views
                             break;
 
                         // Времена — вставка готовых значений
-                        case 10 or 11 or 12:
+                        case "StartSetupTime" or "StartMachiningTime" or "EndMachiningTime":
                             e.Handled = true;
                             cell.Focus();
                             var timeMenu = (ContextMenu)FindResource("TimeContextMenu");
@@ -192,7 +192,7 @@ namespace remeLog.Views
                             break;
 
                         // Комментарий мастера к наладке
-                        case 41:
+                        case "MasterComment":
                             e.Handled = true;
                             cell.Focus();
                             var masterMenu = (ContextMenu)FindResource("MasterCommentCellContextMenu");
@@ -201,7 +201,7 @@ namespace remeLog.Views
                             break;
 
                         // Нормативы серийной детали
-                        case 42 or 43 when p.IsSerial:
+                        case "FixedSetupTimePlan" or "FixedProductionTimePlan" when p.IsSerial:
                             e.Handled = true;
                             cell.Focus();
                             var normMenu = (ContextMenu)FindResource("SerialPartFixedNormativesContextMenu");
@@ -210,7 +210,7 @@ namespace remeLog.Views
                             break;
 
                         // Комментарий техотдела
-                        case 44:
+                        case "EngineerComment":
                             e.Handled = true;
                             cell.Focus();
                             var engMenu = (ContextMenu)FindResource("EngeneerCommentCellContextMenu");
@@ -273,7 +273,7 @@ namespace remeLog.Views
                 int cntWithioutZeroes = 0;
                 foreach (DataGridCellInfo cell in selectedCells.Where(c => c.IsValid))
                 {
-                    if (cell.Column.DisplayIndex is 8 or 9 or 10)
+                    if (ColumnId.GetId(cell.Column) is "DefectiveCount" or "Setup" or "StartSetupTime")
                     {
                         d.Status = string.Empty;
                         return;
@@ -331,11 +331,12 @@ namespace remeLog.Views
                         case Key.I:
                             var infoCell = dataGrid.SelectedCells.FirstOrDefault();
                             var colIndex = infoCell.Column.DisplayIndex;
+                            var colId = ColumnId.GetId(infoCell.Column) ?? "(нет)";
                             var infoCellContent = infoCell.Column.GetCellContent(infoCell.Item);
                             var info = infoCellContent is TextBlock tb ? tb.Text : "null";
                             info = $"Выбрано ячеек: {dataGrid.SelectedCells.Count}\n\n" +
                                 $"Информация о первой выделенной:\n" +
-                                $"Индекс столбца: {colIndex}\n" +
+                                $"Индекс столбца: {colIndex} (ID: {colId})\n" +
                                 $"Тип: {infoCellContent}\n" +
                                 $"Содержимое: {info}\n\n" +
                                 $"Деталь: {d.SelectedPart?.PartName}";
@@ -406,9 +407,9 @@ namespace remeLog.Views
         {
             if (DataContext is not PartsInfoWindowViewModel d) return;
 
-            int colIndex = cell.Column.DisplayIndex;
+            string colId = ColumnId.GetId(cell.Column) ?? "";
 
-            if (!PartColumnMeta.Map.TryGetValue(colIndex, out var meta)) return;
+            if (!PartColumnMeta.Map.TryGetValue(colId, out var meta)) return;
             if (meta.Kind == FilterKind.None) return;
 
             string? cellValue = GetCellTextValue(cell);
@@ -430,21 +431,21 @@ namespace remeLog.Views
             var filterItem = new MenuItem { Header = $"Фильтровать: «{cellValue}»" };
             filterItem.Click += (_, _) =>
             {
-                switch (colIndex)
+                switch (colId)
                 {
-                    case 2:
+                    case "Shift":
                         d.ShiftFilter = new Shift(cellValue);
                         break;
-                    case 3:
+                    case "Operator":
                         d.OperatorFilter = cellValue;
                         break;
-                    case 4:
+                    case "PartName":
                         d.PartNameFilter = cellValue;
                         break;
-                    case 5:
+                    case "Order":
                         d.OrderFilter = cellValue;
                         break;
-                    case 9 when int.TryParse(cellValue, out int setup):
+                    case "Setup" when int.TryParse(cellValue, out int setup):
                         d.SetupFilter = setup;
                         break;
                     default:
@@ -456,11 +457,11 @@ namespace remeLog.Views
             var addItem = new MenuItem { Header = $"Добавить к фильтру: «{cellValue}»" };
             addItem.Click += (_, _) =>
             {
-                string editorKey = colIndex switch
+                string editorKey = colId switch
                 {
-                    3 => "Operator",
-                    5 => "Order",
-                    _ when string.IsNullOrWhiteSpace(meta.SqlColumn) => $"col:{colIndex}",
+                    "Operator" => "Operator",
+                    "Order" => "Order",
+                    _ when string.IsNullOrWhiteSpace(meta.SqlColumn) => $"col:{colId}",
                     _ => meta.SqlColumn,
                 };
                 d.PushValueToEditor(editorKey, cellValue);
@@ -470,13 +471,13 @@ namespace remeLog.Views
 
             var existingChip = d.ChipFilters.FirstOrDefault(c => c.DisplayName == meta.DisplayName);
 
-            bool hasActiveFilter = colIndex switch
+            bool hasActiveFilter = colId switch
             {
-                2 => d.ShiftFilter.Type != ShiftType.All,
-                3 => !string.IsNullOrEmpty(d.OperatorFilter),
-                4 => !string.IsNullOrEmpty(d.PartNameFilter),
-                5 => !string.IsNullOrEmpty(d.OrderFilter),
-                9 => d.SetupFilter.HasValue,
+                "Shift" => d.ShiftFilter.Type != ShiftType.All,
+                "Operator" => !string.IsNullOrEmpty(d.OperatorFilter),
+                "PartName" => !string.IsNullOrEmpty(d.PartNameFilter),
+                "Order" => !string.IsNullOrEmpty(d.OrderFilter),
+                "Setup" => d.SetupFilter.HasValue,
                 _ => existingChip is not null,
             };
 
@@ -487,13 +488,13 @@ namespace remeLog.Views
                 var clearItem = new MenuItem { Header = $"Убрать фильтр по «{meta.DisplayName}»" };
                 clearItem.Click += (_, _) =>
                 {
-                    switch (colIndex)
+                    switch (colId)
                     {
-                        case 2: d.ShiftFilter = new Shift(ShiftType.All); break;
-                        case 3: d.OperatorFilter = string.Empty; break;
-                        case 4: d.PartNameFilter = string.Empty; break;
-                        case 5: d.OrderFilter = string.Empty; break;
-                        case 9: d.SetupFilter = null; break;
+                        case "Shift": d.ShiftFilter = new Shift(ShiftType.All); break;
+                        case "Operator": d.OperatorFilter = string.Empty; break;
+                        case "PartName": d.PartNameFilter = string.Empty; break;
+                        case "Order": d.OrderFilter = string.Empty; break;
+                        case "Setup": d.SetupFilter = null; break;
                         default:
                             if (existingChip is not null)
                                 d.RemoveChipFilter(existingChip);
@@ -764,12 +765,12 @@ namespace remeLog.Views
                 object value = cell.DataContext;
                 if (DataContext is PartsInfoWindowViewModel d && value is Part p)
                 {
-                    switch (column.DisplayIndex)
+                    switch (ColumnId.GetId(column))
                     {
-                        case 3:
+                        case "Operator":
                             d.PushValueToEditor("Operator", p.Operator);
                             break;
-                        case 5:
+                        case "Order":
                             d.PushValueToEditor("Order", p.Order);
                             break;
                     }
@@ -994,14 +995,6 @@ namespace remeLog.Views
 
             grid.CommitEdit(DataGridEditingUnit.Cell, true);
         }
-
-        private static bool TryGetColumnMeta(int displayIndex, out ColumnMeta meta)
-        {
-            if (PartColumnMeta.Map.TryGetValue(displayIndex, out meta!))
-                return meta.Kind != FilterKind.None && !string.IsNullOrEmpty(meta.SqlColumn);
-            return false;
-        }
-
 
         private static T? FindBoundFrameworkElement<T>(DependencyObject parent) where T : FrameworkElement
         {
