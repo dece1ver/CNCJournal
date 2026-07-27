@@ -87,6 +87,7 @@ namespace remeLog.ViewModels
             ExportPartsReportToExcelCommand = new LambdaCommand(OnExportPartsReportToExcelCommandExecuted, CanExportPartsReportToExcelCommandExecute);
             ExportReportForPeriodToExcelCommand = new LambdaCommand(OnExportReportForPeriodToExcelCommandExecuted, CanExportReportForPeriodToExcelCommandExecute);
             ExportNewReportForPeriodToExcelCommand = new LambdaCommand(OnExportNewReportForPeriodToExcelCommandExecuted, CanExportNewReportForPeriodToExcelCommandExecute);
+            ExportPeriodsComparisonCommand = new LambdaCommand(OnExportPeriodsComparisonCommandExecuted, CanExportPeriodsComparisonCommandExecute);
             ExportShiftsInfoReportCommand = new LambdaCommand(OnExportShiftsInfoReportCommandExecuted, CanExportShiftsInfoReportCommandExecute);
             ExportToExcelCommand = new LambdaCommand(OnExportToExcelCommandExecuted, CanExportToExcelCommandExecute);
             ExportToolSearchCasesToExcelCommand = new LambdaCommand(OnExportToolSearchCasesToExcelCommandExecuted, CanExportToolSearchCasesToExcelCommandExecute);
@@ -144,6 +145,7 @@ namespace remeLog.ViewModels
             _Parts = new();
             _OrderFilter = "";
             _PartNameFilter = "";
+            _EngineerConclusionFilter = "";
             _EngineerCommentFilter = "";
             _TotalCountFilter = "";
             _FromDate = PartsInfo.FromDate;
@@ -232,7 +234,15 @@ namespace remeLog.ViewModels
             propertyName == nameof(Part.MasterSetupComment)
             || propertyName == nameof(Part.MasterMachiningComment)
             || propertyName == nameof(Part.MasterComment)
-            || propertyName == nameof(Part.SpecifiedDowntimesComment);
+            || propertyName == nameof(Part.MasterSetupDetail)
+            || propertyName == nameof(Part.MasterMachiningDetail)
+            || propertyName == nameof(Part.SpecifiedDowntimesComment)
+            // Переопределение аналитиком меняет эффективную причину, а значит и состав
+            // аномалий, уходящих на проверку, — перезапуск нужен так же, как от правки мастера.
+            || propertyName == nameof(Part.SetupReasonOverride)
+            || propertyName == nameof(Part.MachiningReasonOverride)
+            || propertyName == nameof(Part.SetupReasonOverrideComment)
+            || propertyName == nameof(Part.MachiningReasonOverrideComment);
 
         /// <summary>
         /// Планирует фоновую ИИ-проверку строки с дебаунсом 2.5с. Совещательный контур:
@@ -273,6 +283,23 @@ namespace remeLog.ViewModels
                 }
                 catch (OperationCanceledException) { /* строку переправили или окно закрыто */ }
             }, token);
+        }
+
+        /// <summary>
+        /// Запускает фоновую ИИ-проверку сразу для всех подходящих строк после
+        /// загрузки — не дожидаясь правки мастером. Только когда открыт РОВНО
+        /// один станок за РОВНО одни сутки: при широком диапазоне дат массовый
+        /// запуск проверок по всем строкам забил бы очередь Ollama (она общая с
+        /// дневным ИИ-анализом и обслуживает запросы строго по одному). Переиспользует
+        /// ScheduleAiCheck — та же защита (дебаунс, версии, серилизация через gate),
+        /// разницы для не-подходящих строк не будет (IsReadyForAiCheck внутри).
+        /// </summary>
+        private void ScheduleInitialAiChecks()
+        {
+            if (!HasFeatureAiMasterCheck || !IsSingleMachineSingleDay) return;
+
+            foreach (var part in Parts)
+                ScheduleAiCheck(part);
         }
 
         private async Task RunAiCheckAsync(Part part, int version, CancellationToken token)
@@ -766,6 +793,21 @@ namespace remeLog.ViewModels
         }
 
 
+        private string _EngineerConclusionFilter;
+        /// <summary> Фильтр по заключению техотдела </summary>
+        public string EngineerConclusionFilter
+        {
+            get => _EngineerConclusionFilter;
+            set
+            {
+                if (!CanBeChanged()) return;
+                if (Set(ref _EngineerConclusionFilter, value))
+                {
+                    _ = LoadPartsAsync();
+                }
+            }
+        }
+
         private string _EngineerCommentFilter;
         /// <summary> Фильтр по комментарию техотдела </summary>
         public string EngineerCommentFilter
@@ -880,6 +922,7 @@ namespace remeLog.ViewModels
         public bool HasFeatureAdvancedEdit => Util.HasFeature(RemeLogFeature.AdvancedEdit);
         public bool HasFeatureValidationOverride => Util.HasFeature(RemeLogFeature.ValidationOverride);
         public bool HasFeatureAiMasterCheck => Util.HasFeature(RemeLogFeature.AiMasterCheck);
+        public bool HasFeatureReasonOverride => Util.HasFeature(RemeLogFeature.ReasonOverride);
 
         /// <summary>
         /// Кнопка суточного отчёта: доступна, если ошибок нет, либо есть фича
@@ -1649,6 +1692,46 @@ namespace remeLog.ViewModels
         private static bool CanExportNewReportForPeriodToExcelCommandExecute(object p) => true;
         #endregion
 
+        #region ExportPeriodsComparisonToExcel
+        public ICommand ExportPeriodsComparisonCommand { get; }
+        private async void OnExportPeriodsComparisonCommandExecuted(object p)
+        {
+            try
+            {
+                var dlg = new PeriodsComparisonWindow(FromDate, ToDate) { Owner = Application.Current.MainWindow };
+                if (dlg.ShowDialog() != true)
+                {
+                    Status = "Отмена";
+                    return;
+                }
+
+                var path = Util.GetXlsxPath();
+                if (string.IsNullOrEmpty(path))
+                {
+                    Status = "Выбор файла отменён";
+                    return;
+                }
+                var progress = new Progress<string>(message =>
+                {
+                    Status = message;
+                });
+
+                await App.Current.Dispatcher.InvokeAsync(() => InProgress = true);
+                Status = await Xl.ExportPeriodsComparisonAsync(
+                    dlg.FromDate1, dlg.ToDate1, dlg.Label1,
+                    dlg.FromDate2, dlg.ToDate2, dlg.Label2,
+                    ShiftFilter, path, progress
+                );
+            }
+            catch (Exception ex)
+            {
+                MessageBoxWindow.Show(ex.Message);
+            }
+            finally { InProgress = false; }
+        }
+        private static bool CanExportPeriodsComparisonCommandExecute(object p) => true;
+        #endregion
+
         #region ExportReportForPeriodToExcel
         public ICommand ExportReportForPeriodToExcelCommand { get; }
         private async void OnExportReportForPeriodToExcelCommandExecuted(object p)
@@ -2040,6 +2123,7 @@ namespace remeLog.ViewModels
             FinishedCountFilter = "";
             ToDate = PartsInfo.ToDate;
             FromDate = PartsInfo.FromDate;
+            _EngineerConclusionFilter = "";
             _EngineerCommentFilter = "";
             for (int i = 0; i < MachineFilters.Count; i++)
             {
@@ -2295,7 +2379,15 @@ namespace remeLog.ViewModels
             }
 
             if (CurrentDayReview != null)
-                await SaveDayReviewInternalAsync(CurrentDayReview.Decision, CurrentDayReview.IsFullyReviewed);
+            {
+                // "Записать" переприменяет уже принятое решение аналитика (например, после
+                // правки строк) — это не новая проверка, ReviewedBy/ReviewedAt трогать не надо,
+                // если только аналитик заодно не изменил AiFeedback.
+                var feedbackChanged = !string.Equals(AiFeedbackText ?? string.Empty,
+                    CurrentDayReview.AiFeedback ?? string.Empty, StringComparison.Ordinal);
+                await SaveDayReviewInternalAsync(CurrentDayReview.Decision, CurrentDayReview.IsFullyReviewed,
+                    touchReviewMeta: feedbackChanged);
+            }
 
             _ = LoadPartsAsync();
         }
@@ -2331,7 +2423,7 @@ namespace remeLog.ViewModels
         private void OnChangeShowUncheckedCommandExecuted(object p)
         {
             ViewUnchecked = !ViewUnchecked;
-            EngineerCommentFilter = ViewUnchecked ? "ожидание" : "";
+            EngineerConclusionFilter = ViewUnchecked ? "ожидание" : "";
         }
         private static bool CanChangeShowUncheckedCommandExecute(object p) => true;
         #endregion
@@ -2898,6 +2990,7 @@ namespace remeLog.ViewModels
                 InProgress = false;
                 await LoadDayReviewAsync();
                 LoadExistingFlags();
+                ScheduleInitialAiChecks();
                 return true;
             }
             catch (OperationCanceledException)
@@ -2936,6 +3029,7 @@ namespace remeLog.ViewModels
             AppendMultiValueCondition(sb, "Operator", OperatorFilter);
             AppendCondition(sb, "PartName", PartNameFilter);
             AppendMultiValueCondition(sb, "[Order]", OrderFilter);
+            AppendCondition(sb, "EngineerConclusion", EngineerConclusionFilter);
             AppendCondition(sb, "EngineerComment", EngineerCommentFilter);
 
             if (Util.TryParseComparison(FinishedCountFilter, out var finishedOp, out var finishedVal))
@@ -3391,7 +3485,7 @@ namespace remeLog.ViewModels
         /// <summary>
         /// Сохраняет решение аналитика и обновляет UI.
         /// </summary>
-        private async Task SaveDayReviewInternalAsync(AnalystDecision decision, bool isFullyReviewed)
+        private async Task SaveDayReviewInternalAsync(AnalystDecision decision, bool isFullyReviewed, bool touchReviewMeta = true)
         {
             var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine
                           ?? PartsInfo.Machine;
@@ -3421,6 +3515,7 @@ namespace remeLog.ViewModels
                 comment: DayReviewComment
             );
             review.AiFeedback = AiFeedbackText;
+            review.TouchReviewMeta = touchReviewMeta;
 
             Status = "Сохранение решения...";
             var (result, dayReviewId, message) = await Database.SaveDayReviewAsync(review);

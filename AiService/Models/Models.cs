@@ -36,11 +36,27 @@ public class PartContext
     public double MachiningTime { get; set; }
     public double? DowntimeRatio { get; set; }
     public string OperatorComment { get; set; } = "";
+    /// <summary>
+    /// ЭФФЕКТИВНАЯ причина отклонения наладки: переопределение аналитика (СГТ 1), если оно
+    /// есть, иначе отметка мастера. Все правила и промпты работают с этим значением —
+    /// исходная отметка мастера лежит в <see cref="SetupReasonOverride"/> рядом.
+    /// </summary>
     public string MasterSetupComment { get; set; } = "";
+    /// <summary> ЭФФЕКТИВНАЯ причина отклонения изготовления. См. <see cref="MasterSetupComment"/>. </summary>
     public string MasterMachiningComment { get; set; } = "";
     public string MasterComment { get; set; } = "";
+    public string MasterSetupDetail { get; set; } = "";
+    public string MasterMachiningDetail { get; set; } = "";
     public string SpecifiedDowntimesList { get; set; } = "";
     public string SpecifiedDowntimesComment { get; set; } = "";
+
+    // Переопределение причин аналитиком (СГТ 1). Непустое означает, что причина выше —
+    // решение СГТ, а не мастера. Контекст для объяснений, в правилах не участвует.
+    public string SetupReasonOverride { get; set; } = "";
+    public string SetupReasonOverrideComment { get; set; } = "";
+    public string MachiningReasonOverride { get; set; } = "";
+    public string MachiningReasonOverrideComment { get; set; } = "";
+    public string ReasonOverrideBy { get; set; } = "";
 
     public bool NoSetupHappened { get; set; }
     public bool NoProductionHappened { get; set; }

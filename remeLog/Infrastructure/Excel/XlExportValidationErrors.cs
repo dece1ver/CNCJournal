@@ -19,7 +19,8 @@ namespace remeLog.Infrastructure
         {
             nameof(Part.MasterSetupComment),
             nameof(Part.MasterMachiningComment),
-            nameof(Part.MasterComment),
+            nameof(Part.MasterSetupDetail),
+            nameof(Part.MasterMachiningDetail),
             nameof(Part.SpecifiedDowntimesComment),
         };
 
@@ -54,8 +55,9 @@ namespace remeLog.Infrastructure
             cm.Add(CM.SetupTimePlan);
             cm.Add(CM.SingleProductionTimePlan);
             cm.Add(CM.MasterSetupComment);
+            cm.Add(CM.MasterSetupDetail);
             cm.Add(CM.MasterProductionComment);
-            cm.Add(CM.MasterComment);
+            cm.Add(CM.MasterMachiningDetail);
             cm.Add(CM.ValidationErrors);
 
             ConfigureWorksheetHeader(ws, cm);
@@ -76,9 +78,12 @@ namespace remeLog.Infrastructure
                 ws.Cell(row, ci[CM.SetupTimePlan]).SetValue(part.SetupTimePlan);
                 ws.Cell(row, ci[CM.SingleProductionTimePlan]).SetValue(part.SingleProductionTimePlan);
                 ws.Cell(row, ci[CM.MasterSetupComment]).SetValue(part.MasterSetupComment);
+                ws.Cell(row, ci[CM.MasterSetupDetail])
+                    .SetValue(part.MasterSetupDetail)
+                    .Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
                 ws.Cell(row, ci[CM.MasterProductionComment]).SetValue(part.MasterMachiningComment);
-                ws.Cell(row, ci[CM.MasterComment])
-                    .SetValue(part.MasterComment)
+                ws.Cell(row, ci[CM.MasterMachiningDetail])
+                    .SetValue(part.MasterMachiningDetail)
                     .Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
                 ws.Cell(row, ci[CM.ValidationErrors])
                     .SetValue(string.Join("; ", errors))
@@ -99,8 +104,9 @@ namespace remeLog.Infrastructure
             ws.Column(ci[CM.Operator]).Width = 15;
             ws.Column(ci[CM.Part]).Width = 25;
             ws.Column(ci[CM.MasterSetupComment]).Width = 20;
+            ws.Column(ci[CM.MasterSetupDetail]).Width = 25;
             ws.Column(ci[CM.MasterProductionComment]).Width = 20;
-            ws.Column(ci[CM.MasterComment]).Width = 25;
+            ws.Column(ci[CM.MasterMachiningDetail]).Width = 25;
             ws.Column(ci[CM.ValidationErrors]).Width = 35;
 
             var period = parts.Count > 0

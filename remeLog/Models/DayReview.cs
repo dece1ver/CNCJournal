@@ -42,6 +42,14 @@ namespace remeLog.Models
         public AnalystDecision Decision { get; set; }
 
         /// <summary>
+        /// Обновлять ли ReviewedBy/ReviewedAt при сохранении существующей записи.
+        /// false — повторное сохранение без явного решения аналитика (например, кнопка
+        /// "Записать" после правки строк) не должно выглядеть как новая проверка.
+        /// На INSERT не влияет — новой записи ReviewedBy/ReviewedAt нужны всегда.
+        /// </summary>
+        public bool TouchReviewMeta { get; set; } = true;
+
+        /// <summary>
         /// true  — аналитик полностью закрыл день (все записи однозначны).
         /// false — день передан экспертам, часть записей под вопросом.
         /// </summary>

@@ -49,15 +49,17 @@ namespace remeLog.Infrastructure
 
         private AiHealthMonitor()
         {
-            _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+            _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
             _timer.Tick += async (_, _) => await CheckHealthAsync();
         }
 
         public void Start()
         {
-            _ = CheckHealthAsync();
             _timer.Start();
         }
+
+        /// <summary>Разовая внеочередная проверка (например, сразу после старта приложения).</summary>
+        public Task CheckNowAsync() => CheckHealthAsync();
 
         public void Stop()
         {

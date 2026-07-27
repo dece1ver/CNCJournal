@@ -13,6 +13,7 @@ namespace AiService
                 o.TimestampFormat = "HH:mm:ss.fff ";
                 o.SingleLine = true;
             });
+            builder.Logging.AddProvider(new FileLoggerProvider(Path.Combine(AppContext.BaseDirectory, "logs")));
             builder.Services.AddControllers();
             builder.Services.AddSingleton<OllamaService>();
             builder.Services.AddSingleton<PromptBuilder>();

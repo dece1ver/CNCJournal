@@ -138,10 +138,10 @@ namespace remeLog.Views
                             case "Setup":
                                 d.SetupFilter = d.SetupFilter == p.Setup ? null : p.Setup;
                                 break;
-                            case "EngineerComment":
+                            case "EngineerConclusion":
                                 var comments = AppSettings.EngineerComments;
-                                int i = Array.IndexOf(comments, p.EngineerComment);
-                                p.EngineerComment = i == comments.Length - 1
+                                int i = Array.IndexOf(comments, p.EngineerConclusion);
+                                p.EngineerConclusion = i == comments.Length - 1
                                     ? ""
                                     : comments[Math.Max(0, i + 1)];
                                 break;
@@ -191,8 +191,9 @@ namespace remeLog.Views
                             timeMenu.IsOpen = true;
                             break;
 
-                        // Комментарий мастера к наладке
-                        case "MasterComment":
+                        // Комментарий мастера к изготовлению (варианты в меню — станок/операция,
+                        // т.е. про «Изготовление не по техпроцессу», категория изготовления)
+                        case "MasterMachiningDetail":
                             e.Handled = true;
                             cell.Focus();
                             var masterMenu = (ContextMenu)FindResource("MasterCommentCellContextMenu");
@@ -209,8 +210,18 @@ namespace remeLog.Views
                             normMenu.IsOpen = true;
                             break;
 
-                        // Комментарий техотдела
-                        case "EngineerComment":
+                        // Причины отклонений — переопределение аналитиком (СГТ 1)
+                        case "MasterSetupComment" or "MasterMachiningComment":
+                            var isSetup = ColumnId.GetId(column) == "MasterSetupComment";
+                            if (BuildReasonOverrideContextMenu(d, p, isSetup) is not { } overrideMenu) break;
+                            e.Handled = true;
+                            cell.Focus();
+                            overrideMenu.PlacementTarget = cell;
+                            overrideMenu.IsOpen = true;
+                            break;
+
+                        // Заключение техотдела
+                        case "EngineerConclusion":
                             e.Handled = true;
                             cell.Focus();
                             var engMenu = (ContextMenu)FindResource("EngeneerCommentCellContextMenu");
@@ -223,6 +234,123 @@ namespace remeLog.Views
                     TryShowFilterContextMenu(cell, e);
             }
 
+        }
+
+        /// <summary>
+        /// Поля мастера, закрытые аналитику (Engineer) от прямого редактирования: его правка
+        /// затирала бы позицию мастера — ту самую проблему, ради которой сделан слой
+        /// переопределений. Причины он меняет через «Переопределить причину…», обоснование
+        /// пишет там же; для собственных заметок у него есть «Заключение техотдела» и
+        /// «Комментарий техотдела». Мастер и разработчик редактируют как раньше.
+        /// «Комментарий к простоям» в списке не нужен — его колонка и так скрыта от Engineer.
+        /// </summary>
+        private static readonly HashSet<string> MasterOwnedColumns = new()
+        {
+            "MasterSetupComment",
+            "MasterMachiningComment",
+            "MasterSetupDetail",
+            "MasterMachiningDetail",
+            "MasterComment",
+        };
+
+        private void DataGrid_BeginningEdit(object sender, DataGridBeginningEditEventArgs e)
+        {
+            if (DataContext is not PartsInfoWindowViewModel vm) return;
+            if (vm.ViewMode != User.Engineer) return;
+
+            if (ColumnId.GetId(e.Column) is { } id && MasterOwnedColumns.Contains(id))
+                e.Cancel = true;
+        }
+
+        /// <summary>
+        /// Меню переопределения причины. Пункты появляются только под фичей ReasonOverride —
+        /// смотреть чужие переопределения (маркер и тултип в ячейке) можно и без неё.
+        /// </summary>
+        private System.Windows.Controls.ContextMenu? BuildReasonOverrideContextMenu(
+            PartsInfoWindowViewModel vm, Part part, bool isSetup)
+        {
+            if (!vm.HasFeatureReasonOverride) return null;
+
+            var menu = new System.Windows.Controls.ContextMenu();
+            var hasOverride = isSetup ? part.HasSetupReasonOverride : part.HasMachiningReasonOverride;
+
+            var overrideItem = new MenuItem
+            {
+                Header = hasOverride ? "Изменить переопределение…" : "Переопределить причину…",
+            };
+            overrideItem.Click += (_, _) => ShowReasonOverrideDialog(vm, part, isSetup);
+            menu.Items.Add(overrideItem);
+
+            if (hasOverride)
+            {
+                var clearItem = new MenuItem { Header = "Снять переопределение" };
+                clearItem.Click += (_, _) => ClearReasonOverride(part, isSetup);
+                menu.Items.Add(clearItem);
+            }
+
+            return menu;
+        }
+
+        private void ShowReasonOverrideDialog(PartsInfoWindowViewModel vm, Part part, bool isSetup)
+        {
+            var dialog = new ReasonOverrideDialogWindow(
+                categoryTitle: isSetup ? PartColumnMeta.H_MasterSetupComment : PartColumnMeta.H_MasterMachiningComment,
+                masterReason: isSetup ? part.MasterSetupComment : part.MasterMachiningComment,
+                masterDetail: isSetup ? part.MasterSetupDetail : part.MasterMachiningDetail,
+                reasons: isSetup ? vm.SetupReasons : vm.MachiningReasons,
+                requireComment: isSetup ? vm.SetupReasonsRequireComment : vm.MachiningReasonsRequireComment,
+                currentOverride: isSetup ? part.SetupReasonOverride : part.MachiningReasonOverride,
+                currentComment: isSetup ? part.SetupReasonOverrideComment : part.MachiningReasonOverrideComment,
+                currentIsMasterFault: isSetup ? part.SetupReasonOverrideIsMasterFault : part.MachiningReasonOverrideIsMasterFault)
+            {
+                Owner = this,
+            };
+
+            if (dialog.ShowDialog() != true) return;
+
+            if (isSetup)
+            {
+                part.SetupReasonOverride = dialog.SelectedReason ?? string.Empty;
+                part.SetupReasonOverrideComment = dialog.OverrideComment;
+                part.SetupReasonOverrideIsMasterFault = dialog.IsMasterFault;
+            }
+            else
+            {
+                part.MachiningReasonOverride = dialog.SelectedReason ?? string.Empty;
+                part.MachiningReasonOverrideComment = dialog.OverrideComment;
+                part.MachiningReasonOverrideIsMasterFault = dialog.IsMasterFault;
+            }
+
+            StampOverrideAuthor(part);
+        }
+
+        private static void ClearReasonOverride(Part part, bool isSetup)
+        {
+            if (isSetup)
+            {
+                part.SetupReasonOverride = string.Empty;
+                part.SetupReasonOverrideComment = string.Empty;
+                part.SetupReasonOverrideIsMasterFault = true;
+            }
+            else
+            {
+                part.MachiningReasonOverride = string.Empty;
+                part.MachiningReasonOverrideComment = string.Empty;
+                part.MachiningReasonOverrideIsMasterFault = true;
+            }
+
+            // Автор/время общие на запись — чистим только когда снято последнее переопределение.
+            if (!part.HasSetupReasonOverride && !part.HasMachiningReasonOverride)
+            {
+                part.ReasonOverrideBy = string.Empty;
+                part.ReasonOverrideAt = null;
+            }
+        }
+
+        private static void StampOverrideAuthor(Part part)
+        {
+            part.ReasonOverrideBy = Environment.UserName;
+            part.ReasonOverrideAt = DateTime.Now;
         }
 
         private System.Windows.Controls.ContextMenu BuildPartFlagContextMenu(PartsInfoWindowViewModel vm, Part part)

@@ -100,7 +100,7 @@ namespace remeLog.Infrastructure
 
             if (part.SetupTimePlan != part.FixedSetupTimePlan && part.FixedSetupTimePlan > 0)
             {
-                if (part.EngineerComment.Contains("Изменение технологии"))
+                if (part.EngineerConclusion.Contains("Изменение технологии"))
                 {
                     ws.Cell("E17").SetValue("Изменение технологии");
                     ws.Cell("F8").Value = listSheet.Cell(2, 2).Value;
@@ -113,7 +113,7 @@ namespace remeLog.Infrastructure
 
             if (part.SingleProductionTimePlan != part.FixedProductionTimePlan && part.FixedProductionTimePlan > 0)
             {
-                if (part.EngineerComment.Contains("Изменение технологии"))
+                if (part.EngineerConclusion.Contains("Изменение технологии"))
                 {
                     ws.Cell("E17").SetValue("Изменение технологии");
                     ws.Cell("F8").Value = listSheet.Cell(2, 2).Value;

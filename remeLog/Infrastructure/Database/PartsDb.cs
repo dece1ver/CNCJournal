@@ -226,8 +226,11 @@ namespace remeLog.Infrastructure
                         "SpecifiedDowntimesComment = @SpecifiedDowntimesComment, " +
                         "UnspecifiedDowntimeComment = @UnspecifiedDowntimeComment, " +
                         "MasterComment = @MasterComment, " +
+                        "MasterSetupDetail = @MasterSetupDetail, " +
+                        "MasterMachiningDetail = @MasterMachiningDetail, " +
                         "FixedSetupTimePlan = @FixedSetupTimePlan, " +
                         "FixedProductionTimePlan = @FixedProductionTimePlan, " +
+                        "EngineerConclusion = @EngineerConclusion, " +
                         "EngineerComment = @EngineerComment, " +
                         "ExcludeFromReports = @ExcludeFromReports, " +
                         "LongSetupReasonComment = @LongSetupReasonComment, " +
@@ -235,6 +238,14 @@ namespace remeLog.Infrastructure
                         "LongSetupEngeneerComment = @LongSetupEngeneerComment, " +
                         "ExcludedOperationsTime = @ExcludedOperationsTime, " +
                         "IncreaseReason = @IncreaseReason, " +
+                        "SetupReasonOverride = @SetupReasonOverride, " +
+                        "SetupReasonOverrideComment = @SetupReasonOverrideComment, " +
+                        "SetupReasonOverrideIsMasterFault = @SetupReasonOverrideIsMasterFault, " +
+                        "MachiningReasonOverride = @MachiningReasonOverride, " +
+                        "MachiningReasonOverrideComment = @MachiningReasonOverrideComment, " +
+                        "MachiningReasonOverrideIsMasterFault = @MachiningReasonOverrideIsMasterFault, " +
+                        "ReasonOverrideBy = @ReasonOverrideBy, " +
+                        "ReasonOverrideAt = @ReasonOverrideAt, " +
                         "DefectiveCount = @DefectiveCount " +
                         "WHERE Guid = @Guid";
                     using (SqlCommand cmd = new(updateQuery, connection))
@@ -276,8 +287,11 @@ namespace remeLog.Infrastructure
                         cmd.Parameters.AddWithValue("@SpecifiedDowntimesComment", part.SpecifiedDowntimesComment);
                         cmd.Parameters.AddWithValue("@UnspecifiedDowntimeComment", part.UnspecifiedDowntimesComment);
                         cmd.Parameters.AddWithValue("@MasterComment", part.MasterComment);
+                        cmd.Parameters.AddWithValue("@MasterSetupDetail", part.MasterSetupDetail);
+                        cmd.Parameters.AddWithValue("@MasterMachiningDetail", part.MasterMachiningDetail);
                         cmd.Parameters.AddWithValue("@FixedSetupTimePlan", part.FixedSetupTimePlan);
                         cmd.Parameters.AddWithValue("@FixedProductionTimePlan", part.FixedProductionTimePlan);
+                        cmd.Parameters.AddWithValue("@EngineerConclusion", part.EngineerConclusion);
                         cmd.Parameters.AddWithValue("@EngineerComment", part.EngineerComment);
                         cmd.Parameters.AddWithValue("@ExcludeFromReports", part.ExcludeFromReports);
                         cmd.Parameters.AddWithValue("@LongSetupReasonComment", part.LongSetupReasonComment);
@@ -285,6 +299,14 @@ namespace remeLog.Infrastructure
                         cmd.Parameters.AddWithValue("@LongSetupEngeneerComment", part.LongSetupEngeneerComment);
                         cmd.Parameters.AddWithValue("@ExcludedOperationsTime", part.ExcludedOperationsTime);
                         cmd.Parameters.AddWithValue("@IncreaseReason", part.IncreaseReason);
+                        cmd.Parameters.AddWithValue("@SetupReasonOverride", part.SetupReasonOverride);
+                        cmd.Parameters.AddWithValue("@SetupReasonOverrideComment", part.SetupReasonOverrideComment);
+                        cmd.Parameters.AddWithValue("@SetupReasonOverrideIsMasterFault", part.SetupReasonOverrideIsMasterFault);
+                        cmd.Parameters.AddWithValue("@MachiningReasonOverride", part.MachiningReasonOverride);
+                        cmd.Parameters.AddWithValue("@MachiningReasonOverrideComment", part.MachiningReasonOverrideComment);
+                        cmd.Parameters.AddWithValue("@MachiningReasonOverrideIsMasterFault", part.MachiningReasonOverrideIsMasterFault);
+                        cmd.Parameters.AddWithValue("@ReasonOverrideBy", part.ReasonOverrideBy);
+                        cmd.Parameters.AddWithValue("@ReasonOverrideAt", (object?)part.ReasonOverrideAt ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@DefectiveCount", part.DefectiveCount);
 
                         var execureResult = await cmd.ExecuteNonQueryAsync();
@@ -359,7 +381,7 @@ namespace remeLog.Infrastructure
                     var masterComment = await reader.GetValueOrDefaultAsync(35, "", cancellationToken);
                     var fixedSetupTimePlan = await reader.GetValueOrDefaultAsync(36, 0.0, cancellationToken);
                     var fixedMachineTimePlan = await reader.GetValueOrDefaultAsync(37, 0.0, cancellationToken);
-                    var engineerComment = await reader.GetValueOrDefaultAsync(38, "", cancellationToken);
+                    var engineerConclusion = await reader.GetValueOrDefaultAsync(38, "", cancellationToken);
                     var excludeFromReports = await reader.GetValueOrDefaultAsync(39, false, cancellationToken);
                     var longSetupReasonComment = await reader.GetValueOrDefaultAsync(40, "", cancellationToken);
                     var longSetupFixComment = await reader.GetValueOrDefaultAsync(41, "", cancellationToken);
@@ -369,6 +391,23 @@ namespace remeLog.Infrastructure
 
                     var defectiveCount = await reader.GetValueOrDefaultAsync(46, 0, cancellationToken);
                     var specialDowntime = await reader.GetValueOrDefaultAsync(47, 0.0, cancellationToken);
+                    // Новые колонки, добавленные ALTER ADD после первого релиза, читаем ПО ИМЕНИ, не по
+                    // ordinal: обнаружено на практике, что NormalizedPartName (вычисляемая колонка) при
+                    // очередном "Обновлении БД" физически пересоздаётся и уезжает в конец таблицы, сдвигая
+                    // ordinal всех колонок, добавленных ПОСЛЕ неё в предыдущих раундах, — жёстко зашитый
+                    // номер тогда указывает не туда (ловили баг: EngineerComment показывал текст из
+                    // NormalizedPartName). Имя колонки от такого сдвига не зависит.
+                    var engineerComment = await reader.GetValueOrDefaultAsync("EngineerComment", "", cancellationToken);
+                    var masterSetupDetail = await reader.GetValueOrDefaultAsync("MasterSetupDetail", "", cancellationToken);
+                    var masterMachiningDetail = await reader.GetValueOrDefaultAsync("MasterMachiningDetail", "", cancellationToken);
+                    var setupReasonOverride = await reader.GetValueOrDefaultAsync("SetupReasonOverride", "", cancellationToken);
+                    var setupReasonOverrideComment = await reader.GetValueOrDefaultAsync("SetupReasonOverrideComment", "", cancellationToken);
+                    var setupReasonOverrideIsMasterFault = await reader.GetValueOrDefaultAsync("SetupReasonOverrideIsMasterFault", true, cancellationToken);
+                    var machiningReasonOverride = await reader.GetValueOrDefaultAsync("MachiningReasonOverride", "", cancellationToken);
+                    var machiningReasonOverrideComment = await reader.GetValueOrDefaultAsync("MachiningReasonOverrideComment", "", cancellationToken);
+                    var machiningReasonOverrideIsMasterFault = await reader.GetValueOrDefaultAsync("MachiningReasonOverrideIsMasterFault", true, cancellationToken);
+                    var reasonOverrideBy = await reader.GetValueOrDefaultAsync("ReasonOverrideBy", "", cancellationToken);
+                    var reasonOverrideAt = await reader.GetValueOrDefaultAsync<DateTime?>("ReasonOverrideAt", null, cancellationToken);
 
                     Part part = new(
                         guid,
@@ -409,15 +448,26 @@ namespace remeLog.Infrastructure
                         specifiedDowntimesComment,
                         unspecifiedDowntimesComment,
                         masterComment,
+                        masterSetupDetail,
+                        masterMachiningDetail,
                         fixedSetupTimePlan,
                         fixedMachineTimePlan,
-                        engineerComment,
+                        engineerConclusion,
                         excludeFromReports,
+                        engineerComment,
                         longSetupReasonComment,
                         longSetupFixComment,
                         longSetupEngeneerComment,
                         excludedOperationsTime,
-                        increaseReason);
+                        increaseReason,
+                        setupReasonOverride,
+                        setupReasonOverrideComment,
+                        setupReasonOverrideIsMasterFault,
+                        machiningReasonOverride,
+                        machiningReasonOverrideComment,
+                        machiningReasonOverrideIsMasterFault,
+                        reasonOverrideBy,
+                        reasonOverrideAt);
                     parts.Add(part);
                 }
             }
@@ -430,11 +480,16 @@ namespace remeLog.Infrastructure
             using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
             await connection.OpenAsync(cancellationToken);
 
+            // Заказ ИСКЛЮЧАЕТСЯ (не совпадает), а не совпадает: цель истории — проверить
+            // заявление "деталь делается впервые" (Освоение и т.п.), для чего нужны записи
+            // ДРУГИХ заказов той же детали/установки. Смены текущего заказа — это просто
+            // предыдущие дни той же самой партии, они не подтверждают и не опровергают
+            // "первый раз ли это" и раньше давали историю, бесполезную для этой проверки.
             var partsSql =
                 "SELECT TOP (@MaxRecords) * " +
                 "FROM Parts " +
                 "WHERE PartName = @PartName " +
-                "  AND [Order] = @Order " +
+                "  AND [Order] <> @Order " +
                 "  AND Machine = @Machine " +
                 "  AND Setup = @Setup " +
                 "  AND ShiftDate < @BeforeDate " +

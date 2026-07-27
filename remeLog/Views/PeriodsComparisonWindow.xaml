@@ -1,0 +1,77 @@
+<Window x:Class="remeLog.Views.PeriodsComparisonWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:remeLog.Views"
+        xmlns:vm="clr-namespace:remeLog.ViewModels"
+        mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:PeriodsComparisonWindowViewModel}"
+        Title="Сравнение периодов" Height="520" Width="380" MinHeight="480" MinWidth="360"
+        WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <Style TargetType="Button" x:Key="BottomButton">
+            <Setter Property="Width" Value="80"/>
+            <Setter Property="Height" Value="25"/>
+            <Setter Property="Margin" Value="5"/>
+        </Style>
+        <Style TargetType="TextBlock">
+            <Setter Property="Margin" Value="0 0 0 3"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style TargetType="DatePicker">
+            <Setter Property="Margin" Value="0 0 0 8"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Margin" Value="0 0 0 8"/>
+        </Style>
+        <Style TargetType="GroupBox">
+            <Setter Property="Margin" Value="0 0 0 8"/>
+            <Setter Property="Padding" Value="8"/>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel Margin="10">
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem>
+                <TextBlock Text="{Binding Status}"/>
+            </StatusBarItem>
+        </StatusBar>
+        <UniformGrid DockPanel.Dock="Bottom" Columns="2">
+            <Button Content="Отмена"
+                    IsCancel="True"
+                    HorizontalAlignment="Left"
+                    Style="{StaticResource BottomButton}"/>
+            <Button Content="Сформировать"
+                    IsDefault="True"
+                    HorizontalAlignment="Right"
+                    Width="120"
+                    Command="{Binding ConfirmCommand}"
+                    CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
+                    Style="{StaticResource BottomButton}"/>
+        </UniformGrid>
+
+        <StackPanel>
+            <GroupBox Header="Период 1">
+                <StackPanel>
+                    <TextBlock Text="С:"/>
+                    <DatePicker SelectedDate="{Binding FromDate1}"/>
+                    <TextBlock Text="По:"/>
+                    <DatePicker SelectedDate="{Binding ToDate1}"/>
+                    <TextBlock Text="Название на листах:"/>
+                    <TextBox Text="{Binding Label1, UpdateSourceTrigger=PropertyChanged}"/>
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Header="Период 2">
+                <StackPanel>
+                    <TextBlock Text="С:"/>
+                    <DatePicker SelectedDate="{Binding FromDate2}"/>
+                    <TextBlock Text="По:"/>
+                    <DatePicker SelectedDate="{Binding ToDate2}"/>
+                    <TextBlock Text="Название на листах:"/>
+                    <TextBox Text="{Binding Label2, UpdateSourceTrigger=PropertyChanged}"/>
+                </StackPanel>
+            </GroupBox>
+        </StackPanel>
+    </DockPanel>
+</Window>

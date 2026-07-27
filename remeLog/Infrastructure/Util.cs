@@ -294,9 +294,11 @@ namespace remeLog.Infrastructure
                         $"Specified Downtime {i}",
                         $"Unspecified Downtime {i}",
                         $"Master Comment {i}",
+                        $"Master Setup Detail {i}",
+                        $"Master Machining Detail {i}",
                         random.NextDouble(),
                         random.NextDouble(),
-                        $"Engineer Comment {i}",
+                        $"Engineer Conclusion {i}",
                         random.Next(0, 2) == 1
                     );
                 }).ToList();
@@ -599,13 +601,21 @@ namespace remeLog.Infrastructure
         }
 
         /// <summary>
+        /// Фактическая маска фич текущего экземпляра: у администратора (если фичи не заданы
+        /// явно через --features=) доступно всё, поэтому сырая AppSettings.EnabledFeatures у
+        /// него может быть пустой и о реальных правах не говорит. Единственный источник правды
+        /// для «что доступно этому экземпляру» — используется и проверками HasFeature, и
+        /// записью присутствия (AppPresenceService), чтобы окно инстансов не врало про админов.
+        /// </summary>
+        public static RemeLogFeature EffectiveFeatures =>
+            !AppSettings.FeaturesExplicitlySet && IsAppAdmin()
+                ? RemeLogFeatureExtensions.All
+                : AppSettings.EnabledFeatures;
+
+        /// <summary>
         /// Проверяет, имеет ли текущий пользователь доступ к указанной фиче.
         /// Администраторы имеют доступ ко всем фичам.
         /// </summary>
-        public static bool HasFeature(RemeLogFeature feature)
-        {
-            if (!AppSettings.FeaturesExplicitlySet && IsAppAdmin()) return true;
-            return AppSettings.EnabledFeatures.HasFlag(feature);
-        }
+        public static bool HasFeature(RemeLogFeature feature) => EffectiveFeatures.HasFlag(feature);
     }
 }

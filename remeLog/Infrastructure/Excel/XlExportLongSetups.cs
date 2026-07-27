@@ -78,10 +78,11 @@ namespace remeLog.Infrastructure
             cm.Add(CM.SpecifiedDowntimesComment);
             cm.Add(CM.SetupRatioTitle);
             cm.Add(CM.MasterSetupComment);
+            cm.Add(CM.MasterSetupDetail);
             cm.Add(CM.MasterComment);
             cm.Add(CM.FixedSetupTimePlan);
             cm.Add(CM.FixedProductionTimePlan);
-            cm.Add(CM.EngineerComment);
+            cm.Add(CM.EngineerConclusion);
 
             ConfigureWorksheetHeader(ws, cm);
 
@@ -146,11 +147,13 @@ namespace remeLog.Infrastructure
                         .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
                 ws.Cell(row, ci[CM.SpecifiedDowntimesComment]).SetValue(part.SpecifiedDowntimesComment);
                 ws.Cell(row, ci[CM.SetupRatioTitle]).SetValue(part.SetupRatioTitle);
-                ws.Cell(row, ci[CM.MasterSetupComment]).SetValue(part.MasterSetupComment);
+                // Итоговая классификация: переопределение СГТ, если оно есть, иначе отметка мастера.
+                ws.Cell(row, ci[CM.MasterSetupComment]).SetValue(part.EffectiveSetupReason);
+                ws.Cell(row, ci[CM.MasterSetupDetail]).SetValue(part.MasterSetupDetail);
                 ws.Cell(row, ci[CM.MasterComment]).SetValue(part.MasterComment);
                 ws.Cell(row, ci[CM.FixedSetupTimePlan]).SetValue(part.FixedSetupTimePlan);
                 ws.Cell(row, ci[CM.FixedProductionTimePlan]).SetValue(part.FixedProductionTimePlan);
-                ws.Cell(row, ci[CM.EngineerComment]).SetValue(part.EngineerComment);
+                ws.Cell(row, ci[CM.EngineerConclusion]).SetValue(part.EngineerConclusion);
                 cnt++;
                 row++;
             }
@@ -171,6 +174,7 @@ namespace remeLog.Infrastructure
 
             ws.Column(ci[CM.OperatorComment]).Width = 35;
             ws.Column(ci[CM.MasterSetupComment]).Width = 20;
+            ws.Column(ci[CM.MasterSetupDetail]).Width = 20;
             ws.Column(ci[CM.MasterComment]).Width = 20;
 
 

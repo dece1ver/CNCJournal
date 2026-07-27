@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Text;
 
 namespace remeLog.Models
 {
@@ -50,15 +51,26 @@ namespace remeLog.Models
             string specifiedDowntimesComment = "",
             string unspecifiedDowntimesComment = "",
             string masterComment = "",
+            string masterSetupDetail = "",
+            string masterMachiningDetail = "",
             double fixedSetupTimePlan = 0,
             double fixedMachineTimePlan = 0,
-            string engineerComment = "",
+            string engineerConclusion = "",
             bool excludeFromReports = false,
+            string engineerComment = "",
             string longSetupReasonComment = "",
             string longSetupFixComment = "",
             string longSetupEngeneerComment = "",
             double excludedOperationsTime = 0,
-            string increaseReason = ""
+            string increaseReason = "",
+            string setupReasonOverride = "",
+            string setupReasonOverrideComment = "",
+            bool setupReasonOverrideIsMasterFault = true,
+            string machiningReasonOverride = "",
+            string machiningReasonOverrideComment = "",
+            bool machiningReasonOverrideIsMasterFault = true,
+            string reasonOverrideBy = "",
+            DateTime? reasonOverrideAt = null
             )
         {
             _Guid = guid;
@@ -97,8 +109,11 @@ namespace remeLog.Models
             _SpecifiedDowntimesComment = specifiedDowntimesComment;
             _UnspecifiedDowntimesComment = unspecifiedDowntimesComment;
             _MasterComment = masterComment;
+            _MasterSetupDetail = masterSetupDetail;
+            _MasterMachiningDetail = masterMachiningDetail;
             _FixedSetupTimePlan = fixedSetupTimePlan;
             _FixedProductionTimePlan = fixedMachineTimePlan;
+            _EngineerConclusion = engineerConclusion;
             _EngineerComment = engineerComment;
             _ExcludeFromReports = excludeFromReports;
             NeedUpdate = false;
@@ -107,6 +122,14 @@ namespace remeLog.Models
             _LongSetupEngeneerComment = longSetupEngeneerComment;
             _ExcludedOperationsTime = excludedOperationsTime;
             _IncreaseReason = increaseReason;
+            _SetupReasonOverride = setupReasonOverride;
+            _SetupReasonOverrideComment = setupReasonOverrideComment;
+            _SetupReasonOverrideIsMasterFault = setupReasonOverrideIsMasterFault;
+            _MachiningReasonOverride = machiningReasonOverride;
+            _MachiningReasonOverrideComment = machiningReasonOverrideComment;
+            _MachiningReasonOverrideIsMasterFault = machiningReasonOverrideIsMasterFault;
+            _ReasonOverrideBy = reasonOverrideBy;
+            _ReasonOverrideAt = reasonOverrideAt;
         }
 
         public Part(Part part)
@@ -147,8 +170,11 @@ namespace remeLog.Models
             _SpecifiedDowntimesComment = part.SpecifiedDowntimesComment;
             _UnspecifiedDowntimesComment = part.UnspecifiedDowntimesComment;
             _MasterComment = part.MasterComment;
+            _MasterSetupDetail = part.MasterSetupDetail;
+            _MasterMachiningDetail = part.MasterMachiningDetail;
             _FixedSetupTimePlan = part.FixedSetupTimePlan;
             _FixedProductionTimePlan = part.FixedProductionTimePlan;
+            _EngineerConclusion = part.EngineerConclusion;
             _EngineerComment = part.EngineerComment;
             NeedUpdate = false;
             _LongSetupReasonComment = part.LongSetupReasonComment;
@@ -156,6 +182,14 @@ namespace remeLog.Models
             _LongSetupEngeneerComment = part.LongSetupEngeneerComment;
             _ExcludedOperationsTime = part.ExcludedOperationsTime;
             _IncreaseReason = part.IncreaseReason;
+            _SetupReasonOverride = part.SetupReasonOverride;
+            _SetupReasonOverrideComment = part.SetupReasonOverrideComment;
+            _SetupReasonOverrideIsMasterFault = part.SetupReasonOverrideIsMasterFault;
+            _MachiningReasonOverride = part.MachiningReasonOverride;
+            _MachiningReasonOverrideComment = part.MachiningReasonOverrideComment;
+            _MachiningReasonOverrideIsMasterFault = part.MachiningReasonOverrideIsMasterFault;
+            _ReasonOverrideBy = part.ReasonOverrideBy;
+            _ReasonOverrideAt = part.ReasonOverrideAt;
         }
 
         private Guid _Guid;
@@ -377,6 +411,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -404,6 +440,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -438,6 +476,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -466,6 +506,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -509,6 +551,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -550,6 +594,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -591,6 +637,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -619,6 +667,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -648,6 +698,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -675,6 +727,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -703,6 +757,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -731,6 +787,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -759,6 +817,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -787,6 +847,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -815,6 +877,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -843,6 +907,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -871,6 +937,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -902,6 +970,8 @@ namespace remeLog.Models
                 if (Set(ref _MasterSetupComment, value))
                 {
                     NeedUpdate = true;
+                    OnPropertyChanged(nameof(EffectiveSetupReason));
+                    OnPropertyChanged(nameof(SetupOverrideTooltip));
                     OnPropertyChanged(nameof(SetupTimeFact));
                     OnPropertyChanged(nameof(ProductionTimeFact));
                     OnPropertyChanged(nameof(SetupRatio));
@@ -914,6 +984,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -930,6 +1002,8 @@ namespace remeLog.Models
                 if (Set(ref _MasterMachiningComment, value))
                 {
                     NeedUpdate = true;
+                    OnPropertyChanged(nameof(EffectiveMachiningReason));
+                    OnPropertyChanged(nameof(MachiningOverrideTooltip));
                     OnPropertyChanged(nameof(SetupTimeFact));
                     OnPropertyChanged(nameof(ProductionTimeFact));
                     OnPropertyChanged(nameof(SetupRatio));
@@ -942,6 +1016,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -970,6 +1046,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -998,6 +1076,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -1006,7 +1086,7 @@ namespace remeLog.Models
 
 
         private string _MasterComment;
-        /// <summary> Комментарий мастера </summary>
+        /// <summary> Комментарий мастера (архив, до разделения на наладку/изготовление) </summary>
         public string MasterComment
         {
             get => _MasterComment;
@@ -1026,6 +1106,68 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(Error));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
+
+        private string _MasterSetupDetail;
+        /// <summary> Комментарий мастера к отклонениям в наладке </summary>
+        public string MasterSetupDetail
+        {
+            get => _MasterSetupDetail;
+            set {
+                if (Set(ref _MasterSetupDetail, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(SetupTimeFact));
+                    OnPropertyChanged(nameof(ProductionTimeFact));
+                    OnPropertyChanged(nameof(SetupRatio));
+                    OnPropertyChanged(nameof(SetupRatioTitle));
+                    OnPropertyChanged(nameof(ProductionRatio));
+                    OnPropertyChanged(nameof(ProductionRatioTitle));
+                    OnPropertyChanged(nameof(SingleProductionTime));
+                    OnPropertyChanged(nameof(SpecifiedDowntimesRatio));
+                    OnPropertyChanged(nameof(SpecifiedDowntimesComment));
+                    OnPropertyChanged(nameof(MasterSetupComment));
+                    OnPropertyChanged(nameof(MasterMachiningComment));
+                    OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(Error));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
+
+        private string _MasterMachiningDetail;
+        /// <summary> Комментарий мастера к отклонениям в изготовлении </summary>
+        public string MasterMachiningDetail
+        {
+            get => _MasterMachiningDetail;
+            set {
+                if (Set(ref _MasterMachiningDetail, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(SetupTimeFact));
+                    OnPropertyChanged(nameof(ProductionTimeFact));
+                    OnPropertyChanged(nameof(SetupRatio));
+                    OnPropertyChanged(nameof(SetupRatioTitle));
+                    OnPropertyChanged(nameof(ProductionRatio));
+                    OnPropertyChanged(nameof(ProductionRatioTitle));
+                    OnPropertyChanged(nameof(SingleProductionTime));
+                    OnPropertyChanged(nameof(SpecifiedDowntimesRatio));
+                    OnPropertyChanged(nameof(SpecifiedDowntimesComment));
+                    OnPropertyChanged(nameof(MasterSetupComment));
+                    OnPropertyChanged(nameof(MasterMachiningComment));
+                    OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -1075,6 +1217,20 @@ namespace remeLog.Models
 
         public double ProductionTimePlanForCalc => FixedProductionTimePlan > 0 && CalcFixed ? FixedProductionTimePlan : SingleProductionTimePlan;
 
+        private string _EngineerConclusion;
+        /// <summary> Заключение техотдела </summary>
+        public string EngineerConclusion
+        {
+            get => _EngineerConclusion;
+            set {
+                if (Set(ref _EngineerConclusion, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
         private string _EngineerComment;
         /// <summary> Комментарий техотдела </summary>
         public string EngineerComment
@@ -1088,6 +1244,182 @@ namespace remeLog.Models
                 }
             }
         }
+
+        #region Переопределение причин аналитиком (СГТ 1)
+        // Поля мастера после заполнения мастером не правятся — решение аналитика живёт
+        // здесь, параллельным слоем. Это сохраняет отметку мастера как его официальную
+        // позицию (регламент, п. 4.3) и как метрику качества заполнения, а историю типовых
+        // причин — пригодной для статистики: видно и что выбрал мастер, и на что исправили.
+        // В гриде колонка остаётся одна и показывает Effective*Reason.
+
+        private string _SetupReasonOverride;
+        /// <summary> Причина отклонения наладки, назначенная аналитиком вместо выбора мастера </summary>
+        public string SetupReasonOverride
+        {
+            get => _SetupReasonOverride;
+            set {
+                if (Set(ref _SetupReasonOverride, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(EffectiveSetupReason));
+                    OnPropertyChanged(nameof(HasSetupReasonOverride));
+                    OnPropertyChanged(nameof(SetupOverrideTooltip));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
+        private string _SetupReasonOverrideComment;
+        /// <summary> Обоснование аналитика к переопределению причины наладки </summary>
+        public string SetupReasonOverrideComment
+        {
+            get => _SetupReasonOverrideComment;
+            set {
+                if (Set(ref _SetupReasonOverrideComment, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(SetupOverrideTooltip));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
+        private bool _SetupReasonOverrideIsMasterFault;
+        /// <summary>
+        /// Считать ли переопределение причины наладки ошибкой мастера. По умолчанию true —
+        /// сам факт переопределения считается. Аналитик снимает флаг, когда у мастера не было
+        /// данных для верного выбора (СГТ смотрит историю изготовления, Winnum, 1С — мастер
+        /// видит только смену и цифры), чтобы метрика не била незаслуженно.
+        /// </summary>
+        public bool SetupReasonOverrideIsMasterFault
+        {
+            get => _SetupReasonOverrideIsMasterFault;
+            set {
+                if (Set(ref _SetupReasonOverrideIsMasterFault, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(SetupOverrideTooltip));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
+        private string _MachiningReasonOverride;
+        /// <summary> Причина отклонения изготовления, назначенная аналитиком вместо выбора мастера </summary>
+        public string MachiningReasonOverride
+        {
+            get => _MachiningReasonOverride;
+            set {
+                if (Set(ref _MachiningReasonOverride, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(EffectiveMachiningReason));
+                    OnPropertyChanged(nameof(HasMachiningReasonOverride));
+                    OnPropertyChanged(nameof(MachiningOverrideTooltip));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
+        private string _MachiningReasonOverrideComment;
+        /// <summary> Обоснование аналитика к переопределению причины изготовления </summary>
+        public string MachiningReasonOverrideComment
+        {
+            get => _MachiningReasonOverrideComment;
+            set {
+                if (Set(ref _MachiningReasonOverrideComment, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(MachiningOverrideTooltip));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
+        private bool _MachiningReasonOverrideIsMasterFault;
+        /// <summary> Считать ли переопределение причины изготовления ошибкой мастера. См. <see cref="SetupReasonOverrideIsMasterFault"/>. </summary>
+        public bool MachiningReasonOverrideIsMasterFault
+        {
+            get => _MachiningReasonOverrideIsMasterFault;
+            set {
+                if (Set(ref _MachiningReasonOverrideIsMasterFault, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(MachiningOverrideTooltip));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
+        private string _ReasonOverrideBy;
+        /// <summary> Кто переопределил причины. Общее на запись: обе категории правятся в одну сессию разбора. </summary>
+        public string ReasonOverrideBy
+        {
+            get => _ReasonOverrideBy;
+            set {
+                if (Set(ref _ReasonOverrideBy, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(SetupOverrideTooltip));
+                    OnPropertyChanged(nameof(MachiningOverrideTooltip));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
+        private DateTime? _ReasonOverrideAt;
+        /// <summary> Когда переопределены причины. Общее на запись, см. <see cref="ReasonOverrideBy"/>. </summary>
+        public DateTime? ReasonOverrideAt
+        {
+            get => _ReasonOverrideAt;
+            set {
+                if (Set(ref _ReasonOverrideAt, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(SetupOverrideTooltip));
+                    OnPropertyChanged(nameof(MachiningOverrideTooltip));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
+        public bool HasSetupReasonOverride => !string.IsNullOrWhiteSpace(SetupReasonOverride);
+
+        public bool HasMachiningReasonOverride => !string.IsNullOrWhiteSpace(MachiningReasonOverride);
+
+        /// <summary> Итоговая причина отклонения наладки: решение аналитика, если есть, иначе отметка мастера. </summary>
+        public string EffectiveSetupReason =>
+            HasSetupReasonOverride ? SetupReasonOverride : MasterSetupComment;
+
+        /// <summary> Итоговая причина отклонения изготовления: решение аналитика, если есть, иначе отметка мастера. </summary>
+        public string EffectiveMachiningReason =>
+            HasMachiningReasonOverride ? MachiningReasonOverride : MasterMachiningComment;
+
+        /// <summary> null, когда переопределения нет — WPF тогда просто не показывает тултип. </summary>
+        public string? SetupOverrideTooltip => BuildOverrideTooltip(
+            MasterSetupComment, SetupReasonOverride, SetupReasonOverrideComment, SetupReasonOverrideIsMasterFault);
+
+        /// <summary> null, когда переопределения нет. См. <see cref="SetupOverrideTooltip"/>. </summary>
+        public string? MachiningOverrideTooltip => BuildOverrideTooltip(
+            MasterMachiningComment, MachiningReasonOverride, MachiningReasonOverrideComment, MachiningReasonOverrideIsMasterFault);
+
+        private string? BuildOverrideTooltip(string masterReason, string overrideReason, string overrideComment, bool isMasterFault)
+        {
+            if (string.IsNullOrWhiteSpace(overrideReason)) return null;
+
+            var master = string.IsNullOrWhiteSpace(masterReason) ? "не указана" : $"«{masterReason}»";
+            var who = string.IsNullOrWhiteSpace(ReasonOverrideBy) ? "" : $" ({ReasonOverrideBy}";
+            if (who.Length > 0)
+                who += ReasonOverrideAt.HasValue ? $", {ReasonOverrideAt.Value:dd.MM.yy})" : ")";
+
+            var sb = new StringBuilder($"Мастер: {master} → СГТ: «{overrideReason}»{who}");
+            if (!string.IsNullOrWhiteSpace(overrideComment))
+                sb.Append($"\n\n{overrideComment}");
+            if (!isMasterFault)
+                sb.Append("\n\nНе считается ошибкой мастера.");
+            return sb.ToString();
+        }
+        #endregion
 
 
         private double _ExcludedOperationsTime;
@@ -1155,6 +1487,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterSetupComment));
                     OnPropertyChanged(nameof(MasterMachiningComment));
                     OnPropertyChanged(nameof(MasterComment));
+                    OnPropertyChanged(nameof(MasterSetupDetail));
+                    OnPropertyChanged(nameof(MasterMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -1317,7 +1651,8 @@ namespace remeLog.Models
                 if (string.IsNullOrWhiteSpace(this[nameof(SpecifiedDowntimesComment)]) &&
                     string.IsNullOrWhiteSpace(this[nameof(MasterSetupComment)]) &&
                     string.IsNullOrWhiteSpace(this[nameof(MasterMachiningComment)]) &&
-                    string.IsNullOrWhiteSpace(this[nameof(MasterComment)]))
+                    string.IsNullOrWhiteSpace(this[nameof(MasterSetupDetail)]) &&
+                    string.IsNullOrWhiteSpace(this[nameof(MasterMachiningDetail)]))
                 {
                     return null!;
                 }
@@ -1327,6 +1662,48 @@ namespace remeLog.Models
                 }
             }
         }
+
+        // Строки из справочника cnc_deviation_reasons — используются валидацией причин.
+        // При переименовании причины в справочнике их нужно поправить здесь же.
+        private const string NoNormativesReason = "Отсутствие нормативов";
+        private const string WrongNormativesReason = "Некорректные нормативы";
+        private const string NotByProcessReason = "Изготовление не по техпроцессу";
+
+        /// <summary>
+        /// Причины из общей части справочника (Type=None, доступны в ОБЕИХ категориях). Ниже
+        /// подмешиваются и в наладку, и в изготовление: одна и та же причина обязана
+        /// валидироваться одинаково независимо от того, в каком комбобоксе выбрана. Добавление
+        /// сюда автоматически распространяется на обе категории — руками дублировать не нужно.
+        /// </summary>
+        private static readonly string[] CommonReasonsRequiringNormative =
+        {
+            "Неопытный оператор",
+            "Работа ученика",
+            "Небрежное отношение к работе",
+            "Особенности изготовления",
+        };
+
+        /// <summary>
+        /// Причины наладки, которые объясняют ОТКЛОНЕНИЕ от норматива, а значит требуют, чтобы
+        /// норматив существовал. При его отсутствии объяснять нечего — там своя причина.
+        /// </summary>
+        private static readonly string[] SetupReasonsRequiringNormative =
+            new[]
+            {
+                "Освоение",
+                "Изготовление типовой детали",
+            }
+            .Concat(CommonReasonsRequiringNormative).ToArray();
+
+        /// <summary> То же для изготовления. См. <see cref="SetupReasonsRequiringNormative"/>. </summary>
+        private static readonly string[] MachiningReasonsRequiringNormative =
+            new[]
+            {
+                "Штучная/длительная работа",
+                "Разовое изменение времени из-за проблем с инструментом/оборудованием",
+                "Несоответствующие заготовки",
+            }
+            .Concat(CommonReasonsRequiringNormative).ToArray();
 
         // Причины, при которых модель обязана свериться с историей детали
         // (зеркало HistorySensitiveReasons в AiService PromptBuilder).
@@ -1364,7 +1741,7 @@ namespace remeLog.Models
             {
                 if (SetupTimePlanForCalc <= 0 && HasOrder)
                     result.Add((nameof(MasterSetupComment), "Отсутствует норматив наладки при реальном заказе"));
-                if ((SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0)
+                if ((SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0 && (SetupTimePlanForCalc > 0 || HasOrder))
                     result.Add((nameof(MasterSetupComment), $"КПД наладки {SetupRatio:0%} вне нормы (70–{AppSettings.MaxSetupLimit:0%})"));
                 if (PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695)
                     result.Add((nameof(MasterSetupComment), $"Частичная наладка {PartialSetupTime:0} мин превышает норматив {SetupTimePlanForCalc:0} мин"));
@@ -1374,14 +1751,14 @@ namespace remeLog.Models
             {
                 if (ProductionTimePlanForCalc <= 0 && HasOrder)
                     result.Add((nameof(MasterMachiningComment), "Отсутствует норматив изготовления при реальном заказе"));
-                if (ProductionRatio is < 0.695 or > 1.2)
+                if (ProductionRatio is < 0.695 or > 1.2 && (ProductionTimePlanForCalc > 0 || HasOrder))
                     result.Add((nameof(MasterMachiningComment), $"КПД изготовления {ProductionRatio:0%} вне нормы (70–120%)"));
             }
 
             if (RequiresComment(MasterSetupComment, SetupReasonsRequireComment))
-                result.Add((nameof(MasterComment), $"Причина наладки «{MasterSetupComment}» требует уточнения в комментарии"));
+                result.Add((nameof(MasterSetupDetail), $"Причина наладки «{MasterSetupComment}» требует уточнения в комментарии"));
             if (RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment))
-                result.Add((nameof(MasterComment), $"Причина изготовления «{MasterMachiningComment}» требует уточнения в комментарии"));
+                result.Add((nameof(MasterMachiningDetail), $"Причина изготовления «{MasterMachiningComment}» требует уточнения в комментарии"));
 
             if (SpecifiedDowntimesRatio > 0.5)
                 result.Add((nameof(SpecifiedDowntimesComment), $"Простои {SpecifiedDowntimesRatio:0%} — более 50% времени работы"));
@@ -1400,16 +1777,63 @@ namespace remeLog.Models
         {
             get
             {
+                // Ячейки причин в гриде привязаны к Effective*Reason (показывают переопределение
+                // СГТ, если оно есть), но валидируется всегда отметка МАСТЕРА: требование
+                // заполнить причину адресовано ему и не снимается тем, что аналитик потом
+                // проставил свою. Без этой развязки Validation.ErrorTemplate на ячейке молчал бы.
+                columnName = columnName switch
+                {
+                    nameof(EffectiveSetupReason) => nameof(MasterSetupComment),
+                    nameof(EffectiveMachiningReason) => nameof(MasterMachiningComment),
+                    _ => columnName,
+                };
+
                 return columnName switch
                 {
                     // Норматив=0 при реальном заказе требует объяснения ВСЕГДА, независимо от того,
                     // была ли выполнена работа в эту смену (б/н/б/и/частичная наладка) — норматив
                     // привязан к заказу/техпроцессу, а не к факту работы (см. HasOrder).
                     nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && SetupTimePlanForCalc <= 0 && HasOrder => "Необходимо указать причину отсутствия норматива наладки.",
-                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0 => "Необходимо указать причину невыполнения норматива наладки.",
+                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0 && (SetupTimePlanForCalc > 0 || HasOrder) => "Необходимо указать причину невыполнения норматива наладки.",
                     nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695 => "Необходимо указать причину превышения частичной наладки.",
                     nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionTimePlanForCalc <= 0 && HasOrder => "Необходимо указать причину отсутствия норматива изготовления.",
-                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2 => "Необходимо указать причину невыполнения норматива изготовления.",
+                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2 && (ProductionTimePlanForCalc > 0 || HasOrder) => "Необходимо указать причину невыполнения норматива изготовления.",
+                    // Проверки «причина против отсутствия норматива» идут ПЕРЕД частными правилами
+                    // ниже: при нулевом нормативе КПД вырождается в 0, и правило про «Изготовление
+                    // типовой детали» сработало бы первым, сообщив про низкий показатель вместо
+                    // настоящей проблемы — норматива нет вовсе.
+                    //
+                    // Норматива нет — объяснять нечего: отклонения от него не существует, пока
+                    // самого норматива нет. Единственные корректные причины в этом случае —
+                    // «Отсутствие нормативов» (норматив не установлен) либо «Изготовление не по
+                    // техпроцессу» (норматив есть, но от другой операции/рабочего центра).
+                    nameof(MasterSetupComment) when
+                        !string.IsNullOrWhiteSpace(MasterSetupComment)
+                        && SetupReasonsRequiringNormative.Contains(MasterSetupComment)
+                        && SetupTimePlanForCalc <= 0
+                        => $"Причина «{MasterSetupComment}» не объясняет отсутствие норматива наладки — укажите «{NoNormativesReason}» или «{NotByProcessReason}».",
+                    nameof(MasterMachiningComment) when
+                        !string.IsNullOrWhiteSpace(MasterMachiningComment)
+                        && MachiningReasonsRequiringNormative.Contains(MasterMachiningComment)
+                        && ProductionTimePlanForCalc <= 0
+                        => $"Причина «{MasterMachiningComment}» не объясняет отсутствие норматива изготовления — укажите «{NoNormativesReason}» или «{NotByProcessReason}».",
+
+                    // Зеркальные проверки: «Отсутствие нормативов» при заданном нормативе — прямое
+                    // противоречие факту, а «Некорректные нормативы» при отсутствующем: нельзя
+                    // назвать некорректным то, чего нет, это «Отсутствие нормативов».
+                    nameof(MasterSetupComment) when
+                        MasterSetupComment == NoNormativesReason && SetupTimePlanForCalc > 0
+                        => $"«{NoNormativesReason}» неприменимо: норматив наладки задан.",
+                    nameof(MasterMachiningComment) when
+                        MasterMachiningComment == NoNormativesReason && ProductionTimePlanForCalc > 0
+                        => $"«{NoNormativesReason}» неприменимо: норматив изготовления задан.",
+                    nameof(MasterSetupComment) when
+                        MasterSetupComment == WrongNormativesReason && SetupTimePlanForCalc <= 0
+                        => $"«{WrongNormativesReason}» неприменимо: норматива наладки нет — это «{NoNormativesReason}».",
+                    nameof(MasterMachiningComment) when
+                        MasterMachiningComment == WrongNormativesReason && ProductionTimePlanForCalc <= 0
+                        => $"«{WrongNormativesReason}» неприменимо: норматива изготовления нет — это «{NoNormativesReason}».",
+
                     nameof(MasterSetupComment) when
                         !string.IsNullOrWhiteSpace(MasterSetupComment)
                         && MasterSetupComment == "Изготовление типовой детали"
@@ -1422,9 +1846,11 @@ namespace remeLog.Models
                         && FinishedCount > 0
                         && !IsSmallBatch
                         => "Причина «Штучная/длительная работа» применима только при малой партии: м/в < 3 мин и изготовлено ≤ 10 деталей или м/в ≥ 3 мин и изготовлено ≤ 5 деталей",
-                    nameof(MasterComment) when string.IsNullOrWhiteSpace(MasterComment) &&
-                                        (RequiresComment(MasterSetupComment, SetupReasonsRequireComment) ||
-                                         RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment)) => "Требуется указать дополнительный комментарий для выбранной причины.",
+
+                    nameof(MasterSetupDetail) when string.IsNullOrWhiteSpace(MasterSetupDetail) &&
+                                        RequiresComment(MasterSetupComment, SetupReasonsRequireComment) => "Требуется указать дополнительный комментарий для выбранной причины наладки.",
+                    nameof(MasterMachiningDetail) when string.IsNullOrWhiteSpace(MasterMachiningDetail) &&
+                                        RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment) => "Требуется указать дополнительный комментарий для выбранной причины изготовления.",
                     nameof(SpecifiedDowntimesComment) when string.IsNullOrWhiteSpace(SpecifiedDowntimesComment) && SpecifiedDowntimesRatio > 0.5 => "Необходимо дать комментарий т.к. простой более 50%.",
                     _ => null!,
                 };

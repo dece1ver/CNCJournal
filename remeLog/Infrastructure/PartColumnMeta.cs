@@ -79,8 +79,11 @@ namespace remeLog.Infrastructure
         public const string H_ProductionRatioTitle = "Изготовление";
         public const string H_MasterMachiningComment = "Отклонения в изготовлении";
         public const string H_MasterComment = "Комментарий мастера";
+        public const string H_MasterSetupDetail = "Комментарий мастера (наладка)";
+        public const string H_MasterMachiningDetail = "Комментарий мастера (изготовление)";
         public const string H_FixedSetupTimePlan = "(И) Норматив наладки";
         public const string H_FixedProductionTimePlan = "(И) Норматив изготовления";
+        public const string H_EngineerConclusion = "Заключение техотдела";
         public const string H_EngineerComment = "Комментарий техотдела";
         public const string H_ExcludedOperationsTime = "Исключённое время";
         public const string H_IncreaseReason = "Причина увеличения";
@@ -171,7 +174,16 @@ namespace remeLog.Infrastructure
                             string.Equals(p.SetupRatioTitle, val, StringComparison.OrdinalIgnoreCase),
                     }},
 
-                    { "MasterSetupComment",       new() { SqlColumn="MasterSetupComment",       DisplayName=H_MasterSetupComment,        Kind=FilterKind.Text   } },
+                    // Ячейка показывает эффективную причину (переопределение СГТ, иначе отметка
+                    // мастера), поэтому фильтр обязан искать по ней же — SQL-фильтр по
+                    // MasterSetupComment находил бы не то, что видно в колонке.
+                    { "MasterSetupComment", new() {
+                        SqlColumn   = "",
+                        DisplayName = H_MasterSetupComment,
+                        Kind        = FilterKind.InMemory,
+                        Predicate   = (p, val) =>
+                            string.Equals(p.EffectiveSetupReason, val, StringComparison.OrdinalIgnoreCase),
+                    }},
 
                     // ProductionRatioTitle — строка, вычисляемая в модели
                     { "ProductionRatioTitle", new() {
@@ -182,11 +194,21 @@ namespace remeLog.Infrastructure
                             string.Equals(p.ProductionRatioTitle, val, StringComparison.OrdinalIgnoreCase),
                     }},
 
-                    { "MasterMachiningComment",   new() { SqlColumn="MasterMachiningComment",   DisplayName=H_MasterMachiningComment,    Kind=FilterKind.Text   } },
+                    // См. комментарий у MasterSetupComment.
+                    { "MasterMachiningComment", new() {
+                        SqlColumn   = "",
+                        DisplayName = H_MasterMachiningComment,
+                        Kind        = FilterKind.InMemory,
+                        Predicate   = (p, val) =>
+                            string.Equals(p.EffectiveMachiningReason, val, StringComparison.OrdinalIgnoreCase),
+                    }},
                     { "MasterComment",            new() { SqlColumn="MasterComment",            DisplayName=H_MasterComment,             Kind=FilterKind.Text   } },
+                    { "MasterSetupDetail",        new() { SqlColumn="MasterSetupDetail",        DisplayName=H_MasterSetupDetail,         Kind=FilterKind.Text   } },
+                    { "MasterMachiningDetail",    new() { SqlColumn="MasterMachiningDetail",    DisplayName=H_MasterMachiningDetail,     Kind=FilterKind.Text   } },
                     { "AiCheck",                  new() { SqlColumn="",                         DisplayName="ИИ-проверка",               Kind=FilterKind.None   } }, // вычисляемое, не фильтруется
                     { "FixedSetupTimePlan",       new() { SqlColumn="FixedSetupTimePlan",       DisplayName=H_FixedSetupTimePlan,        Kind=FilterKind.Number } },
                     { "FixedProductionTimePlan",  new() { SqlColumn="FixedProductionTimePlan",  DisplayName=H_FixedProductionTimePlan,   Kind=FilterKind.Number } },
+                    { "EngineerConclusion",       new() { SqlColumn="EngineerConclusion",       DisplayName=H_EngineerConclusion,        Kind=FilterKind.Text   } },
                     { "EngineerComment",          new() { SqlColumn="EngineerComment",          DisplayName=H_EngineerComment,           Kind=FilterKind.Text   } },
                     { "ExcludedOperationsTime",   new() { SqlColumn="ExcludedOperationsTime",   DisplayName=H_ExcludedOperationsTime,    Kind=FilterKind.Number } },
                     { "IncreaseReason",           new() { SqlColumn="IncreaseReason",           DisplayName=H_IncreaseReason,            Kind=FilterKind.Text   } },

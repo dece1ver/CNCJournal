@@ -198,7 +198,9 @@ WHEN NOT MATCHED THEN
             command.Parameters.AddWithValue("@DisplayName", _userName);
             command.Parameters.AddWithValue("@AppVersion", _version);
             command.Parameters.AddWithValue("@IpAddress", string.IsNullOrEmpty(_ipAddress) ? DBNull.Value : _ipAddress);
-            command.Parameters.AddWithValue("@EnabledFeatures", (int)AppSettings.EnabledFeatures);
+            // Именно фактическая маска, а не сырая AppSettings.EnabledFeatures: у админа она
+            // пуста, хотя доступно всё, и окно инстансов показывало бы ему «—».
+            command.Parameters.AddWithValue("@EnabledFeatures", (int)Util.EffectiveFeatures);
 
             await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }

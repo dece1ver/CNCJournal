@@ -152,13 +152,16 @@ namespace remeLog.Infrastructure
                         .Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
                 ws.Cell(row, ci[CM.SpecifiedDowntimesComment]).SetValue(part.SpecifiedDowntimesComment);
                 ws.Cell(row, ci[CM.SetupRatioTitle]).SetValue(part.SetupRatioTitle);
-                ws.Cell(row, ci[CM.MasterSetupComment]).SetValue(part.MasterSetupComment);
+                // Итоговая классификация: переопределение СГТ, если оно есть, иначе отметка мастера.
+                ws.Cell(row, ci[CM.MasterSetupComment]).SetValue(part.EffectiveSetupReason);
+                ws.Cell(row, ci[CM.MasterSetupDetail]).SetValue(part.MasterSetupDetail);
                 ws.Cell(row, ci[CM.ProductionRatioTitle]).SetValue(part.ProductionRatioTitle);
-                ws.Cell(row, ci[CM.MasterProductionComment]).SetValue(part.MasterMachiningComment);
+                ws.Cell(row, ci[CM.MasterProductionComment]).SetValue(part.EffectiveMachiningReason);
+                ws.Cell(row, ci[CM.MasterMachiningDetail]).SetValue(part.MasterMachiningDetail);
                 ws.Cell(row, ci[CM.MasterComment]).SetValue(part.MasterComment);
                 ws.Cell(row, ci[CM.FixedSetupTimePlan]).SetValue(part.FixedSetupTimePlan);
                 ws.Cell(row, ci[CM.FixedProductionTimePlan]).SetValue(part.FixedProductionTimePlan);
-                ws.Cell(row, ci[CM.EngineerComment]).SetValue(part.EngineerComment);
+                ws.Cell(row, ci[CM.EngineerConclusion]).SetValue(part.EngineerConclusion);
                 row++;
             }
             ws.RangeUsed().Style.Border.InsideBorder = XLBorderStyleValues.Thin;

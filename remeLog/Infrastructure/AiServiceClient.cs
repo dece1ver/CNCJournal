@@ -95,7 +95,7 @@ namespace remeLog.Infrastructure
                 {
                     machine = machine,
                     shiftDate = shiftDate.ToString("yyyy-MM-dd"),
-                    part = BuildPartContext(part, partsHistories),
+                    part = BuildPartContext(part, partsHistories, useEffectiveReasons: false),
                     anomalies = anomalies
                         .Select(a => new { field = a.Field, description = a.Description })
                         .ToList(),
@@ -307,7 +307,7 @@ namespace remeLog.Infrastructure
                     var pr = p.ProductionRatio;
                     return !double.IsNaN(pr) && !double.IsInfinity(pr)
                         && pr > 0 && pr < 0.7
-                        && string.IsNullOrWhiteSpace(p.MasterMachiningComment);
+                        && string.IsNullOrWhiteSpace(p.EffectiveMachiningReason);
                 });
 
                 summary.Lines.Add(new PartsHistoryLine
@@ -370,10 +370,21 @@ namespace remeLog.Infrastructure
 
 
 
+        /// <param name="useEffectiveReasons">
+        /// true (дневной анализ) — в причины уходит эффективное значение: переопределение СГТ,
+        /// если оно есть. false (verify-part, фича AiMasterCheck) — уходит ОТМЕТКА МАСТЕРА:
+        /// там проверяется качество заполнения именно мастером, и список аномалий приходит из
+        /// Part.GetAiCheckAnomalies(), который тоже считает по его полям. Рассинхрон дал бы
+        /// модели вопрос «объясняет ли комментарий мастера аномалию» при показанной причине СГТ.
+        /// </param>
         private static object BuildPartContext(
-            Part p, 
-            Dictionary<(string PartName, string Order, int Setup), PartsHistorySummary> partsHistories)
+            Part p,
+            Dictionary<(string PartName, string Order, int Setup), PartsHistorySummary> partsHistories,
+            bool useEffectiveReasons = true)
         {
+            var setupReason = useEffectiveReasons ? p.EffectiveSetupReason : p.MasterSetupComment;
+            var machiningReason = useEffectiveReasons ? p.EffectiveMachiningReason : p.MasterMachiningComment;
+
             bool noSetup = p.StartSetupTime == p.StartMachiningTime;
             // Изготовления не было: деталей по факту нет И времени нет, ЛИБО единственная
             // деталь партии выполнена в наладке (FinishedCount=1 при наладке → Fact=0) — б/и.
@@ -432,11 +443,27 @@ namespace remeLog.Infrastructure
                 downtimeRatio = SafeDouble(p.SpecifiedDowntimesRatio),
 
                 operatorComment = manualComment,
-                masterSetupComment = p.MasterSetupComment ?? string.Empty,
-                masterMachiningComment = p.MasterMachiningComment ?? string.Empty,
+                // Причины уходят ЭФФЕКТИВНЫЕ (переопределение СГТ, если есть). Тогда весь
+                // серверный контур — HardRule, FalsePositiveFilter, MasteringAutoApprover,
+                // правила промптов — работает по итоговому решению без единой правки: имя поля
+                // прежнее, меняется только значение. Исходная отметка мастера и обоснование
+                // переопределения идут ниже отдельными полями, как дополнительный контекст.
+                masterSetupComment = setupReason ?? string.Empty,
+                masterMachiningComment = machiningReason ?? string.Empty,
                 masterComment = p.MasterComment ?? string.Empty,
+                masterSetupDetail = p.MasterSetupDetail ?? string.Empty,
+                masterMachiningDetail = p.MasterMachiningDetail ?? string.Empty,
                 specifiedDowntimesList = GetSpecifiedDowntimesList(p.OperatorComment),
                 specifiedDowntimesComment = p.SpecifiedDowntimesComment ?? string.Empty,
+
+                // Переопределение причин аналитиком (СГТ 1) — контекст, не замена полей выше.
+                // При useEffectiveReasons=false (verify-part) шлём пустыми: там в причинах лежит
+                // отметка мастера, и упоминание переопределения только сбивало бы проверку.
+                setupReasonOverride = useEffectiveReasons ? p.SetupReasonOverride ?? string.Empty : string.Empty,
+                setupReasonOverrideComment = useEffectiveReasons ? p.SetupReasonOverrideComment ?? string.Empty : string.Empty,
+                machiningReasonOverride = useEffectiveReasons ? p.MachiningReasonOverride ?? string.Empty : string.Empty,
+                machiningReasonOverrideComment = useEffectiveReasons ? p.MachiningReasonOverrideComment ?? string.Empty : string.Empty,
+                reasonOverrideBy = useEffectiveReasons ? p.ReasonOverrideBy ?? string.Empty : string.Empty,
 
                 noManualOperatorComment = string.IsNullOrWhiteSpace(manualComment),
                 noSetupHappened = noSetup,
@@ -453,6 +480,17 @@ namespace remeLog.Infrastructure
         {
             var s = new List<string>();
             var machMins = p.MachiningTime.TotalMinutes;
+            var hasOrder = !string.IsNullOrWhiteSpace(p.Order) && !p.Order.Equals("Без М/Л", StringComparison.OrdinalIgnoreCase);
+
+            // Норматив наладки/изготовления отсутствует при реальном заказе — требует объяснения
+            // ВСЕГДА, независимо от факта работы в смену (см. Part.cs.HasOrder/Error — там это
+            // блокирует сохранение; здесь ловим случаи, сохранённые до появления этой проверки).
+            // Здесь и ниже причина берётся ЭФФЕКТИВНАЯ: если аналитик переопределил, запись
+            // объяснена — пусть и не мастером, — и сигнал «нет объяснения» гасится.
+            if (p.SetupTimePlan <= 0 && hasOrder && string.IsNullOrWhiteSpace(p.EffectiveSetupReason))
+                s.Add("Отсутствует норматив наладки при реальном заказе — комментарий мастера не указан");
+            if (p.SingleProductionTimePlan <= 0 && hasOrder && string.IsNullOrWhiteSpace(p.EffectiveMachiningReason))
+                s.Add("Отсутствует норматив изготовления при реальном заказе — комментарий мастера не указан");
 
             // Машинное время >= штучного норматива (условия синхронизированы с серверным HardRuleEvaluator).
             // Не шлём: при б/и (норматив штучный, изготовления не было), для штучных партий
@@ -475,21 +513,21 @@ namespace remeLog.Infrastructure
 
             // КПД наладки < 70% без объяснения мастера (освоение — исключение)
             var sr = p.SetupRatio;
-            if (IsValidRatio(sr) && sr < 0.695 && p.SetupTimeFact > 0
-                && string.IsNullOrWhiteSpace(p.MasterSetupComment)
+            if (IsValidRatio(sr) && sr < 0.695 && p.SetupTimeFact > 0 && (p.SetupTimePlan > 0 || hasOrder)
+                && string.IsNullOrWhiteSpace(p.EffectiveSetupReason)
                 && !OperatorMentionsExcusableReason(manualComment))
                 s.Add($"КПД наладки {sr:0%} без объяснения мастера");
 
             // КПД изготовления < 70% без объяснения мастера
             var pr = p.ProductionRatio;
-            if (IsValidRatio(pr) && pr < 0.695 && p.FinishedCount > 0
-                && string.IsNullOrWhiteSpace(p.MasterMachiningComment)
+            if (IsValidRatio(pr) && pr < 0.695 && p.FinishedCount > 0 && (p.SingleProductionTimePlan > 0 || hasOrder)
+                && string.IsNullOrWhiteSpace(p.EffectiveMachiningReason)
                 && !OperatorMentionsExcusableReason(manualComment))
                 s.Add($"КПД изготовления {pr:0%} без объяснения мастера");
 
             // КПД изготовления > 120% без объяснения — норматив занижен?
             if (IsValidRatio(pr) && pr > 1.2 && p.FinishedCount > 0
-                && string.IsNullOrWhiteSpace(p.MasterMachiningComment))
+                && string.IsNullOrWhiteSpace(p.EffectiveMachiningReason))
                 s.Add($"КПД изготовления {pr:0%} > 120% — возможно норматив занижен");
 
             // Сигнала по простоям нет: порога аномальности у простоев не существует,
@@ -498,7 +536,7 @@ namespace remeLog.Infrastructure
 
             // Время изготовления записано но деталей нет — противоречие в данных
             if (p.ProductionTimeFact > 5 && p.FinishedCount == 0
-                && !string.IsNullOrWhiteSpace(p.MasterMachiningComment) == false)
+                && string.IsNullOrWhiteSpace(p.EffectiveMachiningReason))
                 s.Add($"Время изготовления {p.ProductionTimeFact:0}мин но finishedCount = 0");
 
             // Машинное время = 0 при наличии изготовления

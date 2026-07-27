@@ -294,9 +294,41 @@ namespace remeLog.Infrastructure
         public const string MasterProductionComment = "masterProductionComment";
 
         /// <summary>
-        /// Комментарий мастера
+        /// Исходная отметка мастера в наладке, до переопределения аналитиком. Нужна рядом с
+        /// итоговой причиной в датасете: пара «что выбрал мастер → на что исправил СГТ».
+        /// </summary>
+        public const string MasterSetupReasonOriginal = "masterSetupReasonOriginal";
+
+        /// <summary>
+        /// Исходная отметка мастера в изготовлении, до переопределения аналитиком.
+        /// </summary>
+        public const string MasterMachiningReasonOriginal = "masterMachiningReasonOriginal";
+
+        /// <summary>
+        /// Считается ли переопределение причины ошибкой мастера. Пусто, если переопределения
+        /// не было, — иначе неправленые записи давали бы FALSE и портили счёт.
+        /// </summary>
+        public const string MasterFault = "masterFault";
+
+        /// <summary>
+        /// Запись исключена из расчётов отчётов (Part.ExcludeFromReports)
+        /// </summary>
+        public const string ExcludedFromReports = "excludedFromReports";
+
+        /// <summary>
+        /// Комментарий мастера (архив, до разделения на наладку/изготовление)
         /// </summary>
         public const string MasterComment = "masterComment";
+
+        /// <summary>
+        /// Комментарий мастера к отклонениям в наладке
+        /// </summary>
+        public const string MasterSetupDetail = "masterSetupDetail";
+
+        /// <summary>
+        /// Комментарий мастера к отклонениям в изготовлении
+        /// </summary>
+        public const string MasterMachiningDetail = "masterMachiningDetail";
 
         /// <summary>
         /// Текст ошибок валидации записи (Part.this[columnName])
@@ -312,6 +344,11 @@ namespace remeLog.Infrastructure
         /// Норматив изготовления (И)
         /// </summary>
         public const string FixedProductionTimePlan = "fixedProductionTimePlan";
+
+        /// <summary>
+        /// Заключение техотдела
+        /// </summary>
+        public const string EngineerConclusion = "engineerConclusion";
 
         /// <summary>
         /// Комментарий техотдела
@@ -759,10 +796,17 @@ namespace remeLog.Infrastructure
             { MasterSetupComment, $"Отклонения в{Environment.NewLine}наладке" },
             { ProductionRatioTitle, "Изготовление" },
             { MasterProductionComment, $"Отклонения в{Environment.NewLine}изготовлении" },
+            { MasterSetupReasonOriginal, $"Отметка мастера{Environment.NewLine}(наладка)" },
+            { MasterMachiningReasonOriginal, $"Отметка мастера{Environment.NewLine}(изготовление)" },
+            { MasterFault, $"Ошибка{Environment.NewLine}мастера" },
+            { ExcludedFromReports, "Исключено" },
             { ValidationErrors, $"Не заполнено{Environment.NewLine}(требует мастера)" },
             { MasterComment, "Комментарий мастера" },
+            { MasterSetupDetail, "Комментарий мастера (наладка)" },
+            { MasterMachiningDetail, "Комментарий мастера (изготовление)" },
             { FixedSetupTimePlan, "Норматив наладки (И)" },
             { FixedProductionTimePlan, "Норматив изготовления (И)" },
+            { EngineerConclusion, "Заключение техотдела" },
             { EngineerComment, "Комментарий техотдела" },
             { AveragePartsCount, "Средняя партия" },
             { AveragePartsCountSerial, "Средняя серийная партия" },

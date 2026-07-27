@@ -37,6 +37,7 @@ namespace remeLog.ViewModels
         private CancellationTokenSource _debounceTokenSource = new();
         private readonly object _debounceLock = new object();
         private bool _updatePending = false;
+        private bool _aiHealthMonitorStarted = false;
         private FileSystemWatcher? _watcher;
         private int _showed;
 
@@ -699,8 +700,24 @@ namespace remeLog.ViewModels
                     OnPropertyChanged(nameof(WindowTitle));
                     Util.WriteLog($"[LoadParts] UpdateAppSettings: {(sw.Elapsed - t0).TotalMilliseconds:F0} ms");
 
-                    if (HasFeatureAi)
+                    // Защита от старой сборки поверх более новой БД: если версия схемы в БД выше,
+                    // чем знает эта сборка, дальнейшая работа с данными (чтение/сохранение Parts)
+                    // рискует читать/писать не туда — прямо блокируем, не даём тихо испортить данные.
+                    if (AppSettings.SchemaVersion > AppSettings.RequiredSchemaVersion)
                     {
+                        MessageBoxWindow.Show(
+                            $"База данных обновлена до версии {AppSettings.SchemaVersion}, а эта сборка remeLog " +
+                            $"рассчитана на версию {AppSettings.RequiredSchemaVersion}. Работа с данными заблокирована " +
+                            "во избежание порчи — обновите remeLog до актуальной версии.",
+                            "Требуется обновление remeLog",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Error);
+                        return;
+                    }
+
+                    if (HasFeatureAi && !_aiHealthMonitorStarted)
+                    {
+                        _aiHealthMonitorStarted = true;
                         AiHealthMonitor.Instance.PropertyChanged += OnAiHealthChanged;
                         AiHealthMonitor.Instance.Start();
                     }
@@ -891,6 +908,12 @@ namespace remeLog.ViewModels
                     InProgress = false;
                     if (semaphoreAcquired)
                         semaphoreSlim.Release();
+
+                    // Разовая проверка сразу после старта приложения, когда все
+                    // инициализации завершены, — чтобы статус ИИ был виден сразу,
+                    // не дожидаясь первого тика периодического таймера.
+                    if (first && HasFeatureAi)
+                        _ = AiHealthMonitor.Instance.CheckNowAsync();
                 }
             }
             catch (Exception ex)

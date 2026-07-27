@@ -1,6 +1,7 @@
 ﻿using AiService.Models;
 using AiService.Services;
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
@@ -38,6 +39,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         [FromBody] AnalyzeRequest request,
         CancellationToken ct)
     {
+        var sw = Stopwatch.StartNew();
         try
         {
             RequestShaper.Shape(request);
@@ -157,13 +159,15 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             await requestLog.WriteAsync(request, result, "analyze");
             return Ok(result);
         }
-        catch (TaskCanceledException)
+        catch (TaskCanceledException ex)
         {
+            await requestLog.WriteFailureAsync(request.Machine, request.ShiftDate, "analyze", request.Model, think: false, sw.ElapsedMilliseconds, ex);
             return StatusCode(504, new AnalyzeResponse { Error = "Ollama не ответила за отведённое время" });
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Ошибка при анализе {Machine} {Date}", request.Machine, request.ShiftDate);
+            await requestLog.WriteFailureAsync(request.Machine, request.ShiftDate, "analyze", request.Model, think: false, sw.ElapsedMilliseconds, ex);
             return StatusCode(500, new AnalyzeResponse { Error = ex.Message });
         }
     }
@@ -179,6 +183,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         [FromBody] VerifyPartRequest request,
         CancellationToken ct)
     {
+        var sw = Stopwatch.StartNew();
         try
         {
             if (request.Anomalies.Count == 0)
@@ -200,13 +205,15 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             await requestLog.WriteVerifyAsync(request, result);
             return Ok(result);
         }
-        catch (TaskCanceledException)
+        catch (TaskCanceledException ex)
         {
+            await requestLog.WriteFailureAsync(request.Machine, request.ShiftDate, "verify-part", request.Model, think: false, sw.ElapsedMilliseconds, ex);
             return StatusCode(504, new VerifyPartResponse { Ok = true, Error = "Ollama не ответила за отведённое время" });
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Ошибка verify-part {Machine} {Date}", request.Machine, request.ShiftDate);
+            await requestLog.WriteFailureAsync(request.Machine, request.ShiftDate, "verify-part", request.Model, think: false, sw.ElapsedMilliseconds, ex);
             return StatusCode(500, new VerifyPartResponse { Ok = true, Error = ex.Message });
         }
     }
@@ -301,6 +308,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         string raw;
         string? thinking;
         int queuePosition;
+        var sw = Stopwatch.StartNew();
 
         try
         {
@@ -339,14 +347,16 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             await drainTask;
             logger.LogInformation("Drain завершён");
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
             logger.LogWarning("Отменён: {Machine} {Date}", request.Machine, request.ShiftDate);
+            await requestLog.WriteFailureAsync(request.Machine, request.ShiftDate, "stream", request.Model, request.EnableThinking, sw.ElapsedMilliseconds, ex);
             return;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Ошибка: {Machine} {Date}", request.Machine, request.ShiftDate);
+            await requestLog.WriteFailureAsync(request.Machine, request.ShiftDate, "stream", request.Model, request.EnableThinking, sw.ElapsedMilliseconds, ex);
             await Send("error", JsonSerializer.Serialize(ex.Message));
             return;
         }

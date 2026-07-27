@@ -179,7 +179,7 @@ public class PromptBuilder
                 return true;
         }
 
-        var text = $"{p.MasterComment} {p.OperatorComment}".ToLowerInvariant();
+        var text = $"{p.MasterSetupDetail} {p.MasterMachiningDetail} {p.MasterComment} {p.OperatorComment}".ToLowerInvariant();
         if (text.Contains("осво") || text.Contains("осваив")) return true;   // освоение / освоена / осваивает
         if (text.Contains("вперв") || text.Contains("первый раз")) return true;
         if (text.Contains("норматив") || text.Contains("некорректн")) return true;
@@ -309,18 +309,25 @@ public class PromptBuilder
         "MasterSetupComment" => p.MasterSetupComment,
         "MasterMachiningComment" => p.MasterMachiningComment,
         "MasterComment" => p.MasterComment,
+        "MasterSetupDetail" => !string.IsNullOrWhiteSpace(p.MasterSetupDetail) ? p.MasterSetupDetail : p.MasterComment,
+        "MasterMachiningDetail" => !string.IsNullOrWhiteSpace(p.MasterMachiningDetail) ? p.MasterMachiningDetail : p.MasterComment,
         "SpecifiedDowntimesComment" => p.SpecifiedDowntimesComment,
         _ => "",
     };
 
     private static string FieldTitle(string field) => field switch
     {
-        "MasterSetupComment" => "причина наладки",
-        "MasterMachiningComment" => "причина изготовления",
+        "MasterSetupComment" => "причина отклонения в наладке",
+        "MasterMachiningComment" => "причина отклонения в изготовлении",
         "MasterComment" => "комментарий мастера",
+        "MasterSetupDetail" => "комментарий мастера (наладка)",
+        "MasterMachiningDetail" => "комментарий мастера (изготовление)",
         "SpecifiedDowntimesComment" => "комментарий к простоям",
         _ => field,
     };
+
+    private static string OverrideBy(PartContext p) =>
+        string.IsNullOrWhiteSpace(p.ReasonOverrideBy) ? "" : $" ({p.ReasonOverrideBy.Trim()})";
 
     private static void AppendPartBlock(StringBuilder sb, PartContext p)
     {
@@ -344,11 +351,34 @@ public class PromptBuilder
         var comments = new List<string>();
         static string Safe(string s) => s.Trim().Replace("\r", "").Replace("\n", " / ");
         if (!string.IsNullOrWhiteSpace(p.OperatorComment)) comments.Add($"оператор: «{Safe(p.OperatorComment)}»");
-        if (!string.IsNullOrWhiteSpace(p.MasterSetupComment)) comments.Add($"причина наладки: «{Safe(p.MasterSetupComment)}»");
-        if (!string.IsNullOrWhiteSpace(p.MasterMachiningComment)) comments.Add($"причина изгот.: «{Safe(p.MasterMachiningComment)}»");
-        if (!string.IsNullOrWhiteSpace(p.MasterComment)) comments.Add($"мастер: «{Safe(p.MasterComment)}»");
+        if (!string.IsNullOrWhiteSpace(p.MasterSetupComment)) comments.Add($"причина отклонения в наладке: «{Safe(p.MasterSetupComment)}»");
+        if (!string.IsNullOrWhiteSpace(p.MasterMachiningComment)) comments.Add($"причина отклонения в изготовлении: «{Safe(p.MasterMachiningComment)}»");
+        // MasterComment — архивное поле (до разделения на наладку/изготовление): показываем его
+        // ТОЛЬКО когда оба новых поля пусты (старая запись, без backfill) — иначе новые поля сами
+        // по себе уже однозначно относят детализацию к своей категории, дублировать нечего.
+        if (!string.IsNullOrWhiteSpace(p.MasterSetupDetail)) comments.Add($"мастер (наладка): «{Safe(p.MasterSetupDetail)}»");
+        if (!string.IsNullOrWhiteSpace(p.MasterMachiningDetail)) comments.Add($"мастер (изгот.): «{Safe(p.MasterMachiningDetail)}»");
+        if (string.IsNullOrWhiteSpace(p.MasterSetupDetail) && string.IsNullOrWhiteSpace(p.MasterMachiningDetail)
+            && !string.IsNullOrWhiteSpace(p.MasterComment)) comments.Add($"мастер: «{Safe(p.MasterComment)}»");
         if (comments.Count > 0)
             sb.AppendLine($"  Комментарии: {string.Join("; ", comments)}");
+
+        // Переопределение причины аналитиком (СГТ 1). Непустое означает, что причина выше —
+        // решение СГТ, а не мастера; детализация мастера при этом осталась от его версии и
+        // новой причине может не соответствовать (см. блок ЧЬЯ ЭТО ПРИЧИНА в system_prompt).
+        // Для verify-part клиент шлёт эти поля пустыми: там проверяется именно мастер.
+        if (!string.IsNullOrWhiteSpace(p.SetupReasonOverride))
+        {
+            sb.AppendLine($"  ⇄ Причину наладки переопределил СГТ{OverrideBy(p)}: «{Safe(p.SetupReasonOverride)}»" +
+                          (string.IsNullOrWhiteSpace(p.SetupReasonOverrideComment)
+                              ? "" : $" — обоснование: «{Safe(p.SetupReasonOverrideComment)}»"));
+        }
+        if (!string.IsNullOrWhiteSpace(p.MachiningReasonOverride))
+        {
+            sb.AppendLine($"  ⇄ Причину изготовления переопределил СГТ{OverrideBy(p)}: «{Safe(p.MachiningReasonOverride)}»" +
+                          (string.IsNullOrWhiteSpace(p.MachiningReasonOverrideComment)
+                              ? "" : $" — обоснование: «{Safe(p.MachiningReasonOverrideComment)}»"));
+        }
 
         if (!string.IsNullOrWhiteSpace(p.SpecifiedDowntimesList))
             sb.AppendLine($"  {p.SpecifiedDowntimesList.Trim()}");

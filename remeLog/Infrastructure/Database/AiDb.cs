@@ -25,8 +25,8 @@ namespace remeLog.Infrastructure
                            WHERE Machine = @Machine AND ShiftDate = @ShiftDate)
                 BEGIN
                     UPDATE ai_day_reviews
-                    SET ReviewedBy      = @ReviewedBy,
-                        ReviewedAt      = @ReviewedAt,
+                    SET ReviewedBy      = CASE WHEN @TouchReviewMeta = 1 THEN @ReviewedBy ELSE ReviewedBy END,
+                        ReviewedAt      = CASE WHEN @TouchReviewMeta = 1 THEN @ReviewedAt ELSE ReviewedAt END,
                         Decision        = @Decision,
                         IsFullyReviewed = @IsFullyReviewed,
                         Comment         = @Comment,
@@ -60,6 +60,7 @@ namespace remeLog.Infrastructure
                 cmd.Parameters.AddWithValue("@ShiftDate", review.ShiftDate.Date);
                 cmd.Parameters.AddWithValue("@ReviewedBy", review.ReviewedBy);
                 cmd.Parameters.AddWithValue("@ReviewedAt", review.ReviewedAt);
+                cmd.Parameters.AddWithValue("@TouchReviewMeta", review.TouchReviewMeta);
                 cmd.Parameters.AddWithValue("@Decision", review.Decision.ToDbString());
                 cmd.Parameters.AddWithValue("@IsFullyReviewed", review.IsFullyReviewed);
                 cmd.Parameters.AddWithValue("@Comment",

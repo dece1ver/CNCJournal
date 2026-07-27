@@ -64,12 +64,19 @@ namespace remeLog.Infrastructure
                 .Add(CM.SpecifiedDowntimesComment)
                 .Add(CM.SetupRatioTitle)
                 .Add(CM.MasterSetupComment)
+                .Add(CM.MasterSetupReasonOriginal)
+                .Add(CM.MasterSetupDetail)
                 .Add(CM.ProductionRatioTitle)
                 .Add(CM.MasterProductionComment)
+                .Add(CM.MasterMachiningReasonOriginal)
+                .Add(CM.MasterMachiningDetail)
                 .Add(CM.MasterComment)
+                .Add(CM.MasterFault)
                 .Add(CM.FixedSetupTimePlan)
                 .Add(CM.FixedProductionTimePlan)
+                .Add(CM.EngineerConclusion)
                 .Add(CM.EngineerComment)
+                .Add(CM.ExcludedFromReports)
                 .Add(CM.SerialPerList)
                 .Build();
 
@@ -171,19 +178,51 @@ namespace remeLog.Infrastructure
 
                 ws.Cell(row, ci[CM.SetupRatioTitle]).SetValue(part.SetupRatioTitle);
 
-                ws.Cell(row, ci[CM.MasterSetupComment]).SetValue(part.MasterSetupComment);
+                // В «Отклонения в ...» — итоговая причина; кто и когда переопределил и с каким
+                // обоснованием, уходит в примечание к этой же ячейке, чтобы не плодить столбцы.
+                // Исходная отметка мастера лежит в отдельном столбце (свёрнут в группу ниже) и
+                // заполняется только при переопределении: пустая ячейка сразу отделяет
+                // неправленые записи, а без переопределения она дублировала бы итоговую.
+                var setupCell = ws.Cell(row, ci[CM.MasterSetupComment]).SetValue(part.EffectiveSetupReason);
+
+                if (part.HasSetupReasonOverride)
+                {
+                    ws.Cell(row, ci[CM.MasterSetupReasonOriginal]).SetValue(part.MasterSetupComment);
+                    AddOverrideNote(setupCell, part, part.SetupReasonOverrideComment);
+                }
+
+                ws.Cell(row, ci[CM.MasterSetupDetail]).SetValue(part.MasterSetupDetail);
 
                 ws.Cell(row, ci[CM.ProductionRatioTitle]).SetValue(part.ProductionRatioTitle);
 
-                ws.Cell(row, ci[CM.MasterProductionComment]).SetValue(part.MasterMachiningComment);
+                var machiningCell = ws.Cell(row, ci[CM.MasterProductionComment]).SetValue(part.EffectiveMachiningReason);
+
+                if (part.HasMachiningReasonOverride)
+                {
+                    ws.Cell(row, ci[CM.MasterMachiningReasonOriginal]).SetValue(part.MasterMachiningComment);
+                    AddOverrideNote(machiningCell, part, part.MachiningReasonOverrideComment);
+                }
+
+                ws.Cell(row, ci[CM.MasterMachiningDetail]).SetValue(part.MasterMachiningDetail);
 
                 ws.Cell(row, ci[CM.MasterComment]).SetValue(part.MasterComment);
+
+                // Пусто, если переопределения не было: иначе неправленые записи давали бы FALSE
+                // и портили счёт ошибок. TRUE — если хотя бы одно переопределение зачтено мастеру.
+                if (part.HasSetupReasonOverride || part.HasMachiningReasonOverride)
+                    ws.Cell(row, ci[CM.MasterFault]).SetValue(
+                        (part.HasSetupReasonOverride && part.SetupReasonOverrideIsMasterFault)
+                        || (part.HasMachiningReasonOverride && part.MachiningReasonOverrideIsMasterFault));
 
                 ws.Cell(row, ci[CM.FixedSetupTimePlan]).SetValue(part.FixedSetupTimePlan);
 
                 ws.Cell(row, ci[CM.FixedProductionTimePlan]).SetValue(part.FixedProductionTimePlan);
 
+                ws.Cell(row, ci[CM.EngineerConclusion]).SetValue(part.EngineerConclusion);
+
                 ws.Cell(row, ci[CM.EngineerComment]).SetValue(part.EngineerComment);
+
+                ws.Cell(row, ci[CM.ExcludedFromReports]).SetValue(part.ExcludeFromReports);
 
                 ws.Cell(row, ci[CM.SerialPerList]).SetValue(isSerial);
 
@@ -209,18 +248,47 @@ namespace remeLog.Infrastructure
 
             ws.Column(ci[CM.OperatorComment]).Width = 35;
 
+            // Все текстовые столбцы мастера — одной ширины: после AdjustToContents столбцы
+            // детализации растягивались по содержимому и рвали вёрстку блока.
             ws.Column(ci[CM.MasterSetupComment]).Width = 20;
+            ws.Column(ci[CM.MasterSetupReasonOriginal]).Width = 20;
+            ws.Column(ci[CM.MasterSetupDetail]).Width = 20;
             ws.Column(ci[CM.MasterProductionComment]).Width = 20;
+            ws.Column(ci[CM.MasterMachiningReasonOriginal]).Width = 20;
+            ws.Column(ci[CM.MasterMachiningDetail]).Width = 20;
             ws.Column(ci[CM.MasterComment]).Width = 20;
             ws.Column(ci[CM.SerialPerList]).Width = 8;
 
             ws.Columns(ci[CM.PartialSetupTime], ci[CM.HardwareFailureTime]).Group(false);
+
+            // Исходные отметки мастера нужны редко (только при разборе переопределений) —
+            // прячем каждую в свою свёрнутую группу рядом со своей категорией. Группы
+            // отдельные, потому что столбцы не соседние.
+            ws.Column(ci[CM.MasterSetupReasonOriginal]).Group(true);
+            ws.Column(ci[CM.MasterMachiningReasonOriginal]).Group(true);
             
             ws.Row(1).Delete();
             ws.SheetView.FreezeRows(1);
 
             wb.SaveAndOfferOpen(path);
             return path;
+        }
+
+        /// <summary>
+        /// Примечание к ячейке итоговой причины: кто и когда переопределил и с каким
+        /// обоснованием. Вынесено в примечание, а не в столбцы, — данные нужны только при
+        /// разборе конкретной записи, а лист и так широкий.
+        /// </summary>
+        private static void AddOverrideNote(IXLCell cell, Part part, string overrideComment)
+        {
+            var who = string.IsNullOrWhiteSpace(part.ReasonOverrideBy) ? "СГТ" : part.ReasonOverrideBy.Trim();
+            var when = part.ReasonOverrideAt.HasValue ? $", {part.ReasonOverrideAt.Value:dd.MM.yyyy}" : "";
+
+            var note = cell.CreateComment().SetAuthor("Переопределение");
+            note.AddText($"Переопределил: {who}{when}").AddNewLine();
+            note.AddText(string.IsNullOrWhiteSpace(overrideComment)
+                ? "Обоснование не указано"
+                : $"Обоснование: {overrideComment.Trim()}");
         }
     }
 }

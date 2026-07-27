@@ -298,9 +298,10 @@ namespace remeLog.Infrastructure
             var holidays = new List<DateTime>();
             var engineerComments = new List<string>();
 
-            var rows = await conn.QueryAsync<(double? max_setup_limit, double? long_setup_limit, string? NcArchivePath, string? NcIntermediatePath, string? Administrators, string? CncOperations, DateTime? Holidays, string? PcaReportPath, string? EngineerComments, string? AiIp, string? AiModel)>(
-                "SELECT max_setup_limit, long_setup_limit, NcArchivePath, NcIntermediatePath, Administrators, CncOperations, Holidays, PcaReportPath, EngineerComments, AiIp, AiModel FROM cnc_remelog_config");
+            var rows = await conn.QueryAsync<(double? max_setup_limit, double? long_setup_limit, string? NcArchivePath, string? NcIntermediatePath, string? Administrators, string? CncOperations, DateTime? Holidays, string? PcaReportPath, string? EngineerComments, string? AiIp, string? AiModel, int? SchemaVersion)>(
+                "SELECT max_setup_limit, long_setup_limit, NcArchivePath, NcIntermediatePath, Administrators, CncOperations, Holidays, PcaReportPath, EngineerComments, AiIp, AiModel, SchemaVersion FROM cnc_remelog_config");
 
+            AppSettings.SchemaVersion = 0;
             foreach (var row in rows)
             {
                 if (row.max_setup_limit.HasValue) AppSettings.MaxSetupLimit = row.max_setup_limit.Value;
@@ -314,6 +315,10 @@ namespace remeLog.Infrastructure
                 if (row.EngineerComments != null) engineerComments.Add(row.EngineerComments);
                 if (row.AiIp != null) AppSettings.AiIp = row.AiIp;
                 if (!string.IsNullOrWhiteSpace(row.AiModel)) AppSettings.AiModel = row.AiModel;
+                // Несколько строк конфига — берём МАКСИМУМ, чтобы не пропустить более новую
+                // отметку версии схемы, даже если она не в первой встреченной строке.
+                if (row.SchemaVersion.HasValue && row.SchemaVersion.Value > AppSettings.SchemaVersion)
+                    AppSettings.SchemaVersion = row.SchemaVersion.Value;
             }
 
             AppSettings.Administrators = administrators.ToArray();

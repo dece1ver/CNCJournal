@@ -520,8 +520,18 @@
         <DataGridTemplateColumn x:Key="MasterSetupCommentColumn" inf:ColumnId.Id="MasterSetupComment" Header="Отклонения в наладке" Width="110">
             <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate>
-                    <TextBlock Text="{Binding MasterSetupComment, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" 
-                       Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}"/>
+                    <!-- Показывается эффективная причина (переопределение СГТ, иначе отметка
+                         мастера). Маркер слева и тултип с парой «мастер → СГТ» видны всем
+                         ролям без фиче-флага: для мастера это единственный канал обратной
+                         связи о его ошибках (регламент, п. 7.4). -->
+                    <DockPanel>
+                        <Border DockPanel.Dock="Left" Width="3" Background="#FF9800" Margin="0 0 3 0"
+                                Visibility="{Binding HasSetupReasonOverride, Converter={StaticResource VisibilityConverter}}"
+                                ToolTip="{Binding SetupOverrideTooltip}"/>
+                        <TextBlock Text="{Binding EffectiveSetupReason, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
+                           ToolTip="{Binding SetupOverrideTooltip}"
+                           Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}"/>
+                    </DockPanel>
                 </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
             <DataGridTemplateColumn.CellEditingTemplate>
@@ -535,6 +545,21 @@
             </DataGridTemplateColumn.CellEditingTemplate>
         </DataGridTemplateColumn>
 
+        <DataGridTemplateColumn x:Key="MasterSetupDetailColumn" inf:ColumnId.Id="MasterSetupDetail" Header="Комментарий мастера (наладка)" Width="125">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding MasterSetupDetail, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
+                       Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}"/>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+            <DataGridTemplateColumn.CellEditingTemplate>
+                <DataTemplate>
+                    <TextBox Text="{Binding MasterSetupDetail, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource TableLargeTextBox}"/>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellEditingTemplate>
+        </DataGridTemplateColumn>
+
         <DataGridTextColumn x:Key="ProductionRatioTitleColumn" inf:ColumnId.Id="ProductionRatioTitle" Header="Изготовление" Binding="{Binding ProductionRatioTitle}" Width="36" IsReadOnly="True">
             <DataGridTextColumn.ElementStyle>
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
@@ -544,9 +569,15 @@
         <DataGridTemplateColumn x:Key="MasterMachiningCommentColumn" inf:ColumnId.Id="MasterMachiningComment" Header="Отклонения в изготовлении" Width="110">
             <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate>
-                    <TextBlock Text="{Binding MasterMachiningComment, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" 
-                       Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}">
-                    </TextBlock>
+                    <!-- См. комментарий у MasterSetupCommentColumn. -->
+                    <DockPanel>
+                        <Border DockPanel.Dock="Left" Width="3" Background="#FF9800" Margin="0 0 3 0"
+                                Visibility="{Binding HasMachiningReasonOverride, Converter={StaticResource VisibilityConverter}}"
+                                ToolTip="{Binding MachiningOverrideTooltip}"/>
+                        <TextBlock Text="{Binding EffectiveMachiningReason, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
+                           ToolTip="{Binding MachiningOverrideTooltip}"
+                           Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}"/>
+                    </DockPanel>
                 </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
             <DataGridTemplateColumn.CellEditingTemplate>
@@ -562,17 +593,32 @@
             </DataGridTemplateColumn.CellEditingTemplate>
         </DataGridTemplateColumn>
 
+        <DataGridTemplateColumn x:Key="MasterMachiningDetailColumn" inf:ColumnId.Id="MasterMachiningDetail" Header="Комментарий мастера (изготовление)" Width="125">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding MasterMachiningDetail, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
+                       Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}"/>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+            <DataGridTemplateColumn.CellEditingTemplate>
+                <DataTemplate>
+                    <TextBox Text="{Binding MasterMachiningDetail, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource TableLargeTextBox}"/>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellEditingTemplate>
+        </DataGridTemplateColumn>
+
         <DataGridTemplateColumn x:Key="MasterCommentColumn" inf:ColumnId.Id="MasterComment" Header="Комментарий мастера" Width="125">
             <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate>
-                    <TextBlock Text="{Binding MasterComment, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" 
+                    <TextBlock Text="{Binding MasterComment, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
                        Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}">
                     </TextBlock>
                 </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
             <DataGridTemplateColumn.CellEditingTemplate>
                 <DataTemplate>
-                    <TextBox Text="{Binding MasterComment, UpdateSourceTrigger=PropertyChanged}" 
+                    <TextBox Text="{Binding MasterComment, UpdateSourceTrigger=PropertyChanged}"
                      Style="{StaticResource TableLargeTextBox}">
                     </TextBox>
                 </DataTemplate>
@@ -627,7 +673,6 @@
                                 </Style>
                             </TextBlock.Style>
                         </TextBlock>
-                        <!-- Мини-версия SpinnerArcs (крутящиеся дуги, как на поиске в Windchill) -->
                         <Viewbox x:Name="AiCheckSpinner" Width="12" Height="12"
                                  HorizontalAlignment="Center" VerticalAlignment="Center"
                                  Visibility="Collapsed" ToolTip="ИИ проверяет комментарии…">
@@ -723,9 +768,9 @@
         </DataGridTemplateColumn>
 
         <DataGridTextColumn x:Key="EngineerCommentColumn" inf:ColumnId.Id="EngineerComment" Header="Комментарий техотдела" Binding="{Binding EngineerComment}" Width="125"
-                            Visibility="{Binding DataContext.ViewMode, 
-                            Source={x:Reference partsInfoWindow}, 
-                            Converter={StaticResource UserRoleVisibilityConverter}, 
+                            Visibility="{Binding DataContext.ViewMode,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource UserRoleVisibilityConverter},
                             ConverterParameter='Viewer, Engineer, Developer'}"
                             IsReadOnly="{Binding DataContext.HasFeatureAdvancedEdit, Source={x:Reference partsInfoWindow}, Converter={StaticResource InvertedBoolConverter}}">
             <DataGridTextColumn.ElementStyle>
@@ -736,6 +781,20 @@
             </DataGridTextColumn.EditingElementStyle>
         </DataGridTextColumn>
 
+        <DataGridTextColumn x:Key="EngineerConclusionColumn" inf:ColumnId.Id="EngineerConclusion" Header="Заключение техотдела" Binding="{Binding EngineerConclusion}" Width="125"
+                    Visibility="{Binding DataContext.ViewMode,
+                    Source={x:Reference partsInfoWindow},
+                    Converter={StaticResource UserRoleVisibilityConverter},
+                    ConverterParameter='Viewer, Engineer, Developer'}"
+                    IsReadOnly="{Binding DataContext.HasFeatureAdvancedEdit, Source={x:Reference partsInfoWindow}, Converter={StaticResource InvertedBoolConverter}}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+        
         <DataGridTextColumn x:Key="ExcludedOperationsTimeColumn" inf:ColumnId.Id="ExcludedOperationsTime" Header="Исключённое время" Binding="{Binding ExcludedOperationsTime, 
                     UpdateSourceTrigger=Default, StringFormat=0.##, 
                     Converter={StaticResource ExpressionToDoubleConverter}}" Width="36"
@@ -1744,6 +1803,9 @@
                         <MenuItem Header="Эффективность работы оборудования (старый)" Icon="{StaticResource ComparePerformanceIcon}"
                                   Command="{Binding ExportReportForPeriodToExcelCommand}"
                                   ToolTip="Экспорт отчёта за период где признаком серийности является количество запусков и количество в партии" HorizontalAlignment="Stretch"/>
+                        <MenuItem Header="Сравнение периодов" Icon="{StaticResource ComparePerformanceIcon}"
+                                  Command="{Binding ExportPeriodsComparisonCommand}"
+                                  ToolTip="Экспорт отчёта по двум периодам: лист на каждый период и сравнительная сводка" HorizontalAlignment="Stretch"/>
                         <MenuItem Header="Изменение нормативов" ToolTip="Экспорт отчёта по изменению нормативов" Icon="{StaticResource ColumnComponent}"
                                   Command="{Binding NormsAndWorkloadAnalysisCommand }"/>
                         <MenuItem Header="Детали-станки" Icon="{StaticResource ExportDataIcon}"
@@ -1752,9 +1814,6 @@
                         <MenuItem Header="Длительные наладки" Icon="{StaticResource CalendarIcon}"
                                   Command="{Binding ExportLongSetupsCommand}"
                                   ToolTip="Длительные наладки" HorizontalAlignment="Stretch"/>
-                        <MenuItem Header="Записи без объяснения мастера" Icon="{StaticResource ColumnComponent}"
-                                  Command="{Binding ExportValidationErrorsCommand}"
-                                  ToolTip="Записи за период, не прошедшие валидацию мастера (пустая причина/комментарий там, где они обязательны) — то, что сейчас блокирует закрытие суточного отчёта" HorizontalAlignment="Stretch"/>
                         <MenuItem Header="Поиски инструмента" Command="{Binding ExportToolSearchCasesToExcelCommand}"
                                   Icon="{StaticResource FindPartIcon}"
                                   ToolTip="Экспорт отчёта по поискам" HorizontalAlignment="Stretch"/>
@@ -1783,6 +1842,10 @@
                     </MenuItem>
 
                     <MenuItem Header="Разное">
+
+                        <MenuItem Header="Записи без объяснения мастера" Icon="{StaticResource ColumnComponent}"
+                                  Command="{Binding ExportValidationErrorsCommand}"
+                                  ToolTip="Записи за период, не прошедшие валидацию мастера (пустая причина/комментарий там, где они обязательны) — то, что сейчас блокирует закрытие суточного отчёта" HorizontalAlignment="Stretch"/>
 
                         <MenuItem Command="{Binding ExportVerevkinReportCommand}" Icon="{StaticResource ComparePerformanceIcon}"
                                   ToolTip="Для отчёта Верёвкина" HorizontalAlignment="Stretch">
@@ -1872,6 +1935,7 @@
                           VirtualizingPanel.VirtualizationMode="Recycling"
                           Margin="0 -1 0 0" BorderThickness="0" SelectedItem="{Binding SelectedPart, UpdateSourceTrigger=PropertyChanged}"
                           AlternatingRowBackground="#01D3D3D3" PreviewMouseDown="DataGrid_PreviewMouseDown" SelectedCellsChanged="DataGrid_SelectedCellsChanged" PreviewKeyDown="DataGrid_PreviewKeyDown"
+                          BeginningEdit="DataGrid_BeginningEdit"
                           Visibility="{Binding CompactView, Converter={StaticResource InvertedVisibilityConverter}, UpdateSourceTrigger=PropertyChanged}">
                     <DataGrid.RowStyle>
                         <Style TargetType="DataGridRow">
@@ -1973,13 +2037,16 @@
                         <StaticResource ResourceKey="SpecifiedDowntimesCommentColumn"/>
                         <StaticResource ResourceKey="SetupRatioTitleColumn"/>
                         <StaticResource ResourceKey="MasterSetupCommentColumn"/>
+                        <StaticResource ResourceKey="MasterSetupDetailColumn"/>
                         <StaticResource ResourceKey="ProductionRatioTitleColumn"/>
                         <StaticResource ResourceKey="MasterMachiningCommentColumn"/>
+                        <StaticResource ResourceKey="MasterMachiningDetailColumn"/>
                         <StaticResource ResourceKey="MasterCommentColumn"/>
                         <StaticResource ResourceKey="AiCheckColumn"/>
                         <StaticResource ResourceKey="FixedSetupTimePlanColumn"/>
                         <StaticResource ResourceKey="FixedProductionTimePlanColumn"/>
                         <StaticResource ResourceKey="EngineerCommentColumn"/>
+                        <StaticResource ResourceKey="EngineerConclusionColumn"/>
                         <StaticResource ResourceKey="ExcludedOperationsTimeColumn"/>
                         <StaticResource ResourceKey="IncreaseReasonColumn"/>
                         <StaticResource ResourceKey="ExcludeFromReportsColumn"/>

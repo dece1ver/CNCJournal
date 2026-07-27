@@ -123,6 +123,18 @@ namespace remeLog.ViewModels
             {
                 using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
                 await SqlSchemaBootstrapper.ApplyAllAsync(connection.ConnectionString, connection, progress, _cts.Token);
+
+                // Отмечаем версию схемы, которую применила ЭТА сборка, — защита от старой сборки
+                // поверх более новой БД (см. AppSettings.RequiredSchemaVersion / SchemaVersion,
+                // проверяется в MainWindowViewModel.LoadPartsAsync).
+                await using (var versionConnection = new SqlConnection(AppSettings.Instance.ConnectionString))
+                {
+                    await versionConnection.OpenAsync(_cts.Token);
+                    await using var versionCmd = new SqlCommand("UPDATE cnc_remelog_config SET SchemaVersion = @v", versionConnection);
+                    versionCmd.Parameters.AddWithValue("@v", AppSettings.RequiredSchemaVersion);
+                    await versionCmd.ExecuteNonQueryAsync(_cts.Token);
+                }
+
                 Status = "Готово";
             }
             catch (OperationCanceledException)

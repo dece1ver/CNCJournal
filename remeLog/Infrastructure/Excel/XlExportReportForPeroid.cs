@@ -333,12 +333,14 @@ namespace remeLog.Infrastructure
                         .Add(CM.SpecifiedDowntimesComment)
                         .Add(CM.SetupRatioTitle)
                         .Add(CM.MasterSetupComment)
+                        .Add(CM.MasterSetupDetail)
                         .Add(CM.ProductionRatioTitle)
                         .Add(CM.MasterProductionComment)
+                        .Add(CM.MasterMachiningDetail)
                         .Add(CM.MasterComment)
                         .Add(CM.FixedSetupTimePlan)
                         .Add(CM.FixedProductionTimePlan)
-                        .Add(CM.EngineerComment)
+                        .Add(CM.EngineerConclusion)
                         .Build();
             if (addSheetPerMachine)
             {

@@ -378,6 +378,7 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("EngineerComments")
                 .AddStringColumn("AiIp")
                 .AddStringColumn("AiModel")
+                .AddIntColumn("SchemaVersion", false, 0)
                 .Build(),
 
             new TableBuilder("cnc_remelog_feature_permissions")
@@ -517,8 +518,11 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("SpecifiedDowntimesComment", -1)
                 .AddStringColumn("UnspecifiedDowntimeComment", -1)
                 .AddStringColumn("MasterComment", -1)
+                .AddStringColumn("MasterSetupDetail", -1)
+                .AddStringColumn("MasterMachiningDetail", -1)
                 .AddDoubleColumn("FixedSetupTimePlan")
                 .AddDoubleColumn("FixedProductionTimePlan")
+                .AddStringColumn("EngineerConclusion", -1)
                 .AddStringColumn("EngineerComment", -1)
                 .AddBoolColumn("ExcludeFromReports")
                 .AddStringColumn("LongSetupReasonComment", -1)
@@ -527,6 +531,23 @@ namespace libeLog.Infrastructure.Sql
                 .AddDoubleColumn("ExcludedOperationsTime")
                 .AddStringColumn("IncreaseReason", -1)
                 .AddDoubleColumn("SpecialDowntimeTime", false, 0)
+                // Переопределение причин аналитиком (СГТ 1). Поля мастера
+                // (MasterSetupComment/MasterMachiningComment) после заполнения мастером не
+                // правятся — решение аналитика живёт здесь, параллельным слоем. Эффективная
+                // причина = override ?? отметка мастера, считается в C# (Part.Effective*Reason),
+                // computed-колонки намеренно не используются: persisted computed при
+                // пересоздании уезжает в конец таблицы и сдвигает ordinal'ы (см. PartsDb.cs).
+                // IsMasterFault по умолчанию true — сам факт переопределения считается ошибкой
+                // мастера; аналитик снимает флаг, когда у мастера не было данных для верного
+                // выбора. By/At — общие на запись: обе категории правятся в одну сессию разбора.
+                .AddStringColumn("SetupReasonOverride", -1)
+                .AddStringColumn("SetupReasonOverrideComment", -1)
+                .AddBoolColumn("SetupReasonOverrideIsMasterFault", false, true)
+                .AddStringColumn("MachiningReasonOverride", -1)
+                .AddStringColumn("MachiningReasonOverrideComment", -1)
+                .AddBoolColumn("MachiningReasonOverrideIsMasterFault", false, true)
+                .AddStringColumn("ReasonOverrideBy", 128)
+                .AddDateTimeColumn("ReasonOverrideAt")
                 .Build(),
 
             new TableBuilder("remeLog_app_presence")

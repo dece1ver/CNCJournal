@@ -35,7 +35,7 @@ namespace remeLog.ViewModels
             set => Set(ref _pendingCommandCount, value);
         }
 
-        private bool _inProgress;
+        private bool _inProgress = true;
         public bool InProgress
         {
             get => _inProgress;
@@ -308,46 +308,64 @@ namespace remeLog.ViewModels
         {
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
 
+            async Task PollAsync()
+            {
+                var items = await Database.ReadActiveInstancesAsync();
+                var pendingCount = await Database.GetPendingCommandCountAsync();
+
+                var sorted = items
+                    .OrderByDescending(i => i.IsOnline)
+                    .ThenBy(i => i.UserName, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                await App.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    var selected = SelectedInstance;
+                    var selectedIds = new HashSet<Guid>(
+                        Instances.Where(i => i.IsSelected).Select(i => i.SessionId));
+
+                    Instances.Clear();
+
+                    foreach (var item in sorted)
+                    {
+                        if (selectedIds.Contains(item.SessionId))
+                            item.IsSelected = true;
+                        Instances.Add(item);
+                    }
+
+                    if (selected is not null)
+                    {
+                        SelectedInstance = Instances.FirstOrDefault(
+                            i => i.SessionId == selected.SessionId);
+                    }
+
+                    PendingCommandCount = pendingCount;
+                    AllSelected = Instances.Count > 0
+                        && Instances.Where(i => i.IsOnline).All(i => i.IsSelected);
+                    CommandManager.InvalidateRequerySuggested();
+                });
+
+                await PollCommandResultsAsync().ConfigureAwait(false);
+            }
+
+            try
+            {
+                await PollAsync();
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex);
+            }
+            finally
+            {
+                await App.Current.Dispatcher.InvokeAsync(() => InProgress = false);
+            }
+
             while (await timer.WaitForNextTickAsync(_cts.Token))
             {
                 try
                 {
-                    var items = await Database.ReadActiveInstancesAsync();
-                    var pendingCount = await Database.GetPendingCommandCountAsync();
-
-                    var sorted = items
-                        .OrderByDescending(i => i.IsOnline)
-                        .ThenBy(i => i.UserName, StringComparer.OrdinalIgnoreCase)
-                        .ToList();
-
-                    await App.Current.Dispatcher.InvokeAsync(() =>
-                    {
-                        var selected = SelectedInstance;
-                        var selectedIds = new HashSet<Guid>(
-                            Instances.Where(i => i.IsSelected).Select(i => i.SessionId));
-
-                        Instances.Clear();
-
-                        foreach (var item in sorted)
-                        {
-                            if (selectedIds.Contains(item.SessionId))
-                                item.IsSelected = true;
-                            Instances.Add(item);
-                        }
-
-                        if (selected is not null)
-                        {
-                            SelectedInstance = Instances.FirstOrDefault(
-                                i => i.SessionId == selected.SessionId);
-                        }
-
-                        PendingCommandCount = pendingCount;
-                        AllSelected = Instances.Count > 0
-                            && Instances.Where(i => i.IsOnline).All(i => i.IsSelected);
-                        CommandManager.InvalidateRequerySuggested();
-                    });
-
-                    await PollCommandResultsAsync().ConfigureAwait(false);
+                    await PollAsync();
                 }
                 catch (OperationCanceledException)
                 {

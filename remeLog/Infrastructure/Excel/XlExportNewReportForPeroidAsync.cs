@@ -23,6 +23,29 @@ namespace remeLog.Infrastructure
     public static partial class Xl
     {
         /// <summary>
+        /// Результат построения листа-таблицы по станкам за один период —
+        /// используется как для одиночного отчёта, так и для отчёта сравнения периодов.
+        /// </summary>
+        private readonly struct PeriodDataSheet
+        {
+            public PeriodDataSheet(IXLWorksheet ws, Dictionary<string, int> ci, int totalRow, string title, IOrderedEnumerable<Part> filteredParts)
+            {
+                Ws = ws;
+                Ci = ci;
+                TotalRow = totalRow;
+                Title = title;
+                FilteredParts = filteredParts;
+            }
+
+            public IXLWorksheet Ws { get; }
+            public Dictionary<string, int> Ci { get; }
+            /// <summary>Строка "Итог:" — здесь лежат агрегаты по всем станкам за период.</summary>
+            public int TotalRow { get; }
+            public string Title { get; }
+            public IOrderedEnumerable<Part> FilteredParts { get; }
+        }
+
+        /// <summary>
         /// Отчёт за период
         /// </summary>
         /// <param name="parts"></param>
@@ -35,18 +58,119 @@ namespace remeLog.Infrastructure
         {
             progress?.Report("Начало экспорта...");
             var totalParts = parts;
-            var tempParts = new List<Part>();
-            foreach (var p in parts)
+
+            progress?.Report("Получение списка серийных деталей...");
+            var serialParts = await libeLog.Infrastructure.Database.GetSerialPartsAsync(AppSettings.Instance.ConnectionString!);
+            var serialPartNames = serialParts.Select(p => p.PartName.NormalizedPartNameWithoutComments()).ToImmutableHashSet();
+
+            var wb = new XLWorkbook();
+
+            var period = BuildPeriodDataSheet(wb, "Отчет за период", parts, fromDate, toDate, shift, serialPartNames, progress);
+
+            progress?.Report("Формирование сводки...");
+            var summaryWs = CreateSummaryWorksheet(wb, "Сводка");
+            WriteSummaryBlock(summaryWs, 1, period.Title, period.Ws, period.Ci, period.TotalRow);
+
+            var tcm = new CM
+                    .Builder()
+                    .Add(CM.Part)
+                    .Add(CM.SerialPerList)
+                    .Build();
+
+            var wst = wb.AddWorksheet("Общий список");
+            wst.Style.Font.FontSize = 10;
+            wst.Style.Alignment.WrapText = true;
+            wst.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            wst.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            ConfigureWorksheetHeader(wst, tcm, HeaderRotateOption.Horizontal, 30);
+            var tci = tcm.GetIndexes();
+            var listRow = 3;
+            foreach (var part in totalParts.DistinctBy(p => p.PartName))
             {
-                tempParts.Add(p);
+                wst.Cell(listRow, tci[CM.Part]).SetValue(part.PartName);
+                wst.Cell(listRow, tci[CM.SerialPerList]).SetValue(serialPartNames.Contains(part.PartName.NormalizedPartNameWithoutComments()));
+                listRow++;
             }
+            wst.Row(1).Delete();
+            var totalTable = wst.RangeUsed().CreateTable();
+            totalTable.Theme = XLTableTheme.TableStyleLight15;
+            wst.Column(tci[CM.Part]).Width = 70;
+            wst.Column(tci[CM.SerialPerList]).Width = 14;
+
+
+            var partsByMachine = period.FilteredParts.GroupBy(p => p.Machine).ToDictionary(g => g.Key, g => g.ToList());
+
+            var mcm = new CM.Builder()
+                        .Add(CM.Date)
+                        .Add(CM.Shift)
+                        .Add(CM.Operator)
+                        .Add(CM.Part)
+                        .Add(CM.SerialPerList)
+                        .Add(CM.Order)
+                        .Add(CM.TotalByOrder)
+                        .Add(CM.Finished)
+                        .Add(CM.Setup)
+                        .Add(CM.StartSetupTime)
+                        .Add(CM.StartMachiningTime)
+                        .Add(CM.EndMachiningTime)
+                        .Add(CM.SetupTimePlan)
+                        .Add(CM.SetupTimeFact)
+                        .Add(CM.SingleProductionTimePlan)
+                        .Add(CM.MachiningTime)
+                        .Add(CM.SingleProductionTime)
+                        .Add(CM.PartReplacementTime)
+                        .Add(CM.ProductionTimeFact)
+                        .Add(CM.PlanForBatch)
+                        .Add(CM.OperatorComment)
+                        .Add(CM.SetupDowntimes)
+                        .Add(CM.MachiningDowntimes)
+                        .Add(CM.PartialSetupTime)
+                        .Add(CM.CreateNcProgramTime)
+                        .Add(CM.MaintenanceTime)
+                        .Add(CM.ToolSearchingTime)
+                        .Add(CM.ToolChangingTime)
+                        .Add(CM.MentoringTime)
+                        .Add(CM.ContactingDepartmentsTime)
+                        .Add(CM.FixtureMakingTime)
+                        .Add(CM.HardwareFailureTime)
+                        .Add(CM.SpecifiedDowntimesRatio)
+                        .Add(CM.SpecifiedDowntimesComment)
+                        .Add(CM.SetupRatioTitle)
+                        .Add(CM.MasterSetupComment)
+                        .Add(CM.MasterSetupDetail)
+                        .Add(CM.ProductionRatioTitle)
+                        .Add(CM.MasterProductionComment)
+                        .Add(CM.MasterMachiningDetail)
+                        .Add(CM.MasterComment)
+                        .Add(CM.FixedSetupTimePlan)
+                        .Add(CM.FixedProductionTimePlan)
+                        .Add(CM.EngineerConclusion)
+                        .Build();
+            foreach (var machine in partsByMachine.Keys)
+            {
+                progress?.Report($"Формирование листа по станку {machine}...");
+                ConfigureMachineSheetForPeriod(wb, partsByMachine[machine], machine, mcm, serialPartNames);
+            }
+            progress?.Report("Формирование завершено, сохранение файла...");
+            wb.SaveAndOfferOpen(path);
+            return $"Файл сохранен в \"{path}\"";
+        }
+
+        /// <summary>
+        /// Строит лист-таблицу по станкам за один период (общий и для одиночного отчёта,
+        /// и для каждого из двух периодов в отчёте сравнения периодов).
+        /// </summary>
+        private static PeriodDataSheet BuildPeriodDataSheet(
+            XLWorkbook wb, string sheetName, ICollection<Part> parts, DateTime fromDate, DateTime toDate, Shift shift,
+            ImmutableHashSet<string> serialPartNames, IProgress<string> progress)
+        {
+            var totalParts = parts;
 
             var machinesResult = Database.ReadMachines(); var machines = machinesResult.Value ?? new List<string>();
             var shiftsResult = Database.GetShiftsByPeriod(machines, fromDate, toDate, shift); var shifts = shiftsResult.Value ?? new List<ShiftInfo>();
             var totalDays = Util.GetWorkDaysBeetween(fromDate, toDate);
 
-            var wb = new XLWorkbook();
-            var ws = wb.AddWorksheet("Отчет за период");
+            var ws = wb.AddWorksheet(sheetName);
             ws.Style.Font.FontSize = 11;
 
             var cm = new CM.Builder()
@@ -118,11 +242,6 @@ namespace remeLog.Infrastructure
             var row = 3;
             var firstDataRow = row;
 
-            progress?.Report("Получение списка серийных деталей...");
-            var serialParts = await libeLog.Infrastructure.Database.GetSerialPartsAsync(AppSettings.Instance.ConnectionString!);
-
-            progress?.Report("Подготовка данных...");
-            var serialPartNames = serialParts.Select(p => p.PartName.NormalizedPartNameWithoutComments()).ToImmutableHashSet();
             var filteredParts = parts
                 .GroupBy(p => p.Machine)
                 .SelectMany(machineGroup =>
@@ -131,8 +250,7 @@ namespace remeLog.Infrastructure
                         .SelectMany(partGroup => partGroup))
                 .OrderBy(p => p.Machine);
 
-            progress?.Report("Формирование общего листа...");
-            var totalFinished = filteredParts.DistinctBy(p => p.Order).Sum(p => p.TotalCount);
+            progress?.Report($"Формирование листа «{sheetName}»...");
 
             foreach (var partGroup in filteredParts.GroupBy(p => p.Machine).OrderBy(pg => pg.Key))
             {
@@ -260,7 +378,7 @@ namespace remeLog.Infrastructure
                 double totalReplacementTime = parts.Aggregate(0.0, (acc, p) => double.IsFinite(p.PartReplacementTime) ? acc + p.PartReplacementTime * p.FinishedCount : acc);
 
                 ws.Range(row, ci[CM.SpecifiedDowntimes], row, ci[CM.SpecifiedDowntimes]).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
-                
+
                 row++;
             }
 
@@ -268,7 +386,7 @@ namespace remeLog.Infrastructure
 
             var dataRange = ws.RangeUsed();
             var table = dataRange.CreateTable();
-            table.Name = "Отчёт за период";
+            table.Name = $"Report_{ws.Position}";
             table.Theme = XLTableTheme.None;
 
             ws.ApplyStandardBorders();
@@ -412,87 +530,97 @@ namespace remeLog.Infrastructure
             ws.Columns(ci[CM.NoOperatorShifts], ci[CM.UnspecifiedOtherShifts]).Group();
             ws.Columns(ci[CM.CreateNcProgramTime], ci[CM.HardwareFailureTime]).Group();
 
-            var tcm = new CM
-                    .Builder()
-                    .Add(CM.Part)
-                    .Add(CM.SerialPerList)
-                    .Build();
+            return new PeriodDataSheet(ws, ci, row - 1, title, filteredParts);
+        }
 
-            var wst = wb.AddWorksheet("Общий список");
-            wst.Style.Font.FontSize = 10;
-            wst.Style.Alignment.WrapText = true;
-            wst.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
-            wst.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-            ConfigureWorksheetHeader(wst, tcm, HeaderRotateOption.Horizontal, 30);
-            ci = tcm.GetIndexes();
-            row = 3;
-            foreach (var part in totalParts.DistinctBy(p => p.PartName))
+        /// <summary>Создаёт пустой лист под один или несколько блоков сводки (см. <see cref="WriteSummaryBlock"/>).</summary>
+        private static IXLWorksheet CreateSummaryWorksheet(XLWorkbook wb, string sheetName)
+        {
+            var ws = wb.AddWorksheet(sheetName);
+            ws.Style.Font.FontSize = 11;
+            return ws;
+        }
+
+        /// <summary>
+        /// Пишет один блок сводки (Общее/Серийная/Не серийная продукция: доли и часы наладки,
+        /// изготовления и простоев), начиная со строки <paramref name="startRow"/>. Все ячейки —
+        /// формулы, ссылающиеся на строку "Итог:" листа-источника, значения нигде не копируются.
+        /// Возвращает номер последней использованной строки блока.
+        /// </summary>
+        private static int WriteSummaryBlock(
+            IXLWorksheet ws, int startRow, string title,
+            IXLWorksheet sourceWs, Dictionary<string, int> sourceCi, int sourceTotalRow)
+        {
+            string[] headers =
             {
-                wst.Cell(row, ci[CM.Part]).SetValue(part.PartName);
-                wst.Cell(row, ci[CM.SerialPerList]).SetValue(serialPartNames.Contains(part.PartName.NormalizedPartNameWithoutComments()));
-                row++;
-            }
-            wst.Row(1).Delete();
-            var totalTable = wst.RangeUsed().CreateTable();
-            totalTable.Theme = XLTableTheme.TableStyleLight15;
-            wst.Column(ci[CM.Part]).Width = 70;
-            wst.Column(ci[CM.SerialPerList]).Width = 14;
+                "Серийность", "Наладка", "Изготовление", "Отмеченные простои",
+                "Время наладки, час", "Время изготовления, час", "Время простоев, час", "Время общее, час"
+            };
 
+            var titleRow = startRow;
+            var headerRow = startRow + 1;
+            var totalRow = startRow + 2;
+            var serialRow = startRow + 3;
+            var nonSerialRow = startRow + 4;
 
-            var partsByMachine = filteredParts.GroupBy(p => p.Machine).ToDictionary(g => g.Key, g => g.ToList());
+            ws.Cell(titleRow, 1).Value = title;
+            ws.Range(titleRow, 1, titleRow, headers.Length).Merge();
+            ws.Range(titleRow, 1, titleRow, 1).Style.Font.SetFontSize(14).Font.SetBold(true);
 
-            var mcm = new CM.Builder()
-                        .Add(CM.Date)
-                        .Add(CM.Shift)
-                        .Add(CM.Operator)
-                        .Add(CM.Part)
-                        .Add(CM.SerialPerList)
-                        .Add(CM.Order)
-                        .Add(CM.TotalByOrder)
-                        .Add(CM.Finished)
-                        .Add(CM.Setup)
-                        .Add(CM.StartSetupTime)
-                        .Add(CM.StartMachiningTime)
-                        .Add(CM.EndMachiningTime)
-                        .Add(CM.SetupTimePlan)
-                        .Add(CM.SetupTimeFact)
-                        .Add(CM.SingleProductionTimePlan)
-                        .Add(CM.MachiningTime)
-                        .Add(CM.SingleProductionTime)
-                        .Add(CM.PartReplacementTime)
-                        .Add(CM.ProductionTimeFact)
-                        .Add(CM.PlanForBatch)
-                        .Add(CM.OperatorComment)
-                        .Add(CM.SetupDowntimes)
-                        .Add(CM.MachiningDowntimes)
-                        .Add(CM.PartialSetupTime)
-                        .Add(CM.CreateNcProgramTime)
-                        .Add(CM.MaintenanceTime)
-                        .Add(CM.ToolSearchingTime)
-                        .Add(CM.ToolChangingTime)
-                        .Add(CM.MentoringTime)
-                        .Add(CM.ContactingDepartmentsTime)
-                        .Add(CM.FixtureMakingTime)
-                        .Add(CM.HardwareFailureTime)
-                        .Add(CM.SpecifiedDowntimesRatio)
-                        .Add(CM.SpecifiedDowntimesComment)
-                        .Add(CM.SetupRatioTitle)
-                        .Add(CM.MasterSetupComment)
-                        .Add(CM.ProductionRatioTitle)
-                        .Add(CM.MasterProductionComment)
-                        .Add(CM.MasterComment)
-                        .Add(CM.FixedSetupTimePlan)
-                        .Add(CM.FixedProductionTimePlan)
-                        .Add(CM.EngineerComment)
-                        .Build();
-            foreach (var machine in partsByMachine.Keys)
+            for (int i = 0; i < headers.Length; i++)
+                ws.Cell(headerRow, i + 1).Value = headers[i];
+            ws.Range(headerRow, 1, headerRow, headers.Length).Style.Font.Bold = true;
+            ws.Range(headerRow, 1, headerRow, headers.Length).Style.Fill.BackgroundColor = XLColor.FromTheme(XLThemeColor.Accent1, 0.8);
+            ws.Range(headerRow, 1, headerRow, headers.Length).Style.Alignment.WrapText = true;
+
+            // Ссылка на ячейку строки "Итог:" листа-источника по ключу колонки CM.
+            string SourceRef(string columnKey) =>
+                $"'{sourceWs.Name}'!{sourceWs.Cell(sourceTotalRow, sourceCi[columnKey]).Address}";
+
+            ws.Cell(totalRow, 1).Value = "Общее";
+            ws.Cell(totalRow, 5).FormulaA1 = SourceRef(CM.TotalSetupTime);
+            ws.Cell(totalRow, 6).FormulaA1 = SourceRef(CM.TotalProductionTime);
+            ws.Cell(totalRow, 7).FormulaA1 = SourceRef(CM.TotalDowntimesTime);
+            ws.Cell(totalRow, 8).FormulaA1 = SourceRef(CM.TotalTime);
+
+            ws.Cell(serialRow, 1).Value = "Серийная продукция";
+            ws.Cell(serialRow, 5).FormulaA1 = SourceRef(CM.TotalSetupTimeSerial);
+            ws.Cell(serialRow, 6).FormulaA1 = SourceRef(CM.TotalProductionTimeSerial);
+            ws.Cell(serialRow, 7).FormulaA1 = SourceRef(CM.TotalDowntimesTimeSerial);
+            ws.Cell(serialRow, 8).FormulaA1 = SourceRef(CM.SerialPartsTime);
+
+            ws.Cell(nonSerialRow, 1).Value = "Не серийная продукция";
+            // Наладка/изготовление/простои не серийной продукции отдельными колонками в
+            // источнике не считаются — только их сумма (NonSerialPartsTime), поэтому здесь
+            // единственный вариант "не копировать значение" — вычесть Серийную из Общего
+            // (обе уже являются ссылками на источник, см. выше).
+            for (int col = 5; col <= 7; col++)
+                ws.Cell(nonSerialRow, col).FormulaA1 = $"{ws.Cell(totalRow, col).Address}-{ws.Cell(serialRow, col).Address}";
+            ws.Cell(nonSerialRow, 8).FormulaA1 = SourceRef(CM.NonSerialPartsTime);
+
+            for (int r = totalRow; r <= nonSerialRow; r++)
             {
-                progress?.Report($"Формирование листа по станку {machine}...");
-                ConfigureMachineSheetForPeriod(wb, partsByMachine[machine], machine, mcm, serialPartNames);
+                ws.Cell(r, 2).FormulaA1 = $"IFERROR({ws.Cell(r, 5).Address}/{ws.Cell(r, 8).Address},0)";
+                ws.Cell(r, 3).FormulaA1 = $"IFERROR({ws.Cell(r, 6).Address}/{ws.Cell(r, 8).Address},0)";
+                ws.Cell(r, 4).FormulaA1 = $"IFERROR({ws.Cell(r, 7).Address}/{ws.Cell(r, 8).Address},0)";
             }
-            progress?.Report("Формирование завершено, сохранение файла...");
-            wb.SaveAndOfferOpen(path);
-            return $"Файл сохранен в \"{path}\"";
+
+            ws.Range(totalRow, 2, nonSerialRow, 4).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.PercentInteger;
+            ws.Range(totalRow, 5, nonSerialRow, 8).Style.NumberFormat.NumberFormatId = (int)XLPredefinedFormat.Number.IntegerWithSeparator;
+
+            var body = ws.Range(headerRow, 1, nonSerialRow, headers.Length);
+            body.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            body.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            ws.Range(totalRow, 1, nonSerialRow, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+
+            ws.Range(headerRow, 1, nonSerialRow, headers.Length).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+            ws.Range(headerRow, 1, nonSerialRow, headers.Length).Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+
+            if (ws.Column(1).Width < 24) ws.Column(1).Width = 24;
+            for (int col = 2; col <= headers.Length; col++)
+                if (ws.Column(col).Width < 15) ws.Column(col).Width = 15;
+
+            return nonSerialRow;
         }
     }
 }

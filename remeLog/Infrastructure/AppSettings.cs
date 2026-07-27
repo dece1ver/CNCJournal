@@ -84,6 +84,22 @@ namespace remeLog.Infrastructure
         public const int AiPort = 5050;
         [JsonIgnore]
         public static string AiModel { get; set; } = "qwen3:14b";
+        /// <summary>
+        /// Версия схемы БД, зафиксированная в cnc_remelog_config при последнем "Обновлении БД"
+        /// (любой сборкой). Читается при каждом обновлении настроек.
+        /// </summary>
+        [JsonIgnore]
+        public static int SchemaVersion { get; set; }
+        /// <summary>
+        /// Версия схемы, на которую рассчитана ЭТА сборка. Бампать вместе с любым изменением
+        /// структуры БД (новые обязательные столбцы, смена семантики существующих и т.п.) —
+        /// защита от старой сборки поверх более новой БД: если SchemaVersion в БД выше этого
+        /// значения, работа с данными блокируется (см. MainWindowViewModel.LoadPartsAsync).
+        /// </summary>
+        // 2 — переопределение причин отклонений аналитиком: 8 столбцов в parts
+        //     (SetupReasonOverride и т.д.). Старая сборка не знает про этот слой и при
+        //     сохранении затрёт отметку мастера напрямую, как раньше.
+        public const int RequiredSchemaVersion = 2;
         [JsonIgnore]
         public static int PartsHistoryMaxRecords { get; set; } = 5;
         [JsonIgnore]

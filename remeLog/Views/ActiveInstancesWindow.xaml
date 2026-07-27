@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:remeLog.Views"
+        xmlns:cnt="clr-namespace:remeLog.Views.Controls"
         xmlns:vm="clr-namespace:remeLog.ViewModels"
         mc:Ignorable="d" WindowStartupLocation="CenterOwner"
         Title="Экземпляры" Height="450" Width="1020">
@@ -46,56 +47,59 @@
         <ProgressBar DockPanel.Dock="Bottom" Height="2"
                      IsIndeterminate="True"
                      Visibility="{Binding InProgress, Converter={StaticResource VisibilityConverter}}"/>
-        <ListView ItemsSource="{Binding Instances}"
-                  SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
-                  FontSize="14" Margin="8">
-            <ListView.ItemContainerStyle>
-                <Style TargetType="ListViewItem">
-                    <Setter Property="Tag"
-                            Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListView}}"/>
-                    <Setter Property="ContextMenu">
-                        <Setter.Value>
-                            <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
-                                <MenuItem Header="Принудительно закрыть"
-                                          Command="{Binding ForceCloseCommand}"/>
-                                <MenuItem Header="Показать уведомление"
-                                           Command="{Binding ShowNotificationCommand}"/>
-                                <MenuItem Header="Уведомить об обновлении"
-                                          Command="{Binding NotifyUpdateCommand}"/>
-                            </ContextMenu>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </ListView.ItemContainerStyle>
-            <ListView.View>
-                <GridView>
-                    <GridViewColumn Header="" Width="30">
-                        <GridViewColumn.CellTemplate>
-                            <DataTemplate>
-                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                          IsEnabled="{Binding IsOnline}"
-                                          HorizontalAlignment="Center"
-                                          VerticalAlignment="Center"/>
-                            </DataTemplate>
-                        </GridViewColumn.CellTemplate>
-                    </GridViewColumn>
-                    <GridViewColumn Header="Пользователь" DisplayMemberBinding="{Binding UserName}" Width="100"/>
-                    <GridViewColumn Header="Компьютер" DisplayMemberBinding="{Binding MachineName}" Width="100"/>
-                    <GridViewColumn Header="IP" DisplayMemberBinding="{Binding IpAddress}" Width="120"/>
-                    <GridViewColumn Header="Версия" DisplayMemberBinding="{Binding AppVersion}" Width="140"/>
-                    <GridViewColumn Header="Фичи" DisplayMemberBinding="{Binding FeaturesText}" Width="200"/>
-                    <GridViewColumn Header="Запущено" DisplayMemberBinding="{Binding StartedLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="100"/>
-                    <GridViewColumn Header="Опрос" DisplayMemberBinding="{Binding LastSeenLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="100"/>
-                    <GridViewColumn Header="Статус" Width="80">
-                        <GridViewColumn.CellTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding IsOnline, Converter={StaticResource BoolToOnlineConverter}}"
-                                   Foreground="{Binding IsOnline, Converter={StaticResource BoolToOnlineBrushConverter}}"/>
-                            </DataTemplate>
-                        </GridViewColumn.CellTemplate>
-                    </GridViewColumn>
-                </GridView>
-            </ListView.View>
-        </ListView>
+        <Grid>
+            <ListView ItemsSource="{Binding Instances}"
+                      SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
+                      FontSize="14" Margin="8">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Tag"
+                                Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListView}}"/>
+                        <Setter Property="ContextMenu">
+                            <Setter.Value>
+                                <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Header="Принудительно закрыть"
+                                              Command="{Binding ForceCloseCommand}"/>
+                                    <MenuItem Header="Показать уведомление"
+                                               Command="{Binding ShowNotificationCommand}"/>
+                                    <MenuItem Header="Уведомить об обновлении"
+                                              Command="{Binding NotifyUpdateCommand}"/>
+                                </ContextMenu>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn Header="" Width="30">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                              IsEnabled="{Binding IsOnline}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Header="Пользователь" DisplayMemberBinding="{Binding UserName}" Width="100"/>
+                        <GridViewColumn Header="Компьютер" DisplayMemberBinding="{Binding MachineName}" Width="100"/>
+                        <GridViewColumn Header="IP" DisplayMemberBinding="{Binding IpAddress}" Width="120"/>
+                        <GridViewColumn Header="Версия" DisplayMemberBinding="{Binding AppVersion}" Width="140"/>
+                        <GridViewColumn Header="Фичи" DisplayMemberBinding="{Binding FeaturesText}" Width="200"/>
+                        <GridViewColumn Header="Запущено" DisplayMemberBinding="{Binding StartedLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="100"/>
+                        <GridViewColumn Header="Опрос" DisplayMemberBinding="{Binding LastSeenLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="100"/>
+                        <GridViewColumn Header="Статус" Width="80">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding IsOnline, Converter={StaticResource BoolToOnlineConverter}}"
+                                       Foreground="{Binding IsOnline, Converter={StaticResource BoolToOnlineBrushConverter}}"/>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                    </GridView>
+                </ListView.View>
+            </ListView>
+            <cnt:LoadingOverlay IsBusy="{Binding InProgress}"/>
+        </Grid>
     </DockPanel>
 </Window>

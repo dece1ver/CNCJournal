@@ -69,7 +69,33 @@ namespace remeLog
 
             Util.WriteLog("Начало инициализации приложения");
             InitializeApplication();
-            if (!string.IsNullOrEmpty(AppSettings.Instance.ConnectionString)) StartPresenceServices();
+            if (!string.IsNullOrEmpty(AppSettings.Instance.ConnectionString))
+            {
+                LoadAppSettingsFromDb();
+                StartPresenceServices();
+            }
+        }
+
+        /// <summary>
+        /// Тянет конфиг из БД (станки, администраторы, права на фичи) ДО старта heartbeat.
+        /// Раньше это делалось только в LoadPartsAsync, из-за чего до первой загрузки данных
+        /// AppSettings.Administrators и EnabledFeatures были пусты: фичи не работали, а в
+        /// remeLog_app_presence уходил ноль — в окне инстансов чужие экземпляры выглядели
+        /// как «без фич». Ошибка не критична: без конфига приложение доживёт до LoadPartsAsync,
+        /// который дёрнет то же самое повторно.
+        /// </summary>
+        private void LoadAppSettingsFromDb()
+        {
+            try
+            {
+                // Через пул потоков: HandleApplicationStart зовётся из конструктора App, и
+                // прямое ожидание на UI-контексте рискует взаимоблокировкой на продолжениях.
+                Task.Run(Util.UpdateAppSettingsAsync).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "Не удалось загрузить настройки из БД при запуске");
+            }
         }
 
         private void StartPresenceServices()

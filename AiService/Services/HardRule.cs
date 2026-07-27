@@ -29,9 +29,11 @@ public static class HardRuleEvaluator
         "Отсутствие нормативов",
     };
 
-    // Причины из комбобокса MasterMachiningComment, при наличии которых
-    // и непустого MasterComment правило "машинное время >= норматива"
-    // понижается до soft — LLM решает по правилам soft_signal_explanation.txt.
+    // Причины из комбобокса MasterMachiningComment, при наличии которых и непустого
+    // MasterComment правило "машинное время >= норматива" понижается до soft — решает
+    // модель по soft_signal_explanation.txt: если объяснение причинно-релевантно
+    // именно станочному времени, эскалация не требуется И деталь — кандидат в
+    // suggest_exclude_from_reports (как следствие, не наоборот).
     private static readonly HashSet<string> MachiningTimeSoftDowngradeReasons = new(StringComparer.OrdinalIgnoreCase)
     {
         "Разовое изменение времени из-за проблем с инструментом/оборудованием",
@@ -54,6 +56,14 @@ public static class HardRuleEvaluator
 
             var isReworkSetup = ReworkReason.Equals(p.MasterSetupComment, StringComparison.OrdinalIgnoreCase);
             var isReworkMachining = ReworkReason.Equals(p.MasterMachiningComment, StringComparison.OrdinalIgnoreCase);
+
+            // Норматив наладки/изготовления отсутствует при реальном заказе — требует объяснения
+            // ВСЕГДА, независимо от факта работы в смену (синхронизировано с Part.cs.Error на
+            // клиенте — там это блокирует сохранение — и с клиентским DetectPartSignals).
+            if (p.SetupTimePlan <= 0 && hasOrder && string.IsNullOrWhiteSpace(p.MasterSetupComment))
+                hard.Add($"[{p.PartName}] Отсутствует норматив наладки при реальном заказе — комментарий мастера не указан");
+            if (p.SingleProductionTimePlan <= 0 && hasOrder && string.IsNullOrWhiteSpace(p.MasterMachiningComment))
+                hard.Add($"[{p.PartName}] Отсутствует норматив изготовления при реальном заказе — комментарий мастера не указан");
 
             // комбобокс-причины, требующие участия технологов
             // Проверяем MasterSetupComment и MasterMachiningComment по фиксированному списку.
@@ -100,7 +110,11 @@ public static class HardRuleEvaluator
 
             // Правило 3: КПД изготовления < 70% без объяснения мастера
             // null (= "б/и") не считается, доработка освобождена.
+            // Без норматива (SingleProductionTimePlan=0) ProductionRatio считается как 0/факт = 0%,
+            // что не является реальным КПД — но это исключение только для "Без М/Л" (!hasOrder).
+            // При реальном заказе отсутствие норматива само по себе проблема, эскалация должна идти.
             if (p.ProductionRatio is { } pr && pr < 0.7
+                && (p.SingleProductionTimePlan > 0 || hasOrder)
                 && !p.NoProductionHappened
                 && !isReworkMachining
                 && string.IsNullOrWhiteSpace(p.MasterMachiningComment))
@@ -139,18 +153,23 @@ public static class HardRuleEvaluator
             // времени не осталось вообще — это структурная аномалия, не шум.
             //
             // 2026-07-15: исключение — разовые причины (проблемы с инструментом/оборудованием,
-            // несоответствующие заготовки) при непустом MasterComment → soft.
-            // LLM решает по правилам soft_signal_explanation.txt.
-            // Без исключения или с пустым MasterComment — остаётся HARD.
+            // несоответствующие заготовки) при непустом MasterComment → soft. Модель верифицирует
+            // объяснение по soft_signal_explanation.txt: причинно-релевантно → requires_review не
+            // повышается И деталь — кандидат в exclude (как следствие); нерелевантно/нет причины
+            // из этого списка → остаётся HARD.
             //
-            // 2026-07-18: не сигналим для штучных партий (в отчёты не попадают,
-            // на малой партии данные не показательны) и при КПД изготовления > 100%
-            // (показатели эффективности не пострадали — эскалация подождёт проблем).
+            // 2026-07-25: убрано исключение по КПД>100% — хороший итоговый КПД сам по себе НЕ повод
+            // пропускать сигнал (может маскировать, например, урезанный оператором перерыв ради
+            // укладывания в норматив — такое всё равно требует разбора). Теперь единственное, что
+            // решает hard/soft — наличие обоснованной причины у мастера, а не то, чем всё кончилось.
+            //
+            // 2026-07-25: MasterComment разделён на MasterSetupDetail/MasterMachiningDetail — здесь
+            // нужна именно детализация ИЗГОТОВЛЕНИЯ, поэтому предпочитаем MasterMachiningDetail;
+            // MasterComment (архив) остаётся запасным путём для записей до разделения поля.
             if (p.MachiningTime > 0.5 && p.SingleProductionTimePlan > 0
                 && p.MachiningTime >= p.SingleProductionTimePlan
                 && !p.NoProductionHappened
-                && !p.IsSmallBatch
-                && p.ProductionRatio is not > 1)
+                && !p.IsSmallBatch)
             {
                 var signal =
                     $"[{p.PartName}] Машинное время {p.MachiningTime:0.#}мин >= " +
@@ -160,7 +179,7 @@ public static class HardRuleEvaluator
                 bool hasConcreteOneTimeReason =
                     !string.IsNullOrWhiteSpace(p.MasterMachiningComment)
                     && MachiningTimeSoftDowngradeReasons.Contains(p.MasterMachiningComment)
-                    && !string.IsNullOrWhiteSpace(p.MasterComment);
+                    && (!string.IsNullOrWhiteSpace(p.MasterMachiningDetail) || !string.IsNullOrWhiteSpace(p.MasterComment));
 
                 if (hasConcreteOneTimeReason)
                     soft.Add(signal);
