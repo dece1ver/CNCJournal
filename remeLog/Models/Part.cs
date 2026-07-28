@@ -413,6 +413,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -442,6 +444,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -478,6 +482,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -508,6 +514,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -553,6 +561,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -596,6 +606,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -639,6 +651,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -669,6 +683,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -700,6 +716,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -729,6 +747,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -759,6 +779,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -789,6 +811,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -819,6 +843,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -849,6 +875,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -879,6 +907,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -909,6 +939,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -939,6 +971,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -986,6 +1020,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -1018,6 +1054,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -1048,6 +1086,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -1078,6 +1118,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -1108,6 +1150,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -1138,6 +1182,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -1168,6 +1214,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -1262,6 +1310,7 @@ namespace remeLog.Models
                 {
                     NeedUpdate = true;
                     OnPropertyChanged(nameof(EffectiveSetupReason));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
                     OnPropertyChanged(nameof(HasSetupReasonOverride));
                     OnPropertyChanged(nameof(SetupOverrideTooltip));
                     OnPropertyChanged(nameof(NeedUpdate));
@@ -1278,6 +1327,7 @@ namespace remeLog.Models
                 if (Set(ref _SetupReasonOverrideComment, value))
                 {
                     NeedUpdate = true;
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
                     OnPropertyChanged(nameof(SetupOverrideTooltip));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -1314,6 +1364,7 @@ namespace remeLog.Models
                 {
                     NeedUpdate = true;
                     OnPropertyChanged(nameof(EffectiveMachiningReason));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(HasMachiningReasonOverride));
                     OnPropertyChanged(nameof(MachiningOverrideTooltip));
                     OnPropertyChanged(nameof(NeedUpdate));
@@ -1330,6 +1381,7 @@ namespace remeLog.Models
                 if (Set(ref _MachiningReasonOverrideComment, value))
                 {
                     NeedUpdate = true;
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(MachiningOverrideTooltip));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -1394,6 +1446,19 @@ namespace remeLog.Models
         /// <summary> Итоговая причина отклонения изготовления: решение аналитика, если есть, иначе отметка мастера. </summary>
         public string EffectiveMachiningReason =>
             HasMachiningReasonOverride ? MachiningReasonOverride : MasterMachiningComment;
+
+        /// <summary>
+        /// Итоговая детализация отклонения наладки: обоснование аналитика к переопределению,
+        /// если оно есть, иначе комментарий мастера. Комментарий мастера обычно поясняет именно
+        /// его исходную причину — при переопределении он перестаёт быть релевантным, поэтому
+        /// заменяется обоснованием СГТ, а не показывается рядом с чужой причиной.
+        /// </summary>
+        public string EffectiveSetupDetail =>
+            HasSetupReasonOverride ? SetupReasonOverrideComment : MasterSetupDetail;
+
+        /// <summary> Итоговая детализация отклонения изготовления. См. <see cref="EffectiveSetupDetail"/>. </summary>
+        public string EffectiveMachiningDetail =>
+            HasMachiningReasonOverride ? MachiningReasonOverrideComment : MasterMachiningDetail;
 
         /// <summary> null, когда переопределения нет — WPF тогда просто не показывает тултип. </summary>
         public string? SetupOverrideTooltip => BuildOverrideTooltip(
@@ -1489,6 +1554,8 @@ namespace remeLog.Models
                     OnPropertyChanged(nameof(MasterComment));
                     OnPropertyChanged(nameof(MasterSetupDetail));
                     OnPropertyChanged(nameof(MasterMachiningDetail));
+                    OnPropertyChanged(nameof(EffectiveSetupDetail));
+                    OnPropertyChanged(nameof(EffectiveMachiningDetail));
                     OnPropertyChanged(nameof(Error));
                     OnPropertyChanged(nameof(NeedUpdate));
                 }
@@ -1737,22 +1804,27 @@ namespace remeLog.Models
         {
             var result = new List<(string, string)>();
 
+            // Аномалии ниже привязаны к *Detail* (не к голому значению комбобокса) — иначе
+            // AiMasterCheck просит модель проверить, объясняет ли САМА СТРОКА «Освоение»
+            // числовую аномалию, что бессмысленно и путает модель (найдено на проде: деталь
+            // с MasterSetupComment=«Освоение», MasterSetupDetail=«деталь с квазера» — модель
+            // проверяла «Освоение» как «комментарий», деталь-детализацию не видела как ответ).
             if (!IsSelfSufficientReason(MasterSetupComment, SetupReasonsRequireComment))
             {
                 if (SetupTimePlanForCalc <= 0 && HasOrder)
-                    result.Add((nameof(MasterSetupComment), "Отсутствует норматив наладки при реальном заказе"));
+                    result.Add((nameof(MasterSetupDetail), "Отсутствует норматив наладки при реальном заказе"));
                 if ((SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0 && (SetupTimePlanForCalc > 0 || HasOrder))
-                    result.Add((nameof(MasterSetupComment), $"КПД наладки {SetupRatio:0%} вне нормы (70–{AppSettings.MaxSetupLimit:0%})"));
+                    result.Add((nameof(MasterSetupDetail), $"КПД наладки {SetupRatio:0%} вне нормы (70–{AppSettings.MaxSetupLimit:0%})"));
                 if (PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695)
-                    result.Add((nameof(MasterSetupComment), $"Частичная наладка {PartialSetupTime:0} мин превышает норматив {SetupTimePlanForCalc:0} мин"));
+                    result.Add((nameof(MasterSetupDetail), $"Частичная наладка {PartialSetupTime:0} мин превышает норматив {SetupTimePlanForCalc:0} мин"));
             }
 
             if (!IsSelfSufficientReason(MasterMachiningComment, MachiningReasonsRequireComment))
             {
                 if (ProductionTimePlanForCalc <= 0 && HasOrder)
-                    result.Add((nameof(MasterMachiningComment), "Отсутствует норматив изготовления при реальном заказе"));
+                    result.Add((nameof(MasterMachiningDetail), "Отсутствует норматив изготовления при реальном заказе"));
                 if (ProductionRatio is < 0.695 or > 1.2 && (ProductionTimePlanForCalc > 0 || HasOrder))
-                    result.Add((nameof(MasterMachiningComment), $"КПД изготовления {ProductionRatio:0%} вне нормы (70–120%)"));
+                    result.Add((nameof(MasterMachiningDetail), $"КПД изготовления {ProductionRatio:0%} вне нормы (70–120%)"));
             }
 
             if (RequiresComment(MasterSetupComment, SetupReasonsRequireComment))
@@ -1785,6 +1857,8 @@ namespace remeLog.Models
                 {
                     nameof(EffectiveSetupReason) => nameof(MasterSetupComment),
                     nameof(EffectiveMachiningReason) => nameof(MasterMachiningComment),
+                    nameof(EffectiveSetupDetail) => nameof(MasterSetupDetail),
+                    nameof(EffectiveMachiningDetail) => nameof(MasterMachiningDetail),
                     _ => columnName,
                 };
 

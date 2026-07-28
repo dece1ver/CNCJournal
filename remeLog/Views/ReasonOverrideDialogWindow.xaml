@@ -9,6 +9,58 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         WindowStyle="ToolWindow">
+    <Window.Resources>
+        <!-- Дублирует MasterCommentCellContextMenu/EditingTextBoxContextMenu из PartsInfoWindow.xaml:
+             там отдельное меню редактирования показывается только при активном вводе в ячейке,
+             здесь TextBox всегда «в редактировании», поэтому оба набора пунктов объединены. -->
+        <ContextMenu x:Key="CommentContextMenu">
+            <MenuItem Header="Копировать" Command="ApplicationCommands.Copy" />
+            <MenuItem Header="Вырезать" Command="ApplicationCommands.Cut" />
+            <MenuItem Header="Вставить" Command="ApplicationCommands.Paste" />
+            <MenuItem Header="Выделить все" Command="ApplicationCommands.SelectAll" />
+            <Separator/>
+            <MenuItem Header="Вставка спецсимволов">
+                <MenuItem Header="Градус (°)" Tag="°" Click="OnInsertValueClick"/>
+                <MenuItem Header="Плюс-минус (±)" Tag="±" Click="OnInsertValueClick"/>
+                <MenuItem Header="Диаметр (Ø)" Tag="Ø" Click="OnInsertValueClick"/>
+                <MenuItem Header="Микрон (µ)" Tag="µ" Click="OnInsertValueClick"/>
+            </MenuItem>
+            <Separator/>
+            <MenuItem Header="Другая операция">
+                <MenuItem Header="Заложена универсальная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена токарная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена токарно-фрезерная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена фрезерная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена вертикально-фрезерная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена горизонтально-фрезерная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена сверлильная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена долбежная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена электроэрозионная операция" Click="OnVariantClick"/>
+            </MenuItem>
+            <MenuItem Header="Другой станок">
+                <MenuItem Header="Деталь с Goodway GS-1500" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Hyundai L230A" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Hyundai WIA SKT21 №104" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Hyundai WIA SKT21 №105" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Hyundai XH6300" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Mazak Integrex i200" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Mazak Nexus 5000" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Mazak QTS200ML" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Mazak QTS350" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Quaser MV134" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HB1316" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HTC420 №1" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HTC420 №2" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HTC550MY" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HTC650M" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek VMC40C" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek VMC90C" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Victor A110" Click="OnVariantClick"/>
+            </MenuItem>
+            <Separator/>
+            <MenuItem Header="Очистить" Click="OnClearVariantClick"/>
+        </ContextMenu>
+    </Window.Resources>
     <StackPanel Margin="12">
         <TextBlock Text="{Binding CategoryTitle}" d:Text="Отклонения в наладке"
                    FontWeight="Bold" TextWrapping="Wrap" Margin="0 0 0 8"/>
@@ -35,9 +87,11 @@
                        VerticalAlignment="Center"
                        Visibility="{Binding CommentRequired, Converter={StaticResource VisibilityConverter}}"/>
         </StackPanel>
-        <TextBox Text="{Binding OverrideComment, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+        <TextBox x:Name="CommentBox"
+                 Text="{Binding OverrideComment, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                  AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" MaxHeight="180"
-                 VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"/>
+                 VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                 ContextMenu="{StaticResource CommentContextMenu}"/>
 
         <CheckBox IsChecked="{Binding IsMasterFault, Mode=TwoWay}" Margin="0 10 0 0"
                   Content="Ошибка мастера"

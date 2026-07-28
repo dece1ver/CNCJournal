@@ -191,7 +191,10 @@ namespace remeLog.Infrastructure
                     AddOverrideNote(setupCell, part, part.SetupReasonOverrideComment);
                 }
 
-                ws.Cell(row, ci[CM.MasterSetupDetail]).SetValue(part.MasterSetupDetail);
+                // Детализация тоже эффективная: комментарий мастера объяснял его исходную
+                // причину, при переопределении он больше не относится к делу — заменяем
+                // обоснованием СГТ.
+                ws.Cell(row, ci[CM.MasterSetupDetail]).SetValue(part.EffectiveSetupDetail);
 
                 ws.Cell(row, ci[CM.ProductionRatioTitle]).SetValue(part.ProductionRatioTitle);
 
@@ -203,7 +206,7 @@ namespace remeLog.Infrastructure
                     AddOverrideNote(machiningCell, part, part.MachiningReasonOverrideComment);
                 }
 
-                ws.Cell(row, ci[CM.MasterMachiningDetail]).SetValue(part.MasterMachiningDetail);
+                ws.Cell(row, ci[CM.MasterMachiningDetail]).SetValue(part.EffectiveMachiningDetail);
 
                 ws.Cell(row, ci[CM.MasterComment]).SetValue(part.MasterComment);
 

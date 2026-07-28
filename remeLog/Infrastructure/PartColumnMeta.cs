@@ -203,8 +203,22 @@ namespace remeLog.Infrastructure
                             string.Equals(p.EffectiveMachiningReason, val, StringComparison.OrdinalIgnoreCase),
                     }},
                     { "MasterComment",            new() { SqlColumn="MasterComment",            DisplayName=H_MasterComment,             Kind=FilterKind.Text   } },
-                    { "MasterSetupDetail",        new() { SqlColumn="MasterSetupDetail",        DisplayName=H_MasterSetupDetail,         Kind=FilterKind.Text   } },
-                    { "MasterMachiningDetail",    new() { SqlColumn="MasterMachiningDetail",    DisplayName=H_MasterMachiningDetail,     Kind=FilterKind.Text   } },
+                    // См. комментарий у MasterSetupComment: показывается и фильтруется
+                    // эффективная детализация (обоснование СГТ при переопределении).
+                    { "MasterSetupDetail", new() {
+                        SqlColumn   = "",
+                        DisplayName = H_MasterSetupDetail,
+                        Kind        = FilterKind.InMemory,
+                        Predicate   = (p, val) =>
+                            p.EffectiveSetupDetail?.Contains(val, StringComparison.OrdinalIgnoreCase) == true,
+                    }},
+                    { "MasterMachiningDetail", new() {
+                        SqlColumn   = "",
+                        DisplayName = H_MasterMachiningDetail,
+                        Kind        = FilterKind.InMemory,
+                        Predicate   = (p, val) =>
+                            p.EffectiveMachiningDetail?.Contains(val, StringComparison.OrdinalIgnoreCase) == true,
+                    }},
                     { "AiCheck",                  new() { SqlColumn="",                         DisplayName="ИИ-проверка",               Kind=FilterKind.None   } }, // вычисляемое, не фильтруется
                     { "FixedSetupTimePlan",       new() { SqlColumn="FixedSetupTimePlan",       DisplayName=H_FixedSetupTimePlan,        Kind=FilterKind.Number } },
                     { "FixedProductionTimePlan",  new() { SqlColumn="FixedProductionTimePlan",  DisplayName=H_FixedProductionTimePlan,   Kind=FilterKind.Number } },

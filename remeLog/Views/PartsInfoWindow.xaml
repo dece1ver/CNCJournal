@@ -548,8 +548,17 @@
         <DataGridTemplateColumn x:Key="MasterSetupDetailColumn" inf:ColumnId.Id="MasterSetupDetail" Header="Комментарий мастера (наладка)" Width="125">
             <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate>
-                    <TextBlock Text="{Binding MasterSetupDetail, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
-                       Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}"/>
+                    <!-- Показывается эффективная детализация: при переопределении причины
+                         комментарий мастера обычно поясняет уже не ту причину, поэтому его
+                         заменяет обоснование СГТ (см. MasterSetupCommentColumn). -->
+                    <DockPanel>
+                        <Border DockPanel.Dock="Left" Width="3" Background="#FF9800" Margin="0 0 3 0"
+                                Visibility="{Binding HasSetupReasonOverride, Converter={StaticResource VisibilityConverter}}"
+                                ToolTip="{Binding SetupOverrideTooltip}"/>
+                        <TextBlock Text="{Binding EffectiveSetupDetail, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
+                           ToolTip="{Binding SetupOverrideTooltip}"
+                           Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}"/>
+                    </DockPanel>
                 </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
             <DataGridTemplateColumn.CellEditingTemplate>
@@ -596,8 +605,15 @@
         <DataGridTemplateColumn x:Key="MasterMachiningDetailColumn" inf:ColumnId.Id="MasterMachiningDetail" Header="Комментарий мастера (изготовление)" Width="125">
             <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate>
-                    <TextBlock Text="{Binding MasterMachiningDetail, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
-                       Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}"/>
+                    <!-- См. комментарий у MasterSetupDetailColumn. -->
+                    <DockPanel>
+                        <Border DockPanel.Dock="Left" Width="3" Background="#FF9800" Margin="0 0 3 0"
+                                Visibility="{Binding HasMachiningReasonOverride, Converter={StaticResource VisibilityConverter}}"
+                                ToolTip="{Binding MachiningOverrideTooltip}"/>
+                        <TextBlock Text="{Binding EffectiveMachiningDetail, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
+                           ToolTip="{Binding MachiningOverrideTooltip}"
+                           Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}"/>
+                    </DockPanel>
                 </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
             <DataGridTemplateColumn.CellEditingTemplate>

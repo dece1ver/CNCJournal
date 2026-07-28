@@ -92,8 +92,8 @@ namespace remeLog.Infrastructure
                     ws.Cell(row, ci[CM.OperatorComment]).SetValue(comment)
                         .Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
 
-                    ws.Cell(row, ci[CM.MasterSetupDetail]).SetValue(part.MasterSetupDetail);
-                    ws.Cell(row, ci[CM.MasterMachiningDetail]).SetValue(part.MasterMachiningDetail);
+                    ws.Cell(row, ci[CM.MasterSetupDetail]).SetValue(part.EffectiveSetupDetail);
+                    ws.Cell(row, ci[CM.MasterMachiningDetail]).SetValue(part.EffectiveMachiningDetail);
                     ws.Cell(row, ci[CM.MasterComment]).SetValue(part.MasterComment);
                     ws.Cell(row, ci[CM.EngineerConclusion]).SetValue(part.EngineerConclusion);
 

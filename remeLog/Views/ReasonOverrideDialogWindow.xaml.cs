@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace remeLog.Views
 {
@@ -183,6 +184,28 @@ namespace remeLog.Views
         {
             DialogResult = true;
             Close();
+        }
+
+        // Заготовки станок/операция — полностью заменяют текст обоснования, как и в гриде
+        // (см. OnVariantClick у MasterCommentCellContextMenu в PartsInfoWindow.xaml.cs).
+        private void OnVariantClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem item) return;
+            OverrideComment = item.Header?.ToString() ?? string.Empty;
+        }
+
+        private void OnClearVariantClick(object sender, RoutedEventArgs e) =>
+            OverrideComment = string.Empty;
+
+        private void OnInsertValueClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem item) return;
+            string value = item.Tag?.ToString() ?? item.Header?.ToString() ?? string.Empty;
+
+            int caretIndex = CommentBox.CaretIndex;
+            CommentBox.Text = CommentBox.Text.Insert(caretIndex, value);
+            CommentBox.CaretIndex = caretIndex + value.Length;
+            CommentBox.Focus();
         }
     }
 }

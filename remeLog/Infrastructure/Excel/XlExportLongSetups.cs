@@ -149,7 +149,7 @@ namespace remeLog.Infrastructure
                 ws.Cell(row, ci[CM.SetupRatioTitle]).SetValue(part.SetupRatioTitle);
                 // Итоговая классификация: переопределение СГТ, если оно есть, иначе отметка мастера.
                 ws.Cell(row, ci[CM.MasterSetupComment]).SetValue(part.EffectiveSetupReason);
-                ws.Cell(row, ci[CM.MasterSetupDetail]).SetValue(part.MasterSetupDetail);
+                ws.Cell(row, ci[CM.MasterSetupDetail]).SetValue(part.EffectiveSetupDetail);
                 ws.Cell(row, ci[CM.MasterComment]).SetValue(part.MasterComment);
                 ws.Cell(row, ci[CM.FixedSetupTimePlan]).SetValue(part.FixedSetupTimePlan);
                 ws.Cell(row, ci[CM.FixedProductionTimePlan]).SetValue(part.FixedProductionTimePlan);

@@ -191,9 +191,9 @@ namespace remeLog.Views
                             timeMenu.IsOpen = true;
                             break;
 
-                        // Комментарий мастера к изготовлению (варианты в меню — станок/операция,
-                        // т.е. про «Изготовление не по техпроцессу», категория изготовления)
-                        case "MasterMachiningDetail":
+                        // Комментарий мастера к наладке/изготовлению (варианты в меню — станок/
+                        // операция, пригодны для обеих категорий отклонений)
+                        case "MasterSetupDetail" or "MasterMachiningDetail":
                             e.Handled = true;
                             cell.Focus();
                             var masterMenu = (ContextMenu)FindResource("MasterCommentCellContextMenu");
@@ -210,10 +210,16 @@ namespace remeLog.Views
                             normMenu.IsOpen = true;
                             break;
 
-                        // Причины отклонений — переопределение аналитиком (СГТ 1)
+                        // Причины отклонений — переопределение аналитиком (СГТ 1). Меню
+                        // переопределения дополняется пунктами фильтра той же ячейки — иначе
+                        // фича ReasonOverride перекрывала бы аналитику доступ к фильтру по
+                        // этой колонке (раньше это меню всегда ставило e.Handled = true и
+                        // блокировало TryShowFilterContextMenu ниже).
                         case "MasterSetupComment" or "MasterMachiningComment":
                             var isSetup = ColumnId.GetId(column) == "MasterSetupComment";
-                            if (BuildReasonOverrideContextMenu(d, p, isSetup) is not { } overrideMenu) break;
+                            var overrideMenu = BuildReasonOverrideContextMenu(d, p, isSetup) ?? new ContextMenu();
+                            AppendFilterItems(overrideMenu, cell);
+                            if (overrideMenu.Items.Count == 0) break;
                             e.Handled = true;
                             cell.Focus();
                             overrideMenu.PlacementTarget = cell;
@@ -533,18 +539,37 @@ namespace remeLog.Views
         /// </summary>
         private void TryShowFilterContextMenu(DataGridCell cell, MouseButtonEventArgs e)
         {
-            if (DataContext is not PartsInfoWindowViewModel d) return;
+            var menu = (ContextMenu)FindResource("GenericCellFilterContextMenu");
+            menu.Items.Clear();
+
+            if (!AppendFilterItems(menu, cell)) return;
+
+            e.Handled = true;
+            cell.Focus();
+            menu.PlacementTarget = cell;
+            menu.IsOpen = true;
+        }
+
+        /// <summary>
+        /// Добавляет в переданное меню пункты фильтрации по значению ячейки. Вынесено из
+        /// TryShowFilterContextMenu, чтобы те же пункты можно было пристыковать к другому
+        /// меню (см. вызов у "MasterSetupComment"/"MasterMachiningComment" в
+        /// DataGrid_PreviewMouseDown) — возвращает false, если для колонки фильтр не нужен.
+        /// </summary>
+        private bool AppendFilterItems(ContextMenu menu, DataGridCell cell)
+        {
+            if (DataContext is not PartsInfoWindowViewModel d) return false;
 
             string colId = ColumnId.GetId(cell.Column) ?? "";
 
-            if (!PartColumnMeta.Map.TryGetValue(colId, out var meta)) return;
-            if (meta.Kind == FilterKind.None) return;
+            if (!PartColumnMeta.Map.TryGetValue(colId, out var meta)) return false;
+            if (meta.Kind == FilterKind.None) return false;
 
             string? cellValue = GetCellTextValue(cell);
-            if (string.IsNullOrWhiteSpace(cellValue)) return;
+            if (string.IsNullOrWhiteSpace(cellValue)) return false;
 
-            var menu = (ContextMenu)FindResource("GenericCellFilterContextMenu");
-            menu.Items.Clear();
+            if (menu.Items.Count > 0)
+                menu.Items.Add(new Separator());
 
             menu.Items.Add(new MenuItem
             {
@@ -651,10 +676,7 @@ namespace remeLog.Views
                 menu.Items.Add(flagItem);
             }
 
-            e.Handled = true;
-            cell.Focus();
-            menu.PlacementTarget = cell;
-            menu.IsOpen = true;
+            return true;
         }
 
 

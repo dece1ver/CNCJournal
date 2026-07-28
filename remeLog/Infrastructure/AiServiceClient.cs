@@ -384,6 +384,8 @@ namespace remeLog.Infrastructure
         {
             var setupReason = useEffectiveReasons ? p.EffectiveSetupReason : p.MasterSetupComment;
             var machiningReason = useEffectiveReasons ? p.EffectiveMachiningReason : p.MasterMachiningComment;
+            var setupDetail = useEffectiveReasons ? p.EffectiveSetupDetail : p.MasterSetupDetail;
+            var machiningDetail = useEffectiveReasons ? p.EffectiveMachiningDetail : p.MasterMachiningDetail;
 
             bool noSetup = p.StartSetupTime == p.StartMachiningTime;
             // Изготовления не было: деталей по факту нет И времени нет, ЛИБО единственная
@@ -451,8 +453,8 @@ namespace remeLog.Infrastructure
                 masterSetupComment = setupReason ?? string.Empty,
                 masterMachiningComment = machiningReason ?? string.Empty,
                 masterComment = p.MasterComment ?? string.Empty,
-                masterSetupDetail = p.MasterSetupDetail ?? string.Empty,
-                masterMachiningDetail = p.MasterMachiningDetail ?? string.Empty,
+                masterSetupDetail = setupDetail ?? string.Empty,
+                masterMachiningDetail = machiningDetail ?? string.Empty,
                 specifiedDowntimesList = GetSpecifiedDowntimesList(p.OperatorComment),
                 specifiedDowntimesComment = p.SpecifiedDowntimesComment ?? string.Empty,
 

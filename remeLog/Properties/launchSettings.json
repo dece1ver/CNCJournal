@@ -23,6 +23,11 @@
       "commandName": "Project",
       "commandLineArgs": "--features=all",
       "remoteDebugEnabled": false
+    },
+    "remeLog (AiMasterCheck)": {
+      "commandName": "Project",
+      "commandLineArgs": "--features=AiMasterCheck",
+      "remoteDebugEnabled": false
     }
   }
 }
