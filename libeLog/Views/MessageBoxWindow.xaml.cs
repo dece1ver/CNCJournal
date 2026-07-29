@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -7,11 +8,25 @@ using System.Windows.Threading;
 
 namespace libeLog.Views;
 
+/// <summary> Порядок кнопок Да/Нет — какая из них идёт первой (левее). </summary>
+public enum YesNoButtonOrder
+{
+    YesFirst,
+    NoFirst,
+}
+
 public partial class MessageBoxWindow : Window
 {
     private MessageBoxResult _result;
     private Button _defaultButton = null!;
     private bool _closedByButton;
+
+    // Результат, соответствующий каждой физической кнопке — заполняется в SetupButtons.
+    // Нужно отдельно от GetCurrentButtons(), потому что для Да/Нет порядок кнопок
+    // настраивается через YesNoButtonOrder и больше не привязан жёстко к позиции.
+    private MessageBoxResult _leftResult = MessageBoxResult.None;
+    private MessageBoxResult _middleResult = MessageBoxResult.None;
+    private MessageBoxResult _rightResult = MessageBoxResult.None;
 
     private MessageBoxWindow()
     {
@@ -48,32 +63,35 @@ public partial class MessageBoxWindow : Window
     }
 
     public static MessageBoxResult Show(string? text) =>
-        ShowCore(text, string.Empty, MessageBoxButton.OK, MessageBoxImage.None, MessageBoxDefaultButton.Ok, null);
+        ShowCore(text, string.Empty, MessageBoxButton.OK, MessageBoxImage.None, MessageBoxDefaultButton.Ok, null, YesNoButtonOrder.YesFirst);
 
     public static MessageBoxResult Show(string text, string caption) =>
-        ShowCore(text, caption, MessageBoxButton.OK, MessageBoxImage.None, MessageBoxDefaultButton.Ok, null);
+        ShowCore(text, caption, MessageBoxButton.OK, MessageBoxImage.None, MessageBoxDefaultButton.Ok, null, YesNoButtonOrder.YesFirst);
 
-    public static MessageBoxResult Show(string text, string caption, MessageBoxButton buttons) =>
-        ShowCore(text, caption, buttons, MessageBoxImage.None, MapDefaultButton(buttons), null);
-
-    public static MessageBoxResult Show(string text, string caption, MessageBoxButton buttons, MessageBoxImage icon) =>
-        ShowCore(text, caption, buttons, icon, MapDefaultButton(buttons), null);
+    public static MessageBoxResult Show(string text, string caption, MessageBoxButton buttons,
+        YesNoButtonOrder yesNoOrder = YesNoButtonOrder.YesFirst) =>
+        ShowCore(text, caption, buttons, MessageBoxImage.None, MapDefaultButton(buttons), null, yesNoOrder);
 
     public static MessageBoxResult Show(string text, string caption, MessageBoxButton buttons, MessageBoxImage icon,
-        MessageBoxDefaultButton defaultButton) =>
-        ShowCore(text, caption, buttons, icon, defaultButton, null);
+        YesNoButtonOrder yesNoOrder = YesNoButtonOrder.YesFirst) =>
+        ShowCore(text, caption, buttons, icon, MapDefaultButton(buttons), null, yesNoOrder);
+
+    public static MessageBoxResult Show(string text, string caption, MessageBoxButton buttons, MessageBoxImage icon,
+        MessageBoxDefaultButton defaultButton, YesNoButtonOrder yesNoOrder = YesNoButtonOrder.YesFirst) =>
+        ShowCore(text, caption, buttons, icon, defaultButton, null, yesNoOrder);
 
     public static MessageBoxResult Show(Window owner, string text, string caption, MessageBoxButton buttons,
-        MessageBoxImage icon, MessageBoxDefaultButton defaultButton) =>
-        ShowCore(text, caption, buttons, icon, defaultButton, owner);
+        MessageBoxImage icon, MessageBoxDefaultButton defaultButton,
+        YesNoButtonOrder yesNoOrder = YesNoButtonOrder.YesFirst) =>
+        ShowCore(text, caption, buttons, icon, defaultButton, owner, yesNoOrder);
 
     private static MessageBoxResult ShowCore(string? text, string caption, MessageBoxButton buttons,
-        MessageBoxImage icon, MessageBoxDefaultButton defaultButton, Window? owner)
+        MessageBoxImage icon, MessageBoxDefaultButton defaultButton, Window? owner, YesNoButtonOrder yesNoOrder)
     {
         if (Application.Current is { } app && !app.Dispatcher.CheckAccess())
         {
             return app.Dispatcher.Invoke(() =>
-                ShowCore(text, caption, buttons, icon, defaultButton, owner));
+                ShowCore(text, caption, buttons, icon, defaultButton, owner, yesNoOrder));
         }
         var dlg = new MessageBoxWindow
         {
@@ -81,7 +99,7 @@ public partial class MessageBoxWindow : Window
             Title = string.IsNullOrEmpty(caption) ? ApplicationTitle() : caption
         };
         dlg.MessageText.Text = text ?? "null";
-        dlg.SetupButtons(buttons);
+        dlg.SetupButtons(buttons, yesNoOrder);
         dlg.SetupIcon(icon);
         dlg.SetupDefaultButton(buttons, defaultButton);
 
@@ -89,7 +107,56 @@ public partial class MessageBoxWindow : Window
         return dlg._result;
     }
 
-    private void SetupButtons(MessageBoxButton buttons)
+    /// <summary>
+    /// Немодальный показ для уведомлений, инициируемых фоновым кодом (например, командой из
+    /// AppPresenceService). Обычный <see cref="Show(string,string,MessageBoxButton,MessageBoxImage)"/>
+    /// вызывает ShowDialog — если на момент показа ни одно окно приложения не активно,
+    /// CurrentOwner() вернёт null, а WPF в этом случае блокирует ВСЕ окна приложения на всё
+    /// время показа. Если к тому же оператор не видит окно (оно открылось не в фокусе, а
+    /// ShowInTaskbar по умолчанию выключен), ответить на диалог некому — получается
+    /// неснимаемый "подвес", закрываемый только через диспетчер задач. Здесь окно показывается
+    /// как обычное (Show, не ShowDialog), поэтому наличие/отсутствие ответа никак не блокирует
+    /// остальные окна; в таскбаре оно при этом видно, чтобы его можно было найти и открыть.
+    /// </summary>
+    public static Task<MessageBoxResult> ShowNonModalAsync(string text, string caption, MessageBoxButton buttons,
+        MessageBoxImage icon, YesNoButtonOrder yesNoOrder = YesNoButtonOrder.YesFirst) =>
+        ShowNonModalCore(text, caption, buttons, icon, MapDefaultButton(buttons), null, yesNoOrder);
+
+    private static Task<MessageBoxResult> ShowNonModalCore(string? text, string caption, MessageBoxButton buttons,
+        MessageBoxImage icon, MessageBoxDefaultButton defaultButton, Window? owner, YesNoButtonOrder yesNoOrder)
+    {
+        if (Application.Current is { } app && !app.Dispatcher.CheckAccess())
+        {
+            return app.Dispatcher.Invoke(() =>
+                ShowNonModalCore(text, caption, buttons, icon, defaultButton, owner, yesNoOrder));
+        }
+
+        var dlg = new MessageBoxWindow
+        {
+            Owner = owner ?? CurrentOwner(),
+            Title = string.IsNullOrEmpty(caption) ? ApplicationTitle() : caption,
+            ShowInTaskbar = true,
+        };
+        dlg.MessageText.Text = text ?? "null";
+        dlg.SetupButtons(buttons, yesNoOrder);
+        dlg.SetupIcon(icon);
+        dlg.SetupDefaultButton(buttons, defaultButton);
+
+        var tcs = new TaskCompletionSource<MessageBoxResult>();
+        dlg.Closed += (_, _) => tcs.TrySetResult(dlg._result);
+
+        dlg.Show();
+        // Поднимаем окно на передний план, но не держим Topmost постоянно —
+        // тот же приём, что и в AppPresenceService.ActivateMainWindow().
+        dlg.Activate();
+        dlg.Topmost = true;
+        dlg.Topmost = false;
+        dlg.Focus();
+
+        return tcs.Task;
+    }
+
+    private void SetupButtons(MessageBoxButton buttons, YesNoButtonOrder yesNoOrder)
     {
         switch (buttons)
         {
@@ -98,6 +165,7 @@ public partial class MessageBoxWindow : Window
                 ButtonRight.Visibility = Visibility.Visible;
                 ButtonMiddle.Visibility = Visibility.Collapsed;
                 ButtonLeft.Visibility = Visibility.Collapsed;
+                _rightResult = MessageBoxResult.OK;
                 break;
             case MessageBoxButton.OKCancel:
                 ButtonRight.Content = "OK";
@@ -105,13 +173,27 @@ public partial class MessageBoxWindow : Window
                 ButtonRight.Visibility = Visibility.Visible;
                 ButtonLeft.Visibility = Visibility.Visible;
                 ButtonMiddle.Visibility = Visibility.Collapsed;
+                _rightResult = MessageBoxResult.OK;
+                _leftResult = MessageBoxResult.Cancel;
                 break;
             case MessageBoxButton.YesNo:
-                ButtonRight.Content = "Да";
-                ButtonLeft.Content = "Нет";
                 ButtonRight.Visibility = Visibility.Visible;
                 ButtonLeft.Visibility = Visibility.Visible;
                 ButtonMiddle.Visibility = Visibility.Collapsed;
+                if (yesNoOrder == YesNoButtonOrder.YesFirst)
+                {
+                    ButtonLeft.Content = "Да";
+                    ButtonRight.Content = "Нет";
+                    _leftResult = MessageBoxResult.Yes;
+                    _rightResult = MessageBoxResult.No;
+                }
+                else
+                {
+                    ButtonLeft.Content = "Нет";
+                    ButtonRight.Content = "Да";
+                    _leftResult = MessageBoxResult.No;
+                    _rightResult = MessageBoxResult.Yes;
+                }
                 break;
             case MessageBoxButton.YesNoCancel:
                 ButtonRight.Content = "Да";
@@ -120,6 +202,9 @@ public partial class MessageBoxWindow : Window
                 ButtonRight.Visibility = Visibility.Visible;
                 ButtonMiddle.Visibility = Visibility.Visible;
                 ButtonLeft.Visibility = Visibility.Visible;
+                _rightResult = MessageBoxResult.Yes;
+                _middleResult = MessageBoxResult.No;
+                _leftResult = MessageBoxResult.Cancel;
                 break;
         }
     }
@@ -135,11 +220,15 @@ public partial class MessageBoxWindow : Window
                 MessageBoxDefaultButton.Cancel or MessageBoxDefaultButton.No or MessageBoxDefaultButton.Second => ButtonLeft,
                 _ => ButtonRight
             },
+            // Да/Нет может быть в любом порядке (см. YesNoButtonOrder), поэтому кнопка
+            // ищется по уже сохранённому в SetupButtons результату, а не по позиции.
             MessageBoxButton.YesNo => defaultButton switch
             {
-                MessageBoxDefaultButton.Yes or MessageBoxDefaultButton.First => ButtonRight,
-                MessageBoxDefaultButton.No or MessageBoxDefaultButton.Second => ButtonLeft,
-                _ => ButtonRight
+                MessageBoxDefaultButton.Yes or MessageBoxDefaultButton.First =>
+                    _leftResult == MessageBoxResult.Yes ? ButtonLeft : ButtonRight,
+                MessageBoxDefaultButton.No or MessageBoxDefaultButton.Second =>
+                    _leftResult == MessageBoxResult.No ? ButtonLeft : ButtonRight,
+                _ => _leftResult == MessageBoxResult.Yes ? ButtonLeft : ButtonRight
             },
             MessageBoxButton.YesNoCancel => defaultButton switch
             {
@@ -185,40 +274,21 @@ public partial class MessageBoxWindow : Window
     private void OnRightClick(object sender, RoutedEventArgs e)
     {
         _closedByButton = true;
-        var buttons = GetCurrentButtons();
-        _result = buttons switch
-        {
-            MessageBoxButton.OK => MessageBoxResult.OK,
-            MessageBoxButton.OKCancel => MessageBoxResult.OK,
-            MessageBoxButton.YesNo => MessageBoxResult.Yes,
-            MessageBoxButton.YesNoCancel => MessageBoxResult.Yes,
-            _ => MessageBoxResult.None
-        };
+        _result = _rightResult;
         Close();
     }
 
     private void OnMiddleClick(object sender, RoutedEventArgs e)
     {
         _closedByButton = true;
-        _result = GetCurrentButtons() switch
-        {
-            MessageBoxButton.YesNoCancel => MessageBoxResult.No,
-            _ => MessageBoxResult.None
-        };
+        _result = _middleResult;
         Close();
     }
 
     private void OnLeftClick(object sender, RoutedEventArgs e)
     {
         _closedByButton = true;
-        var buttons = GetCurrentButtons();
-        _result = buttons switch
-        {
-            MessageBoxButton.OKCancel => MessageBoxResult.Cancel,
-            MessageBoxButton.YesNo => MessageBoxResult.No,
-            MessageBoxButton.YesNoCancel => MessageBoxResult.Cancel,
-            _ => MessageBoxResult.None
-        };
+        _result = _leftResult;
         Close();
     }
 

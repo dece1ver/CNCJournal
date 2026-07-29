@@ -189,6 +189,19 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             if (request.Anomalies.Count == 0)
                 return Ok(new VerifyPartResponse { Ok = true });
 
+            // Аномалии, целиком покрытые самодостаточными причинами («Освоение»,
+            // «Отсутствие/Некорректные нормативов»), не требуют обращения к модели —
+            // см. MasteringAutoApprover.IsAnomalyFieldSelfSufficient.
+            if (request.Anomalies.All(a => MasteringAutoApprover.IsAnomalyFieldSelfSufficient(a.Field, request.Part)))
+            {
+                var autoResult = new VerifyPartResponse { Ok = true, PromptVersion = "auto-approved" };
+                logger.LogInformation(
+                    "Verify-part: {Machine} {Date} «{Part}» → Ok=true (авто, причина самодостаточна)",
+                    request.Machine, request.ShiftDate, request.Part.PartName);
+                await requestLog.WriteVerifyAsync(request, autoResult);
+                return Ok(autoResult);
+            }
+
             var promptBuild = promptBuilder.BuildMasterCheck(request);
 
             var (raw, _) = await ollama.GenerateAsync(

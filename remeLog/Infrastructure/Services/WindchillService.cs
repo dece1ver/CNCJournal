@@ -1,38 +1,42 @@
-﻿using remeLog.Models;
-using System;
+using remeLog.Models;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace remeLog.Infrastructure.Services
 {
+    /// <summary>
+    /// Держит конфигурацию подключения к Windchill (из <c>cnc_wnc_cfg</c>, см.
+    /// <see cref="Util.SearchInWindchill"/>) и создаёт <see cref="WindchillClient"/> на каждый
+    /// вызов <see cref="SearchDocumentsAsync"/>. Вся логика запроса — внутри
+    /// <see cref="WindchillClient.SearchAsync"/> (REST/OData, см. документацию там).
+    /// </summary>
     public class WindchillService
     {
         private readonly string _serverUrl;
         private readonly string _username;
         private readonly string _password;
-        private readonly string _localType;
 
-        public WindchillService(string serverUrl, string username, string password, string localType)
+        public WindchillService(string serverUrl, string username, string password)
         {
             _serverUrl = serverUrl;
             _username = username;
             _password = password;
-            _localType = localType;
         }
 
-        public async Task<string> SearchDocumentsAsync(string searchQuery, CancellationToken cancellationToken)
+        /// <summary> Ищет объекты по ключевому слову/наименованию/обозначению. См. <see cref="WindchillClient.SearchAsync"/>. </summary>
+        public async Task<(List<WncObject> Objects, bool Truncated)> SearchDocumentsAsync(
+            string? keyword, string? name, string? number, bool cadDocumentsOnly, CancellationToken cancellationToken)
         {
-            using var client = new WindchillClient(_serverUrl, _username, _password, _localType);
+            using var client = new WindchillClient(_serverUrl, _username, _password);
+            return await client.SearchAsync(keyword, name, number, cadDocumentsOnly, cancellationToken);
+        }
 
-            var isAuthorized = await client.AuthorizeAsync(cancellationToken).ConfigureAwait(false);
-            Util.Debug(isAuthorized);
-            if (!isAuthorized)
-                throw new UnauthorizedAccessException("Не удалось авторизоваться в Windchill");
-            cancellationToken.ThrowIfCancellationRequested();
-            return await client.SearchAsync(searchQuery, cancellationToken);
+        /// <summary> Скачивает PDF-представление объекта во временную папку. См. <see cref="WindchillClient.DownloadPdfAsync"/>. </summary>
+        public async Task<string?> DownloadPdfAsync(WncObject obj, CancellationToken cancellationToken)
+        {
+            using var client = new WindchillClient(_serverUrl, _username, _password);
+            return await client.DownloadPdfAsync(obj, cancellationToken);
         }
     }
 }

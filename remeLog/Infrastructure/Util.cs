@@ -395,7 +395,26 @@ namespace remeLog.Infrastructure
             }
         }
 
-        public static async Task<string> SearchInWindchill(string searchQuery, CancellationToken cancellationToken)
+        /// <summary>
+        /// Поиск из грида PartsInfoWindow: поле "Деталь" как ключевое слово, только
+        /// CAD-документы. Полная форма с раздельными наименованием/обозначением и
+        /// переключателем типа — <see cref="SearchInWindchill(string?,string?,string?,bool,CancellationToken)"/>,
+        /// её использует окно результатов (WncObjectsWindow) для повторного поиска на месте.
+        /// </summary>
+        public static Task<(List<WncObject> Objects, bool Truncated)> SearchInWindchill(string keyword, CancellationToken cancellationToken) =>
+            SearchInWindchill(keyword, null, null, cadDocumentsOnly: true, cancellationToken);
+
+        /// <summary>
+        /// Ищет деталь/чертёж в Windchill через REST API (см. <see cref="WindchillClient.SearchAsync"/>
+        /// за подробностями). Читает конфигурацию из <c>cnc_wnc_cfg</c> и вызывает поиск.
+        ///
+        /// <c>Truncated</c> в результате — true, если список обрезан лимитом
+        /// <see cref="WindchillClient.MaxResults"/> и реальных совпадений может быть больше.
+        /// Точное общее число совпадений не возвращается — сервер считает его ненадёжно
+        /// (см. <see cref="WindchillClient.MaxResults"/>).
+        /// </summary>
+        public static async Task<(List<WncObject> Objects, bool Truncated)> SearchInWindchill(
+            string? keyword, string? name, string? number, bool cadDocumentsOnly, CancellationToken cancellationToken)
         {
             var wncResult = Database.GetWncConfig();
             var wncConfig = wncResult.Value;
@@ -405,50 +424,28 @@ namespace remeLog.Infrastructure
                 throw new Exception("Не удалось получить конфигурацию Windchill");
             }
 
-            var service = new WindchillService(wncConfig.Server, wncConfig.User, wncConfig.Password, wncConfig.LocalType);
+            var service = new WindchillService(wncConfig.Server, wncConfig.User, wncConfig.Password);
             cancellationToken.ThrowIfCancellationRequested();
-            return await service.SearchDocumentsAsync(searchQuery, cancellationToken);
+            return await service.SearchDocumentsAsync(keyword, name, number, cadDocumentsOnly, cancellationToken);
         }
 
-        public static List<WncObject> ExtractWncObjects(string inputString)
+        /// <summary>
+        /// Скачивает PDF-представление найденного объекта Windchill во временную папку. См.
+        /// <see cref="WindchillClient.DownloadPdfAsync"/> за подробностями (не у всех объектов
+        /// есть PDF-представление — тогда возвращается null).
+        /// </summary>
+        public static async Task<string?> DownloadWndcPdf(WncObject obj, CancellationToken cancellationToken)
         {
-            var objects = new List<WncObject>();
-            var wncResultConfig = Database.GetWncConfig();
-            var wncConfig = wncResultConfig.Value;
-            if (wncResultConfig.Status != DbResult.Ok)
+            var wncResult = Database.GetWncConfig();
+            var wncConfig = wncResult.Value;
+            if (wncResult.Status != DbResult.Ok || wncConfig == null)
             {
-                MessageBoxWindow.Show("Не удалось выполнить поиск в Windchill из-за ошибки");
-                return objects;
+                throw new Exception("Не удалось получить конфигурацию Windchill");
             }
 
-            var regex = new Regex(@"PTC\.ExtJSONTableConfig\.chunk\s*=\s*({.*?});", RegexOptions.Singleline);
-            var match = regex.Match(inputString);
-            if (!match.Success) return objects;
-
-            var jsonObject = JObject.Parse(match.Groups[1].Value);
-            var data = jsonObject["data"] as JArray;
-            if (data == null) return objects;
-
-            foreach (var obj in data)
-            {
-                var name = obj["name"]?.ToString() ?? "";
-                var partNumber = obj["number"]?["comparable"]?.ToString() ?? "";
-                var version = obj["version"]?["gui"]?["html"]?.ToString() ?? "";
-                var state = obj["state"]?.ToString() ?? "";
-                var containerName = obj["containerName"]?["label"]?.ToString() ?? "";
-                var type = obj["type_icon"]?["gui"]?["comparable"]?.ToString() ?? "";
-                var modifyDate = obj["thePersistInfo_modifyStamp"]?["gui"]?["html"]?.ToString() ?? "";
-                var createDate = obj["thePersistInfo_createStamp"]?["gui"]?["html"]?.ToString() ?? "";
-                var oid = obj["oid"]?.ToString() ?? "";
-                var containerOid = obj["nmActions"]?["params"]?["ContainerOid"]?.ToString() ?? "";
-                var u8 = "1";
-
-                var link = $"{wncConfig.Server}/Windchill/app/#ptc1/tcomp/infoPage?ContainerOid={containerOid}&oid={oid}&u8={u8}";
-
-                objects.Add(new WncObject(name, partNumber, link, version, state, containerName, type, modifyDate.Replace("MSK", "").Trim(), createDate.Replace("MSK", "").Trim()));
-            }
-
-            return objects;
+            var service = new WindchillService(wncConfig.Server, wncConfig.User, wncConfig.Password);
+            cancellationToken.ThrowIfCancellationRequested();
+            return await service.DownloadPdfAsync(obj, cancellationToken);
         }
 
         /// <summary>

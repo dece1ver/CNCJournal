@@ -269,8 +269,11 @@ namespace remeLog.Infrastructure
             try
             {
                 using var conn = OpenConnection(AppSettings.Instance.ConnectionString);
+                // Реальные столбцы таблицы — Server, [User], Pass, LocalType (см.
+                // SqlSchemaBootstrapper.cs); CncUser/CncPassword никогда не существовали —
+                // из-за этого запрос падал с "Invalid column name" при каждом поиске в Windchill.
                 var row = conn.QueryFirstOrDefault<(string Server, string User, string Password, string LocalType)>(
-                    "SELECT Server, CncUser, CncPassword, LocalType FROM cnc_wnc_cfg");
+                    "SELECT Server, [User], Pass AS Password, LocalType FROM cnc_wnc_cfg");
                 if (row == default)
                     return DbResult<WncConfig>.NotFound();
                 return DbResult<WncConfig>.Ok(new WncConfig(row.Server, row.User, row.Password, row.LocalType));

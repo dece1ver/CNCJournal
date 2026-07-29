@@ -1,30 +1,142 @@
-﻿<Window x:Class="remeLog.Views.WncObjectsWindow"
+<Window x:Class="remeLog.Views.WncObjectsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:remeLog.Views" xmlns:viewmodels="clr-namespace:remeLog.ViewModels" 
+        xmlns:local="clr-namespace:remeLog.Views" xmlns:viewmodels="clr-namespace:remeLog.ViewModels"
+        xmlns:cnt="clr-namespace:remeLog.Views.Controls"
         d:DataContext="{d:DesignInstance Type=viewmodels:WncObjectsViewModel}"
         mc:Ignorable="d"
         WindowStartupLocation="CenterOwner"
         SizeToContent="WidthAndHeight"
-        Title="Поиск по Windchill" 
-        MinHeight="80" MinWidth="500" 
-        MaxHeight="450" MaxWidth="1280">
+        Title="Поиск по Windchill"
+        MinHeight="150" MinWidth="500"
+        MaxHeight="550" MaxWidth="1280">
+    <Window.Resources>
+        <!-- Кнопка PDF в гриде — без рамки/фона, лёгкая подсветка при наведении. -->
+        <Style x:Key="FlatCellButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#22000000"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#33000000"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid>
-        <DataGrid AutoGenerateColumns="False" IsReadOnly="True" Margin="10"
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Критерии поиска — те же, что принимает WindchillClient.SearchAsync: ключевое
+             слово (ищет и в наименовании, и в обозначении), отдельно наименование, отдельно
+             обозначение (комбинируются через AND, если заполнено несколько), и переключатель
+             "только CAD документы" против дополнительного поиска среди обычных документов
+             Windchill. -->
+        <!-- IsSharedSizeScope + SharedSizeGroup на первой колонке обеих строк — чтобы
+             "Ключевое слово:" и "Наименование:" были одной ширины и текстовые поля под ними
+             начинались с одного места. Явная Height у всех полей ввода — иначе строка с
+             чекбоксом/кнопкой становится выше строки без них (Auto-высота по самому высокому
+             элементу), и поле в ней визуально растягивается. -->
+        <Grid Grid.Row="0" Margin="10,10,10,6" Grid.IsSharedSizeScope="True">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Ключевое слово — занимает остаток ширины строки, рядом чекбокс и кнопка. -->
+            <Grid Grid.Row="0" Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="SearchLabel"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Ключевое слово:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBox Grid.Column="1" Text="{Binding Keyword, UpdateSourceTrigger=PropertyChanged}"
+                         Height="24" VerticalAlignment="Center" Margin="0,0,10,0" VerticalContentAlignment="Center"/>
+                <CheckBox Grid.Column="2" Content="Только CAD документы" IsChecked="{Binding CadDocumentsOnly}"
+                          VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <Button Grid.Column="3" Content="Поиск" Command="{Binding SearchCommand}" Padding="14,4"
+                        VerticalAlignment="Center"
+                        IsDefault="True" IsEnabled="{Binding IsSearching, Converter={StaticResource InvertedBoolConverter}}"/>
+            </Grid>
+
+            <!-- Наименование / Обозначение — по половине ширины строки каждое. -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="SearchLabel"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Наименование:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBox Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                         Height="24" VerticalAlignment="Center" Margin="0,0,10,0" VerticalContentAlignment="Center"/>
+                <TextBlock Grid.Column="2" Text="Обозначение:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBox Grid.Column="3" Text="{Binding Number, UpdateSourceTrigger=PropertyChanged}"
+                         Height="24" VerticalAlignment="Center" VerticalContentAlignment="Center"/>
+            </Grid>
+        </Grid>
+
+        <DataGrid Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" Margin="10,0,10,10"
                   ItemsSource="{Binding WncObjects, UpdateSourceTrigger=PropertyChanged}">
+            <!-- Убрано выделение ячеек/строк — окно только для просмотра и перехода по
+                 ссылкам/PDF, подсветка выбора здесь только мешает. Переопределение системных
+                 кистей действует локально, в пределах ресурсов этого DataGrid. -->
+            <DataGrid.Resources>
+                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="Black"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="Transparent"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="Black"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="Transparent"/>
+
+                <!-- VerticalContentAlignment у DataGridCell не подхватывается автогенерируемым
+                     TextBlock'ом DataGridTextColumn — центрируем сам TextBlock явно через
+                     ElementStyle у каждой такой колонки (см. ниже). Отступы слева/справа —
+                     тоже здесь, чтобы не липло к границам ячейки. -->
+                <Style x:Key="CellTextStyle" TargetType="TextBlock">
+                    <Setter Property="VerticalAlignment" Value="Center"/>
+                    <Setter Property="Margin" Value="6,0"/>
+                </Style>
+            </DataGrid.Resources>
+            <DataGrid.CellStyle>
+                <Style TargetType="DataGridCell">
+                    <Setter Property="VerticalContentAlignment" Value="Center"/>
+                    <Setter Property="Padding" Value="6,2"/>
+                </Style>
+            </DataGrid.CellStyle>
             <DataGrid.Columns>
                 <!-- Наименование -->
-                <DataGridTextColumn Header="Наименование" Binding="{Binding Name}" />
+                <DataGridTextColumn Header="Наименование" Binding="{Binding Name}"
+                                     ElementStyle="{StaticResource CellTextStyle}"/>
 
-                <!-- Обозначение (гиперссылка) -->
-                <DataGridTemplateColumn Header="Обозначение" >
+                <!-- Обозначение (гиперссылка) — SortMemberPath обязателен для
+                     DataGridTemplateColumn: в отличие от DataGridTextColumn, у него нет
+                     Binding, по которому грид сам определил бы, по какому свойству сортировать
+                     при клике на заголовок. -->
+                <DataGridTemplateColumn Header="Обозначение" SortMemberPath="Id">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <TextBlock>
-                                <Hyperlink 
-                                    Command="{Binding DataContext.OpenLinkCommand, 
+                            <TextBlock VerticalAlignment="Center" Margin="6,0">
+                                <Hyperlink
+                                    Command="{Binding DataContext.OpenLinkCommand,
                                     RelativeSource={RelativeSource AncestorType=Window}}"
                                     CommandParameter="{Binding}">
                                     <TextBlock Text="{Binding Id}" />
@@ -35,23 +147,46 @@
                 </DataGridTemplateColumn>
 
                 <!-- Версия -->
-                <DataGridTextColumn Header="Версия" Binding="{Binding Version}" />
+                <DataGridTextColumn Header="Версия" Binding="{Binding Version}"
+                                     ElementStyle="{StaticResource CellTextStyle}"/>
 
                 <!-- Состояние -->
-                <DataGridTextColumn Header="Состояние" Binding="{Binding PrettyState}" />
+                <DataGridTextColumn Header="Состояние" Binding="{Binding PrettyState}"
+                                     ElementStyle="{StaticResource CellTextStyle}"/>
 
                 <!-- Контекст -->
-                <DataGridTextColumn Header="Контекст" Binding="{Binding Container}" />
+                <DataGridTextColumn Header="Контекст" Binding="{Binding Container}"
+                                     ElementStyle="{StaticResource CellTextStyle}"/>
 
                 <!-- Тип -->
-                <DataGridTextColumn Header="Тип" Binding="{Binding PrettyType}" />
+                <DataGridTextColumn Header="Тип" Binding="{Binding PrettyType}"
+                                     ElementStyle="{StaticResource CellTextStyle}"/>
 
                 <!-- Изменен -->
-                <DataGridTextColumn Header="Изменен" Binding="{Binding ModifyDate}" />
+                <DataGridTextColumn Header="Изменен" Binding="{Binding ModifyDate}"
+                                     ElementStyle="{StaticResource CellTextStyle}"/>
 
                 <!-- Создан -->
-                <DataGridTextColumn Header="Создан" Binding="{Binding CreateDate}" />
+                <DataGridTextColumn Header="Создан" Binding="{Binding CreateDate}"
+                                     ElementStyle="{StaticResource CellTextStyle}"/>
+
+                <!-- PDF — скачивает представление чертежа во временную папку и открывает
+                     программой по умолчанию; не у каждого объекта оно есть (см. DownloadPdfCommand). -->
+                <DataGridTemplateColumn Header="PDF">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="PDF" Padding="8,2" Style="{StaticResource FlatCellButtonStyle}"
+                                    Command="{Binding DataContext.DownloadPdfCommand,
+                                    RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
+
+        <!-- Индикация повторного поиска (кнопка "Поиск" в этом же окне) — без неё непонятно,
+             что что-то происходит, пока не придёт ответ. -->
+        <cnt:LoadingOverlay Grid.Row="0" Grid.RowSpan="2" IsBusy="{Binding IsSearching}"/>
     </Grid>
 </Window>

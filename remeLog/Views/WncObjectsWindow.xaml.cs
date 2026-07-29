@@ -22,9 +22,9 @@ namespace remeLog.Views
     /// </summary>
     public partial class WncObjectsWindow : Window
     {
-        public WncObjectsWindow(ObservableCollection<WncObject> wncObjects)
+        public WncObjectsWindow(ObservableCollection<WncObject> wncObjects, string? initialKeyword = null)
         {
-            this.DataContext = new WncObjectsViewModel(wncObjects);
+            this.DataContext = new WncObjectsViewModel(wncObjects, initialKeyword);
             InitializeComponent();
         }
     }

@@ -44,9 +44,87 @@ public static class MasteringAutoApprover
         @"утеря|потеря|слет",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // Держать в синхроне с AiHistorySensitiveReasons в remeLog/Models/Part.cs. В отличие от
+    // «Освоение» история здесь НЕ проверяется вообще: «Отсутствие/Некорректные нормативов»
+    // верим слепо по выбору мастера — норматив мог не совпасть из-за другого выданного
+    // техпроцесса или ещё нескольких причин, которых в присланных полях просто не видно, и
+    // формализовать их regex'ом/сверкой истории нельзя, в отличие от FinishedCount для
+    // «Освоение». Модель verify-part стабильно требует «конкретику» вопреки прямому тексту
+    // промпта (прогон 27.07: id «Кулачки», «Заглушка НМГ48-03-509-01» х2 — ok=false).
+    private static readonly string[] NormativesReasons =
+    {
+        "Отсутствие нормативов",
+        "Некорректные нормативы",
+    };
+
+    // «Изготовление не по техпроцессу» + глоссарийная формулировка master_check.txt правило 4 —
+    // модель стабильно отклоняет и эти, несмотря на явные примеры в промпте (прогон 29.07:
+    // «Заложена 1 установка» на трёх записях подряд ok=false с «требуется указать, что именно
+    // отклонилось»). Ловим только ДВЕ regex-надёжные формулировки глоссария — «Заложен(а/о/ы) X»
+    // (X = установка/операция/станок, число и род не важны) и «деталь/заготовка с других
+    // станков» — не конкретное упоминание бренда станка (тот особый случай регэкспом не
+    // формализовать, останется за моделью).
+    private const string NotByProcessReason = "Изготовление не по техпроцессу";
+    private static readonly Regex LaidOutWord = new(@"залож\w*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex LaidOutNoun = new(
+        @"устан\w*|операц\w*|станк\w*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex OtherMachinesRoute = new(
+        @"с\s+других\s+станк\w*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     public sealed record Outcome(
         List<string> RemovedSignals,
         List<string> AutoExcludes);
+
+    /// <summary>
+    /// Причина наладки самодостаточна (verify-part может подтверждать без обращения к модели):
+    /// «Освоение» — по правилам <see cref="IsConfirmedMastering"/>; «Отсутствие/Некорректные
+    /// нормативов» — безусловно, история не проверяется (см. комментарий у NormativesReasons);
+    /// «Изготовление не по техпроцессу» — только для regex-надёжных формулировок глоссария.
+    /// </summary>
+    public static bool IsSetupReasonSelfSufficient(PartContext p)
+    {
+        var reason = p.MasterSetupComment.Trim();
+        if (reason.Equals("Освоение", StringComparison.OrdinalIgnoreCase))
+            return IsConfirmedMastering(p);
+        if (NormativesReasons.Contains(reason, StringComparer.OrdinalIgnoreCase))
+            return true;
+        if (reason.Equals(NotByProcessReason, StringComparison.OrdinalIgnoreCase))
+            return MatchesNotByProcessGlossary(EffectiveDetail(p.MasterSetupDetail, p.MasterComment));
+        return false;
+    }
+
+    /// <summary>
+    /// Причина изготовления самодостаточна: «Отсутствие/Некорректные нормативов» — безусловно;
+    /// «Изготовление не по техпроцессу» — только для regex-надёжных формулировок глоссария.
+    /// «Освоение» для изготовления не рассматривается — в текущем регламенте это причина наладки.
+    /// </summary>
+    public static bool IsMachiningReasonSelfSufficient(PartContext p)
+    {
+        var reason = p.MasterMachiningComment.Trim();
+        if (NormativesReasons.Contains(reason, StringComparer.OrdinalIgnoreCase))
+            return true;
+        if (reason.Equals(NotByProcessReason, StringComparison.OrdinalIgnoreCase))
+            return MatchesNotByProcessGlossary(EffectiveDetail(p.MasterMachiningDetail, p.MasterComment));
+        return false;
+    }
+
+    private static bool MatchesNotByProcessGlossary(string detail)
+    {
+        if (string.IsNullOrWhiteSpace(detail)) return false;
+        if (OtherMachinesRoute.IsMatch(detail)) return true;
+        return LaidOutWord.IsMatch(detail) && LaidOutNoun.IsMatch(detail);
+    }
+
+    private static string EffectiveDetail(string detail, string archiveComment) =>
+        string.IsNullOrWhiteSpace(detail) ? archiveComment : detail;
+
+    /// <summary> Диспетчер для verify-part: покрывает ли C# аномалию по имени поля целиком. </summary>
+    public static bool IsAnomalyFieldSelfSufficient(string field, PartContext p) => field switch
+    {
+        nameof(PartContext.MasterSetupDetail) => IsSetupReasonSelfSufficient(p),
+        nameof(PartContext.MasterMachiningDetail) => IsMachiningReasonSelfSufficient(p),
+        _ => false,
+    };
 
     public static bool IsConfirmedMastering(PartContext p)
     {

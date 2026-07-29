@@ -19,8 +19,9 @@ namespace AiService
             builder.Services.AddSingleton<PromptBuilder>();
             builder.Services.AddSingleton<RequestLog>();
 
+            builder.Host.UseWindowsService();
+
             var app = builder.Build();
-            app.MapControllers();
 
             var port = app.Configuration.GetValue("Port", 5050);
             var logger = app.Services.GetRequiredService<ILogger<Program>>();
@@ -32,6 +33,8 @@ namespace AiService
                 logger.LogDebug("{RemoteIP} {Method} {Path}", ip, context.Request.Method, context.Request.Path);
                 await next();
             });
+
+            app.MapControllers();
 
             app.Run($"http://0.0.0.0:{port}");
         }

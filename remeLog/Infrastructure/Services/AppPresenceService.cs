@@ -293,20 +293,19 @@ ORDER BY CreatedUtc;";
                         break;
 
                     case "ShowNotification":
-                        await Application.Current.Dispatcher
-                            .InvokeAsync(() => MessageBoxWindow.Show(cmd.Payload, "Уведомление",
-                                MessageBoxButton.OK, MessageBoxImage.Information))
-                            .Task.ConfigureAwait(false);
+                        // Немодально: см. комментарий у MessageBoxWindow.ShowNonModalAsync —
+                        // модальный показ без гарантированного видимого owner блокировал
+                        // всё приложение, если диалог открывался вне фокуса оператора.
+                        await MessageBoxWindow.ShowNonModalAsync(cmd.Payload, "Уведомление",
+                            MessageBoxButton.OK, MessageBoxImage.Information).ConfigureAwait(false);
                         result = "OK";
                         break;
 
                     case "UpdateNotification":
-                        var updateAnswer = await Application.Current.Dispatcher
-                            .InvokeAsync(() => MessageBoxWindow.Show(cmd.Payload,
-                                "Доступно обновление электронного журнала",
-                                MessageBoxButton.YesNo,
-                                MessageBoxImage.Question))
-                            .Task.ConfigureAwait(false);
+                        var updateAnswer = await MessageBoxWindow.ShowNonModalAsync(cmd.Payload,
+                            "Доступно обновление электронного журнала",
+                            MessageBoxButton.YesNo,
+                            MessageBoxImage.Question).ConfigureAwait(false);
                         if (updateAnswer == MessageBoxResult.Yes)
                             await Application.Current.Dispatcher
                                 .InvokeAsync(() => App.Current.Dispatcher.InvokeShutdown());

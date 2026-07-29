@@ -1314,6 +1314,18 @@ namespace remeLog.ViewModels
 
         #region SearchInWindchill
         public ICommand SearchInWindchillCommand { get; }
+
+        /// <summary>
+        /// Поиск в Windchill по имени детали — через REST API (см. <see cref="Util.SearchInWindchill"/>
+        /// и класс <see cref="WindchillClient"/>). Один запрос, результат приходит сразу.
+        ///
+        /// Таймаут (30 сек) защищает от зависшей сети/сервера. Он отделён от отмены
+        /// предыдущего поиска (если пользователь быстро меняет фильтр и запускает новый
+        /// поиск, не дождавшись старого): токен предыдущего поиска в этом случае гасится
+        /// явно, и фильтр в catch ниже отличает эту ситуацию от настоящего таймаута — иначе
+        /// пользователь видел бы предупреждение о таймауте всякий раз, когда просто быстро
+        /// меняет фильтр.
+        /// </summary>
         private async void OnSearchInWindchillCommandExecuted(object p)
         {
             if (p is PartsInfoWindow w)
@@ -1321,41 +1333,33 @@ namespace remeLog.ViewModels
                 _wncCancellationTokenSource?.Cancel();
                 _wncCancellationTokenSource?.Dispose();
                 _wncCancellationTokenSource = new CancellationTokenSource();
+                var supersedeToken = _wncCancellationTokenSource.Token;
 
-                _wncCancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(30));
-                var cancellationToken = _wncCancellationTokenSource.Token;
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(supersedeToken);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+                var cancellationToken = timeoutCts.Token;
 
                 try
                 {
                     WncSearchInProgress = true;
-                    int stableObjectCount = 0;
-                    int previousObjectCount = 0;
-                    List<WncObject> wncObjects = new();
                     Status = "Поиск в Windchill...";
 
-                    while (stableObjectCount < 3)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        var searchResult = await Util.SearchInWindchill(PartNameFilter, cancellationToken);
-                        cancellationToken.ThrowIfCancellationRequested();
-                        wncObjects = Util.ExtractWncObjects(searchResult);
-                        if (wncObjects.Count == previousObjectCount)
-                        {
-                            stableObjectCount++;
-                        }
-                        else
-                        {
-                            stableObjectCount = 0;
-                            previousObjectCount = wncObjects.Count;
-                        }
-                        cancellationToken.ThrowIfCancellationRequested();
-                        await Task.Delay(200, cancellationToken);
-                    }
+                    var (wncObjects, truncated) = await Util.SearchInWindchill(PartNameFilter, cancellationToken);
 
                     Util.Debug(wncObjects);
                     if (wncObjects.Any())
                     {
-                        var wncObjectsWindow = new WncObjectsWindow(wncObjects.ToObservableCollection()) { Owner = w };
+                        // Уткнулись в лимит WindchillClient.MaxResults — реальных совпадений
+                        // может быть больше, список не полный.
+                        if (truncated)
+                        {
+                            MessageBoxWindow.Show(
+                                $"Показаны первые {wncObjects.Count} совпадений — возможно, есть ещё. " +
+                                "Уточните название детали, чтобы увидеть нужное.",
+                                "Слишком широкий запрос", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        }
+
+                        var wncObjectsWindow = new WncObjectsWindow(wncObjects.ToObservableCollection(), PartNameFilter) { Owner = w };
                         wncObjectsWindow.Show();
                     }
                     else
@@ -1363,9 +1367,17 @@ namespace remeLog.ViewModels
                         MessageBoxWindow.Show("Ничего не найдено :с", ":c", MessageBoxButton.OK, MessageBoxImage.Information);
                     }
                 }
+                catch (TaskCanceledException) when (!supersedeToken.IsCancellationRequested)
+                {
+                    // Настоящий таймаут (30 сек), а не отмена новым поиском — сеть/сервер не
+                    // ответили вовремя.
+                    MessageBoxWindow.Show(
+                        "Windchill не ответил за отведённое время (30 сек). Попробуйте ещё раз.",
+                        "Таймаут поиска", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
                 catch (TaskCanceledException)
                 {
-                    
+                    // Отменено запуском нового поиска — молча, это ожидаемо.
                 }
                 catch (Exception ex)
                 {
@@ -1374,7 +1386,7 @@ namespace remeLog.ViewModels
                 finally
                 {
                     WncSearchInProgress = false;
-                    if (cancellationToken.IsCancellationRequested)
+                    if (supersedeToken.IsCancellationRequested)
                     {
                         Status = "Отменено";
                         await Task.Delay(2000);

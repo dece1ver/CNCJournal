@@ -1,170 +1,299 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http.Headers;
-using System.Net.Http;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using remeLog.Infrastructure;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace remeLog.Models
 {
+    /// <summary>
+    /// Клиент поиска чертежей/моделей в Windchill через <b>Windchill REST Services (WRS)</b> —
+    /// официальный OData-эндпоинт Windchill.
+    ///
+    /// Каждый вызов <see cref="SearchAsync"/> — один синхронный HTTP GET-запрос, возвращающий
+    /// готовый JSON. Поиск в Windchill выполняется на сервере сразу; опрашивать статус или
+    /// повторять запрос не нужно.
+    ///
+    /// Авторизация — Basic-auth (логин/пароль из <c>cnc_wnc_cfg</c>), заголовок выставляется
+    /// один раз в конструкторе и действует на все запросы клиента. WRS поддерживает и OAuth2,
+    /// но это требует отдельной настройки на стороне Windchill (свой OAuth-клиент, возможно
+    /// внешний IdP) — административная задача, а не правка кода; кроме того, сервер сейчас
+    /// работает по обычному http:// (см. <c>Server</c> в конфиге), так что Basic и Bearer токен
+    /// одинаково идут открытым текстом без TLS — переход на токены не даст выигрыша в защите,
+    /// пока не включён HTTPS.
+    ///
+    /// <see cref="WncConfig.LocalType"/> здесь не используется: сущность <c>CADDocuments</c>
+    /// (см. <see cref="SearchAsync"/>) сама по себе ограничивает выборку CAD-документами, без
+    /// отдельного фильтра по типу. Поле в БД/конфиге оставлено на случай другой фильтрации.
+    /// </summary>
     public class WindchillClient : IDisposable
     {
+        /// <summary>
+        /// Максимум строк, забираемых за один поиск с каждого опрашиваемого entity set (см.
+        /// <see cref="SearchAsync"/>). Если найденных объектов больше, <see cref="SearchAsync"/>
+        /// возвращает первые <see cref="MaxResults"/> и <c>Truncated=true</c>.
+        ///
+        /// Признак усечения — количество полученных объектов относительно этого лимита, а не
+        /// <c>@odata.count</c> из ответа сервера: на практике это поле не всегда совпадает с
+        /// реальным числом строк в <c>value</c> (например, сервер возвращает <c>@odata.count=27</c>
+        /// при 23 объектах в <c>value</c> и без <c>@odata.nextLink</c>), так что доверять ему как
+        /// точному числу совпадений нельзя.
+        /// </summary>
+        public const int MaxResults = 100;
+
         private readonly HttpClient _client;
         private readonly string _serverUrl;
-        private readonly string _localType;
-        private bool _isAuthorized;
 
-        public WindchillClient(string serverUrl, string username, string password, string localType)
+        // Версия в пути — часть URL конкретного OData-сервиса Windchill, а не общая версия
+        // REST API целиком: у разных сервисов на одном сервере версии в URL не совпадают
+        // (проверено на боевом сервере — CADDocumentMgmt на v1, DocMgmt на v3).
+        private const string CadDocumentMgmtBasePath = "/Windchill/servlet/odata/v1/CADDocumentMgmt";
+        private const string DocMgmtBasePath = "/Windchill/servlet/odata/v3/DocMgmt";
+
+        public WindchillClient(string serverUrl, string username, string password)
         {
-            var handler = new HttpClientHandler
-            {
-                UseCookies = true,
-                CookieContainer = new CookieContainer()
-            };
+            _client = new HttpClient();
+            _serverUrl = serverUrl.TrimEnd('/');
 
-            _client = new HttpClient(handler);
-            _serverUrl = serverUrl;
-            _localType = localType;
-
-            var authString = Convert.ToBase64String(
-                Encoding.UTF8.GetBytes($"{username}:{password}")
-            );
+            var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
             _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authString);
+            _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         }
 
-        public async Task<bool> AuthorizeAsync(CancellationToken cancellationToken)
+        /// <summary>
+        /// Ищет объекты в Windchill по трём независимым критериям, которые можно сочетать
+        /// (пустые/whitespace-only игнорируются; если заполнено несколько — комбинируются
+        /// через AND):
+        /// <list type="bullet">
+        /// <item><paramref name="keyword"/> — комбинированный поиск: значение разбивается на
+        /// отдельные слова, каждое слово ищется подстрокой (<c>contains</c>) в <c>Number</c>
+        /// или в <c>Name</c>, слова между собой объединяются через AND. Так устроено поле
+        /// "Деталь" в PartsInfoWindow, откуда обычно приходит <paramref name="keyword"/>: там
+        /// хранится связка "Наименование Обозначение" одной строкой (например,
+        /// "Заглушка НМГ48-03-509"), а у CADDocument Name и Number — разные поля, ни одно не
+        /// содержит строку целиком.</item>
+        /// <item><paramref name="name"/> / <paramref name="number"/> — точный поиск только по
+        /// наименованию (<c>Name</c>) или только по обозначению (<c>Number</c>), без разбиения
+        /// на слова. По умолчанию — точное совпадение (<c>eq</c>). Для подстрочного поиска
+        /// используется <c>*</c> — та же нотация, что и у фильтра "Деталь" в гриде (см.
+        /// <see cref="Infrastructure.Types.SearchPattern"/>): <c>*текст*</c> — подстрока где
+        /// угодно, <c>*текст</c> — оканчивается на, <c>текст*</c> — начинается с.</item>
+        /// </list>
+        ///
+        /// <paramref name="cadDocumentsOnly"/> задаёт, какие entity set опрашивать:
+        /// <c>true</c> (по умолчанию) — только <c>CADDocumentMgmt/CADDocuments</c> (3D-модели,
+        /// детали, сборки, чертежи — то, что Windchill называет "CAD документами"); <c>false</c>
+        /// — дополнительно ещё и <c>DocMgmt/Documents</c> (обычные документы Windchill — на
+        /// боевом сервере это служебные бумаги вроде извещений о несоответствии, не чертежи).
+        ///
+        /// Ко всем критериям добавляется условие <c>Latest eq true</c>: оба entity set хранят
+        /// каждую версию/ревизию документа отдельной строкой, а показывать нужно только
+        /// актуальную — так же, как это по умолчанию делает поиск в самом Windchill.
+        /// </summary>
+        /// <returns>
+        /// Список найденных объектов (не больше <see cref="MaxResults"/> суммарно) и
+        /// <c>Truncated</c> — true, если список обрезан лимитом <see cref="MaxResults"/> и
+        /// реальных совпадений может быть больше.
+        /// </returns>
+        public async Task<(List<WncObject> Objects, bool Truncated)> SearchAsync(
+            string? keyword, string? name, string? number, bool cadDocumentsOnly, CancellationToken cancellationToken)
         {
-            try
+            var conditions = new List<string>();
+            if (!string.IsNullOrWhiteSpace(keyword)) conditions.Add(BuildKeywordCondition(keyword));
+            if (!string.IsNullOrWhiteSpace(name)) conditions.Add(BuildFieldCondition("Name", name));
+            if (!string.IsNullOrWhiteSpace(number)) conditions.Add(BuildFieldCondition("Number", number));
+
+            if (conditions.Count == 0)
+                throw new ArgumentException("Нужно заполнить хотя бы одно поле поиска (ключевое слово, наименование или обозначение)");
+
+            // Показываем только актуальную версию каждого документа — иначе каждая
+            // версия/ревизия приходит отдельной строкой.
+            conditions.Add("Latest eq true");
+            var filter = string.Join(" and ", conditions);
+
+            var cadObjects = await QueryCadDocumentsAsync(filter, cancellationToken).ConfigureAwait(false);
+            var cadTruncated = cadObjects.Count >= MaxResults;
+            if (cadDocumentsOnly)
+                return (cadObjects, cadTruncated);
+
+            var docObjects = await QueryDocumentsAsync(filter, cancellationToken).ConfigureAwait(false);
+            var docTruncated = docObjects.Count >= MaxResults;
+            var combinedRawCount = cadObjects.Count + docObjects.Count;
+            var merged = cadObjects.Concat(docObjects).Take(MaxResults).ToList();
+            return (merged, cadTruncated || docTruncated || combinedRawCount > MaxResults);
+        }
+
+        /// <summary>
+        /// Находит PDF-представление документа и скачивает его во временную папку.
+        ///
+        /// PDF в Windchill — не свойство самого документа, а файл в <c>AdditionalFiles</c>
+        /// одного из его <c>Representations</c> (это же представление открывается кнопкой
+        /// "Открыть в Creo View" в веб-интерфейсе Windchill). Не у каждого объекта есть такое
+        /// представление — например, у 3D-модели без опубликованного чертежа его может не
+        /// быть; тогда возвращается null.
+        /// </summary>
+        /// <returns> Путь к скачанному файлу во временной папке, либо null, если PDF-представление не найдено. </returns>
+        public async Task<string?> DownloadPdfAsync(WncObject obj, CancellationToken cancellationToken)
+        {
+            var basePath = obj.IsCadDocument ? CadDocumentMgmtBasePath : DocMgmtBasePath;
+            var entitySet = obj.IsCadDocument ? "CADDocuments" : "Documents";
+            var url = $"{_serverUrl}{basePath}/{entitySet}('{obj.ObjectId}')?$expand=Representations";
+
+            var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
+            var root = JObject.Parse(json);
+
+            foreach (var representation in (root["Representations"] as JArray) ?? new JArray())
             {
-                var request = new HttpRequestMessage(HttpMethod.Get, $"{_serverUrl}/Windchill/app/")
+                foreach (var file in (representation["AdditionalFiles"] as JArray) ?? new JArray())
                 {
-                    Headers =
-                    {
-                        Accept = { new MediaTypeWithQualityHeaderValue("text/html") },
-                        AcceptEncoding = { new StringWithQualityHeaderValue("gzip"), new StringWithQualityHeaderValue("deflate") },
-                        AcceptLanguage = { new StringWithQualityHeaderValue("ru-RU"), new StringWithQualityHeaderValue("ru", 0.9) },
-                        CacheControl = new CacheControlHeaderValue { MaxAge = TimeSpan.FromSeconds(0) },
-                        ConnectionClose = false
-                    }
-                };
+                    if (file["MimeType"]?.ToString() != "application/pdf") continue;
 
-                request.Headers.Add("Sec-Fetch-Dest", "document");
-                request.Headers.Add("Sec-Fetch-Mode", "navigate");
-                request.Headers.Add("Sec-Fetch-Site", "none");
-                request.Headers.Add("Sec-Fetch-User", "?1");
-                request.Headers.Add("Upgrade-Insecure-Requests", "1");
-                request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
-                request.Headers.Add("sec-ch-ua", "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"");
-                request.Headers.Add("sec-ch-ua-mobile", "?0");
-                request.Headers.Add("sec-ch-ua-platform", "\"Windows\"");
+                    var fileUrl = file["URL"]?.ToString();
+                    if (string.IsNullOrEmpty(fileUrl)) continue;
 
-                var response = await _client.SendAsync(request, cancellationToken).ConfigureAwait(false);
-                _isAuthorized = response.IsSuccessStatusCode;
-                return _isAuthorized;
-            }
-            catch (Exception)
-            {
-                _isAuthorized = false;
-                throw;
-            }
-        }
+                    var fileName = file["FileName"]?.ToString();
+                    if (string.IsNullOrEmpty(fileName)) fileName = $"{obj.Id}.pdf";
 
-        public async Task<string> SearchAsync(string searchQuery, CancellationToken cancellationToken)
-        {
-            if (!_isAuthorized)
-                throw new InvalidOperationException("Необходимо выполнить авторизацию перед поиском");
-            ConfigureAjaxHeaders();
-            cancellationToken.ThrowIfCancellationRequested();
+                    using var response = await _client.GetAsync(fileUrl, cancellationToken).ConfigureAwait(false);
+                    if (!response.IsSuccessStatusCode) continue;
 
-            var searchResponse = await ExecuteSearch(searchQuery, cancellationToken);
-            Util.Debug(searchResponse.StatusCode);
-            Util.Debug(searchResponse.IsSuccessStatusCode);
-            await EnsureSuccessResponse(searchResponse, "выполнения поиска");
-
-            cancellationToken.ThrowIfCancellationRequested();
-            var resultsResponse = await GetSearchResults(searchQuery, cancellationToken);
-            Util.Debug(resultsResponse.StatusCode);
-            Util.Debug(resultsResponse.IsSuccessStatusCode);
-            await EnsureSuccessResponse(resultsResponse, "получения результатов");
-
-            cancellationToken.ThrowIfCancellationRequested();
-            var result = await resultsResponse.Content.ReadAsStringAsync(cancellationToken);
-            return result;
-        }
-
-        private void ConfigureAjaxHeaders()
-        {
-            _client.DefaultRequestHeaders.Accept.Clear();
-            _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/javascript"));
-            _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
-            _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/xml"));
-            _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/xml"));
-            _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
-            _client.DefaultRequestHeaders.Add("X-Prototype-Version", "1.6.1");
-            _client.DefaultRequestHeaders.Add("X-Requested-With", "XMLHttpRequest");
-        }
-
-        private async Task<HttpResponseMessage> ExecuteSearch(string searchQuery, CancellationToken cancellationToken)
-        {
-            var searchUrl = GenerateCadSearchUrl(_serverUrl, searchQuery);
-
-            ConfigureAjaxHeaders();
-
-            var request = new HttpRequestMessage(HttpMethod.Get, searchUrl)
-            {
-                Headers =
-                {
-                    Referrer = new Uri($"{_serverUrl}/Windchill/app/"),
-                    AcceptLanguage = { new StringWithQualityHeaderValue("ru-RU"), new StringWithQualityHeaderValue("ru", 0.9) }
+                    var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+                    var localPath = Path.Combine(Path.GetTempPath(), fileName);
+                    await File.WriteAllBytesAsync(localPath, bytes, cancellationToken).ConfigureAwait(false);
+                    return localPath;
                 }
-            };
+            }
 
-            return await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            return null;
         }
 
-        private async Task<HttpResponseMessage> GetSearchResults(string searchQuery, CancellationToken cancellationToken)
-        {
-            var content = new FormUrlEncodedContent(new[]
+        /// <summary> Каждое слово должно найтись хоть в Number, хоть в Name (слова — AND, поля внутри слова — OR). </summary>
+        private static string BuildKeywordCondition(string value) =>
+            string.Join(" and ", Tokenize(value).Select(t =>
             {
-                new KeyValuePair<string, string>("null___keywordkeywordField_SearchTextBox___textbox", searchQuery),
-                new KeyValuePair<string, string>($"WCTYPE|wt.epm.EPMDocument|local.{_localType}.DefaultEPMDocument", "on"),
-                new KeyValuePair<string, string>("searchType", $"WCTYPE|wt.epm.EPMDocument|local.{_localType}.DefaultEPMDocument"),
-                new KeyValuePair<string, string>("portlet", "poppedup")
-            });
+                var e = EscapeODataStringLiteral(t);
+                return $"(contains(Number,'{e}') or contains(Name,'{e}'))";
+            }));
 
-            return await _client.PostAsync(
-                $"{_serverUrl}/Windchill/ptc1/searchResultsComp",
-                content, cancellationToken
-            );
+        /// <summary>
+        /// Точное совпадение по умолчанию (<c>eq</c>), с той же вайлдкард-нотацией, что и у
+        /// SearchPattern (фильтр "Деталь" в гриде): <c>*текст*</c> → contains, <c>*текст</c> →
+        /// endswith, <c>текст*</c> → startswith. В отличие от <see cref="BuildKeywordCondition"/>
+        /// значение НЕ разбивается на слова — это одно значение одного поля (обозначение почти
+        /// всегда без пробелов; наименование, даже многословное, вводится как один точный
+        /// вариант, а для частичного нужен <c>*</c>).
+        /// </summary>
+        private static string BuildFieldCondition(string field, string value)
+        {
+            var startsStar = value.StartsWith('*');
+            var endsStar = value.EndsWith('*');
+            var trimmed = EscapeODataStringLiteral(value.Trim('*'));
+
+            return (startsStar, endsStar) switch
+            {
+                (true, true) => $"contains({field},'{trimmed}')",
+                (true, false) => $"endswith({field},'{trimmed}')",
+                (false, true) => $"startswith({field},'{trimmed}')",
+                (false, false) => $"{field} eq '{trimmed}'",
+            };
         }
 
-        private async Task EnsureSuccessResponse(HttpResponseMessage response, string operationName)
+        /// <summary> '*' — тот же вайлдкард-синтаксис, что и у фильтра "Деталь" в гриде (см. SearchPattern) — здесь убирается, т.к. contains() и так ищет подстроку где угодно. </summary>
+        private static string[] Tokenize(string value) =>
+            value.Replace("*", "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+
+        private async Task<List<WncObject>> QueryCadDocumentsAsync(string filter, CancellationToken cancellationToken)
         {
+            var select = "Number,Name,Version,State,TypeIcon,LastModified,CreatedOn,ID,VersionID";
+            var url = $"{_serverUrl}{CadDocumentMgmtBasePath}/CADDocuments" +
+                      $"?$filter={Uri.EscapeDataString(filter)}" +
+                      $"&$select={select}" +
+                      $"&$expand={Uri.EscapeDataString("Context($select=ID,Name)")}" +
+                      $"&$top={MaxResults}";
+
+            var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
+            return ParseSearchResponse(json, hasTypeIcon: true);
+        }
+
+        /// <summary> Опрашивается только когда cadDocumentsOnly=false — см. <see cref="SearchAsync"/>. </summary>
+        private async Task<List<WncObject>> QueryDocumentsAsync(string filter, CancellationToken cancellationToken)
+        {
+            var select = "Number,Name,Version,State,LastModified,CreatedOn,ID,VersionID";
+            var url = $"{_serverUrl}{DocMgmtBasePath}/Documents" +
+                      $"?$filter={Uri.EscapeDataString(filter)}" +
+                      $"&$select={select}" +
+                      $"&$expand={Uri.EscapeDataString("Context($select=ID,Name)")}" +
+                      $"&$top={MaxResults}";
+
+            var json = await GetJsonAsync(url, cancellationToken).ConfigureAwait(false);
+            return ParseSearchResponse(json, hasTypeIcon: false);
+        }
+
+        private async Task<string> GetJsonAsync(string url, CancellationToken cancellationToken)
+        {
+            using var response = await _client.GetAsync(url, cancellationToken).ConfigureAwait(false);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                throw new UnauthorizedAccessException("Не удалось авторизоваться в Windchill (проверьте логин/пароль в cnc_wnc_cfg)");
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                var error = await response.Content.ReadAsStringAsync();
-                var ex = new HttpRequestException($"Ошибка {operationName}: {response.StatusCode}");
-                Util.WriteLog(ex, error);
-                throw ex;
+                Util.WriteLog($"Ошибка поиска в Windchill: {response.StatusCode}\n{json}");
+                throw new HttpRequestException($"Ошибка поиска в Windchill: {response.StatusCode}");
             }
+
+            return json;
         }
 
-        private string GenerateCadSearchUrl(string baseUrl, string searchKeyword)
+        private List<WncObject> ParseSearchResponse(string json, bool hasTypeIcon)
         {
-            // Кодировка ключевого слова
-            var encodedKeyword = Uri.EscapeDataString(searchKeyword);
+            var root = JObject.Parse(json);
+            var objects = new List<WncObject>();
 
-            // Формирование URL
-            return $"{baseUrl}/Windchill/wtcore/jsp/com/ptc/windchill/search/Search.jsp" +
-                   $"?search_keyword={encodedKeyword}" +
-                   $"&preSelectionItems=WCTYPE|wt.epm.EPMDocument|local.{_localType}.DefaultEPMDocument" +
-                   $"&searchType=WCTYPE|wt.epm.EPMDocument|local.{_localType}.DefaultEPMDocument" +
-                   $"&fireSearch=true";
+            foreach (var obj in (root["value"] as JArray) ?? new JArray())
+            {
+                var name = obj["Name"]?.ToString() ?? "";
+                var number = obj["Number"]?.ToString() ?? "";
+                var version = obj["Version"]?.ToString() ?? "";
+                var state = obj["State"]?["Display"]?.ToString() ?? obj["State"]?["Value"]?.ToString() ?? "";
+                var type = hasTypeIcon ? (obj["TypeIcon"]?["Tooltip"]?.ToString() ?? "") : "Документ";
+                var containerName = obj["Context"]?["Name"]?.ToString() ?? "";
+                var containerOid = obj["Context"]?["ID"]?.ToString() ?? "";
+                var objectId = obj["ID"]?.ToString() ?? "";
+                var versionOid = obj["VersionID"]?.ToString() ?? objectId;
+                var modifyDate = FormatODataDate(obj["LastModified"]?.ToString());
+                var createDate = FormatODataDate(obj["CreatedOn"]?.ToString());
+
+                var link = $"{_serverUrl}/Windchill/app/#ptc1/tcomp/infoPage?ContainerOid={containerOid}&oid={versionOid}&u8=1";
+
+                // hasTypeIcon совпадает с "объект из CADDocuments" — оба query-метода
+                // передают его согласованно (см. QueryCadDocumentsAsync/QueryDocumentsAsync).
+                objects.Add(new WncObject(name, number, link, version, state, containerName, type, modifyDate, createDate, objectId, isCadDocument: hasTypeIcon));
+            }
+
+            return objects;
         }
+
+        /// <summary> UTC ISO-8601 от Windchill ("2022-08-24T13:23:24Z") → московское время в привычном формате. Россия не переходит на летнее время с 2014-го, поэтому фиксированный +3 достаточен. </summary>
+        private static string FormatODataDate(string? isoUtc)
+        {
+            if (string.IsNullOrEmpty(isoUtc)) return "";
+            if (!DateTime.TryParse(isoUtc, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var utc))
+                return isoUtc;
+            return utc.AddHours(3).ToString(libeLog.Constants.DateTimeFormat);
+        }
+
+        /// <summary> В строковых литералах OData одинарная кавычка экранируется удвоением. </summary>
+        private static string EscapeODataStringLiteral(string value) => value.Replace("'", "''");
 
         public void Dispose()
         {

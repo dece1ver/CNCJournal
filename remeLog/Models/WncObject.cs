@@ -8,7 +8,7 @@ namespace remeLog.Models
 {
     public class WncObject
     {
-        public WncObject(string name, string id, string link, string version, string state, string container, string type, string modifyDate, string createDate)
+        public WncObject(string name, string id, string link, string version, string state, string container, string type, string modifyDate, string createDate, string objectId, bool isCadDocument)
         {
             Name = name;
             Id = id;
@@ -19,11 +19,19 @@ namespace remeLog.Models
             Type = type;
             ModifyDate = modifyDate;
             CreateDate = createDate;
+            ObjectId = objectId;
+            IsCadDocument = isCadDocument;
         }
 
         public string Name { get; set; }
         public string Id { get; set; }
         public string Link { get; set; }
+
+        /// <summary> Внутренний идентификатор объекта в Windchill (например, "OR:wt.epm.EPMDocument:531624000") — нужен для точечных запросов вроде поиска PDF (см. WindchillClient.FindPdfAsync). </summary>
+        public string ObjectId { get; set; }
+
+        /// <summary> Откуда пришёл объект: true — CADDocuments (CADDocumentMgmt), false — Documents (DocMgmt). Разные entity set — разный путь запроса по ObjectId. </summary>
+        public bool IsCadDocument { get; set; }
         public string Version { get; set; }
         public string State { get; set; }
         public string PrettyState
