@@ -5,6 +5,7 @@ using libeLog.Infrastructure.Wrappers;
 using libeLog.Interfaces;
 using libeLog.Models;
 using Microsoft.Data.SqlClient;
+using remeLog.Core.Services;
 using remeLog.Infrastructure;
 using remeLog.Infrastructure.Types;
 using remeLog.Infrastructure.Winnum;
@@ -726,20 +727,15 @@ namespace remeLog.ViewModels
                     var t1 = sw.Elapsed;
                     Status = "Загрузка справочников...";
 
-                    var machinesTask = Task.Run(Database.ReadMachines, cancellationToken);
-                    var downtimeTask = Task.Run(Database.ReadDowntimeReasons, cancellationToken);
-                    var setupTask = Task.Run(() => Database.ReadDeviationReasons(remeLog.Core.Db.DeviationReasonType.Setup), cancellationToken);
-                    var machiningTask = Task.Run(() => Database.ReadDeviationReasons(remeLog.Core.Db.DeviationReasonType.Machining), cancellationToken);
-
-                    await Task.WhenAll(machinesTask, downtimeTask, setupTask, machiningTask);
+                    var referenceData = await MainDashboardService.LoadReferenceDataAsync(cancellationToken);
 #if DEBUG
-                    Util.WriteLog($"[LoadParts] Справочники (параллельно): {(sw.Elapsed - t1).TotalMilliseconds:F0} ms"); 
+                    Util.WriteLog($"[LoadParts] Справочники (параллельно): {(sw.Elapsed - t1).TotalMilliseconds:F0} ms");
 #endif
 
-                    var machinesResult = machinesTask.Result; var mr = machinesResult.Status; var machines = machinesResult.Value ?? new List<string>();
-                    var downtimeResult = downtimeTask.Result; var dr = downtimeResult.Status; var downtimes = downtimeResult.Value ?? new List<string>();
-                    var setupResult = setupTask.Result; var sr = setupResult.Status; var setup = setupResult.Value ?? new List<(string, bool)>();
-                    var machiningResult = machiningTask.Result; var cr = machiningResult.Status; var machining = machiningResult.Value ?? new List<(string, bool)>();
+                    var mr = referenceData.Machines.Status; var machines = referenceData.Machines.Value ?? new List<string>();
+                    var dr = referenceData.DowntimeReasons.Status; var downtimes = referenceData.DowntimeReasons.Value ?? new List<string>();
+                    var sr = referenceData.SetupReasons.Status; var setup = referenceData.SetupReasons.Value ?? new List<(string, bool)>();
+                    var cr = referenceData.MachiningReasons.Status; var machining = referenceData.MachiningReasons.Value ?? new List<(string, bool)>();
 
                     if (mr != remeLog.Core.Db.DbResult.Ok) { ShowDbError(mr, "список станков"); return; }
                     if (dr != remeLog.Core.Db.DbResult.Ok) { ShowDbError(dr, "причины простоев"); return; }
@@ -761,57 +757,9 @@ namespace remeLog.ViewModels
 
                     var machinesCopy = Machines.ToList();
 
-                    var reportStatesTask = Task.Run(() =>
-                    {
-                        var list = new List<(string Machine, ReportState State, bool IsChecked)>();
-
-                        foreach (var machine in machinesCopy)
-                        {
-                            ReportState state = ReportState.NotExist;
-                            bool dayChecked = false;
-                            bool nightChecked = false;
-
-                            if (FromDate == ToDate)
-                            {
-                                bool dayExist = false;
-                                bool nightExist = false;
-
-                                if (Database.ReadShiftInfo(new ShiftInfo(ToDate, ShiftType.Day, machine)) is { IsOk: true, Value: var dayShifts }
-                                    && dayShifts is { Count: > 0 } && dayShifts[0].Master != "")
-                                {
-                                    dayExist = true;
-                                    dayChecked = dayShifts.Any(s => s.IsChecked);
-                                }
-
-                                if (Database.ReadShiftInfo(new ShiftInfo(ToDate, ShiftType.Night, machine)) is { IsOk: true, Value: var nightShifts }
-                                    && nightShifts is { Count: > 0 } && nightShifts[0].Master != "")
-                                {
-                                    nightExist = true;
-                                    nightChecked = nightShifts.Any(s => s.IsChecked);
-                                }
-
-                                state = (dayExist, nightExist) switch
-                                {
-                                    (true, true) => ReportState.Exist,
-                                    (true, false) => ReportState.Partial,
-                                    (false, true) => ReportState.Partial,
-                                    _ => ReportState.NotExist,
-                                };
-                            }
-
-                            list.Add((machine, state, dayChecked && nightChecked));
-                        }
-
-                        return list;
-                    }, cancellationToken);
-
-                    var totalShiftsTask = Task.Run(() =>
-                        Database.GetShiftsByPeriod(machinesCopy, FromDate, ToDate,
-                            new Shift(ShiftType.All)), cancellationToken);
-
-                    await Task.WhenAll(reportStatesTask, totalShiftsTask);
-                    _totalShifts = totalShiftsTask.Result.Value ?? new List<ShiftInfo>();
-                    var reportStates = reportStatesTask.Result;
+                    var shiftOverview = await MainDashboardService.LoadShiftOverviewAsync(machinesCopy, FromDate, ToDate, cancellationToken);
+                    _totalShifts = shiftOverview.TotalShifts;
+                    var reportStates = shiftOverview.ReportStates;
 
 #if DEBUG
                     Util.WriteLog($"[LoadParts] ReadShiftInfos ({machinesCopy.Count} станков): {(sw.Elapsed - t5).TotalMilliseconds:F0} ms");
