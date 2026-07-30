@@ -1,0 +1,113 @@
+@page "/"
+@rendermode InteractiveServer
+@using remeLog.Core.Services
+@using remeLog.Models
+
+<PageTitle>Сводка по сменам</PageTitle>
+
+<h1>Сводка по сменам</h1>
+
+<div class="filters">
+    <label>
+        С
+        <input type="date" @bind="FromDate" />
+    </label>
+    <label>
+        По
+        <input type="date" @bind="ToDate" />
+    </label>
+    <button @onclick="LoadAsync" disabled="@_loading">Обновить</button>
+</div>
+
+@if (_loading)
+{
+    <p>Загрузка...</p>
+}
+else if (_error is not null)
+{
+    <p style="color:#991b1b">@_error</p>
+}
+else if (_rows is not null)
+{
+    <table>
+        <thead>
+            <tr>
+                <th>Станок</th>
+                <th>Отчёт за период</th>
+                <th>Проверен</th>
+                <th>Смен за период</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in _rows)
+            {
+                <tr>
+                    <td>@row.Machine</td>
+                    <td>
+                        <span class="badge @BadgeClass(row.State)">@StateText(row.State)</span>
+                    </td>
+                    <td>@(row.IsChecked ? "Да" : "Нет")</td>
+                    <td>@_shiftsByMachine.GetValueOrDefault(row.Machine, 0)</td>
+                    <td><a href="@($"/parts?machine={Uri.EscapeDataString(row.Machine)}&from={FromDate:yyyy-MM-dd}&to={ToDate:yyyy-MM-dd}")">детали →</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private DateTime FromDate = DateTime.Today;
+    private DateTime ToDate = DateTime.Today;
+    private bool _loading;
+    private string? _error;
+    private List<MainDashboardService.MachineReportState>? _rows;
+    private Dictionary<string, int> _shiftsByMachine = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            var reference = await MainDashboardService.LoadReferenceDataAsync(CancellationToken.None);
+            if (!reference.Machines.IsOk)
+            {
+                _error = "Не удалось получить список станков.";
+                return;
+            }
+
+            var machines = reference.Machines.Value ?? new List<string>();
+            var overview = await MainDashboardService.LoadShiftOverviewAsync(machines, FromDate, ToDate, CancellationToken.None);
+            _rows = overview.ReportStates;
+            _shiftsByMachine = overview.TotalShifts
+                .GroupBy(s => s.Machine)
+                .ToDictionary(g => g.Key, g => g.Count());
+        }
+        catch (Exception ex)
+        {
+            _error = $"Ошибка: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string BadgeClass(CombinedParts.ReportState state) => state switch
+    {
+        CombinedParts.ReportState.Exist => "badge-exist",
+        CombinedParts.ReportState.Partial => "badge-partial",
+        _ => "badge-notexist",
+    };
+
+    private static string StateText(CombinedParts.ReportState state) => state switch
+    {
+        CombinedParts.ReportState.Exist => "Есть",
+        CombinedParts.ReportState.Partial => "Частично",
+        _ => "Нет",
+    };
+}

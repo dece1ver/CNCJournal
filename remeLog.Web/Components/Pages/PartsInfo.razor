@@ -1,0 +1,168 @@
+@page "/parts"
+@rendermode InteractiveServer
+@using remeLog.Core.Services
+@using remeLog.Infrastructure
+@using remeLog.Infrastructure.Types
+@using remeLog.Models
+
+<PageTitle>Детали</PageTitle>
+
+<h1>Детали</h1>
+
+<div class="filters">
+    <label>
+        С
+        <input type="date" @bind="FromDate" />
+    </label>
+    <label>
+        По
+        <input type="date" @bind="ToDate" />
+    </label>
+    <label>
+        Деталь
+        <input type="text" @bind="PartNameFilter" @bind:event="oninput" />
+    </label>
+    <label>
+        М/Л
+        <input type="text" @bind="OrderFilter" @bind:event="oninput" />
+    </label>
+    <label>
+        Оператор
+        <input type="text" @bind="OperatorFilter" @bind:event="oninput" />
+    </label>
+    <label>
+        Станки
+        <div class="machine-list">
+            @foreach (var machine in _allMachines)
+            {
+                <label style="flex-direction:row;align-items:center;gap:0.35rem;">
+                    <input type="checkbox" checked="@_selectedMachines.Contains(machine)"
+                           @onchange="@(e => ToggleMachine(machine, (bool)e.Value!))" />
+                    @machine
+                </label>
+            }
+        </div>
+    </label>
+    <button @onclick="LoadAsync" disabled="@_loading">Показать</button>
+</div>
+
+@if (_loading)
+{
+    <p>Загрузка...</p>
+}
+else if (_error is not null)
+{
+    <p style="color:#991b1b">@_error</p>
+}
+else if (_parts is not null)
+{
+    <p>@_parts.Count дет.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Станок</th>
+                <th>Дата</th>
+                <th>Смена</th>
+                <th>Оператор</th>
+                <th>Деталь</th>
+                <th>М/Л</th>
+                <th>Уст.</th>
+                <th>Выполнено</th>
+                <th>Всего</th>
+                <th>Наладка (норм.)</th>
+                <th>Наладка (факт)</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var part in _parts)
+            {
+                <tr>
+                    <td>@part.Machine</td>
+                    <td>@part.ShiftDate.ToString("dd.MM.yyyy")</td>
+                    <td>@part.Shift</td>
+                    <td>@part.Operator</td>
+                    <td>@part.PartName</td>
+                    <td>@part.Order</td>
+                    <td>@part.Setup</td>
+                    <td>@part.FinishedCount</td>
+                    <td>@part.TotalCount</td>
+                    <td>@part.SetupTimePlan.ToString("0")</td>
+                    <td>@part.SetupTimeFact.ToString("0")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [SupplyParameterFromQuery] public string? Machine { get; set; }
+    [SupplyParameterFromQuery] public string? From { get; set; }
+    [SupplyParameterFromQuery] public string? To { get; set; }
+
+    private DateTime FromDate = DateTime.Today;
+    private DateTime ToDate = DateTime.Today;
+    private string PartNameFilter = "";
+    private string OrderFilter = "";
+    private string OperatorFilter = "";
+    private List<string> _allMachines = new();
+    private HashSet<string> _selectedMachines = new();
+    private bool _loading;
+    private string? _error;
+    private List<Part>? _parts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (DateTime.TryParse(From, out var from)) FromDate = from;
+        if (DateTime.TryParse(To, out var to)) ToDate = to;
+
+        var machinesResult = Database.ReadMachines();
+        _allMachines = machinesResult.Value ?? new List<string>();
+
+        _selectedMachines = !string.IsNullOrWhiteSpace(Machine)
+            ? new HashSet<string> { Machine }
+            : _allMachines.ToHashSet();
+
+        await LoadAsync();
+    }
+
+    private void ToggleMachine(string machine, bool isSelected)
+    {
+        if (isSelected) _selectedMachines.Add(machine);
+        else _selectedMachines.Remove(machine);
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            if (_selectedMachines.Count == 0)
+            {
+                _parts = new List<Part>();
+                return;
+            }
+
+            var criteria = new PartsFilterCriteria(
+                FromDate, ToDate, new Shift(ShiftType.All),
+                OperatorFilter, PartNameFilter, OrderFilter,
+                "", "",
+                null, null, null,
+                false, Array.Empty<string>(),
+                _selectedMachines.ToList(),
+                Array.Empty<FilterChip>());
+
+            var conditions = PartsFilterService.BuildConditions(criteria);
+            _parts = await Database.ReadPartsWithConditions(conditions, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Ошибка: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}
