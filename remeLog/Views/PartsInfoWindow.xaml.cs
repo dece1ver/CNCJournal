@@ -30,11 +30,23 @@ namespace remeLog.Views
             None, Numeric, TimeSpan
         }
 
+        private readonly List<MenuItem> _columnProfileMenuItems = new();
+
         public PartsInfoWindow(CombinedParts parts)
         {
             InitializeComponent();
+            foreach (var id in PartColumnMeta.ColumnOrder)
+                partsGrid.Columns.Add((DataGridColumn)FindResource($"{id}Column"));
             DataContext = new PartsInfoWindowViewModel(parts);
             Closing += (_, _) => (DataContext as PartsInfoWindowViewModel)?.CancelAllAiChecks();
+            var vm = (PartsInfoWindowViewModel)DataContext;
+            vm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName is nameof(PartsInfoWindowViewModel.AvailableColumnProfiles)
+                                    or nameof(PartsInfoWindowViewModel.ActiveColumnProfileName))
+                    RebuildColumnProfileMenu();
+            };
+            RebuildColumnProfileMenu();
             var groupNames = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase)
             {
                 "Ожидание"
@@ -73,6 +85,36 @@ namespace remeLog.Views
                 
             engineerMenu.Items.Add(new Separator());
             engineerMenu.Items.Add(new MenuItem { Header = "Очистить", Icon = TryFindResource("CleanData") as UIElement}.Tap(i => i.Click += OnClearVariantClick));
+        }
+
+        /// <summary>
+        /// Пункты пользовательских профилей столбцов в меню "Вид" — динамические, поэтому
+        /// строятся здесь, а не через ItemsControl в XAML (см. комментарий у columnProfilesSeparator).
+        /// </summary>
+        private void RebuildColumnProfileMenu()
+        {
+            if (DataContext is not PartsInfoWindowViewModel vm) return;
+
+            foreach (var item in _columnProfileMenuItems)
+                viewMenu.Items.Remove(item);
+            _columnProfileMenuItems.Clear();
+
+            var insertAt = viewMenu.Items.IndexOf(columnProfilesSeparator) + 1;
+            foreach (var profile in vm.AvailableColumnProfiles)
+            {
+                var item = new MenuItem
+                {
+                    Header = profile.Name,
+                    Padding = new Thickness(0),
+                    Command = vm.SelectColumnProfileCommand,
+                    CommandParameter = profile.Name,
+                    Icon = profile.Name == vm.ActiveColumnProfileName
+                        ? new TextBlock { Text = "●", FontSize = 16, Margin = new Thickness(4, 0, 0, 3), TextAlignment = TextAlignment.Center }
+                        : null,
+                };
+                viewMenu.Items.Insert(insertAt++, item);
+                _columnProfileMenuItems.Add(item);
+            }
         }
 
         private void ComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)

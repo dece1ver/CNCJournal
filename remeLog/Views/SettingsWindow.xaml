@@ -109,14 +109,15 @@
             <TextBlock Grid.Row="5" Grid.Column="0" 
                        Text="Роль" Style="{StaticResource settingLabel}" PreviewMouseLeftButtonUp="ConnectionStringTextBlock_PreviewMouseLeftButtonUp" 
                        VerticalAlignment="Center" TextAlignment="Center"/>
-            <ComboBox Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" Margin="0 0 31 0" 
+            <ComboBox Grid.Row="5" Grid.Column="1" Margin="0 0 5 0"
                       ItemsSource="{Binding Source={ext:EnumBindingSource {x:Type types:User}, ExcludeValue=Developer}}"
-                      SelectedValue="{Binding Role}" 
+                      SelectedValue="{Binding Role}"
                       DisplayMemberPath="Display"
                       SelectedValuePath="Value" VerticalContentAlignment="Center"/>
+            <Button Grid.Row="5" Grid.Column="2" Content="Профили столбцов..." Command="{Binding EditColumnProfilesCommand}"/>
 
-            <CheckBox Grid.Row="6" Grid.Column="0" IsChecked="{Binding InstantUpdateOnMainWindow}" 
-                      Grid.ColumnSpan="2" 
+            <CheckBox Grid.Row="6" Grid.Column="0" IsChecked="{Binding InstantUpdateOnMainWindow}"
+                      Grid.ColumnSpan="2"
                       Content="Мгновенное обновление информации на главной странице" Margin="4 6"/>
             
             <StackPanel Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="3" 

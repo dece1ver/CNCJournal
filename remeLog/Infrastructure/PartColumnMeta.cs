@@ -1,7 +1,9 @@
-﻿using remeLog.Models;
+﻿using remeLog.Infrastructure.Types;
+using remeLog.Models;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 
 namespace remeLog.Infrastructure
 {
@@ -33,10 +35,31 @@ namespace remeLog.Infrastructure
         /// Используется когда Kind == InMemory.
         /// </summary>
         public Func<Part, string, bool>? Predicate { get; init; }
+
+        /// <summary>
+        /// Роли, которым колонка видна по умолчанию (используется для встроенных
+        /// ролевых профилей — см. PartColumnMeta.GetColumnIdsForRole). По умолчанию
+        /// видна всем ролям.
+        /// </summary>
+        public IReadOnlySet<User> Roles { get; init; } = PartColumnMeta.AllRoles;
     }
 
     public static class PartColumnMeta
     {
+        // ── Ролевые группы для встроенных профилей ──────────────────────────
+        // Соответствуют группам, ранее закодированным как ConverterParameter
+        // UserRoleVisibilityConverter'а прямо в PartsInfoWindow.xaml.
+        public static readonly IReadOnlySet<User> AllRoles =
+            new HashSet<User> { User.Viewer, User.Master, User.Engineer, User.Developer };
+        /// <summary>Скрыта от технолога (Engineer)</summary>
+        private static readonly IReadOnlySet<User> HiddenFromEngineer =
+            new HashSet<User> { User.Viewer, User.Master, User.Developer };
+        /// <summary>Скрыта от мастера и технолога</summary>
+        private static readonly IReadOnlySet<User> HiddenFromMasterAndEngineer =
+            new HashSet<User> { User.Viewer, User.Developer };
+        /// <summary>Скрыта от мастера (Master)</summary>
+        private static readonly IReadOnlySet<User> HiddenFromMaster =
+            new HashSet<User> { User.Viewer, User.Engineer, User.Developer };
         public const string H_Machine = "Станок";
         public const string H_ShiftDate = "Дата";
         public const string H_Shift = "Смена";
@@ -109,7 +132,7 @@ namespace remeLog.Infrastructure
                     { "Order",                    new() { SqlColumn="[Order]",                  DisplayName=H_Order,                     Kind=FilterKind.Text   } },
                     { "TotalCount",               new() { SqlColumn="TotalCount",               DisplayName=H_TotalCount,                Kind=FilterKind.Number } },
                     { "FinishedCount",            new() { SqlColumn="FinishedCount",            DisplayName=H_FinishedCount,             Kind=FilterKind.Number } },
-                    { "DefectiveCount",           new() { SqlColumn="DefectiveCount",           DisplayName=H_DefectiveCount,            Kind=FilterKind.Number } },
+                    { "DefectiveCount",           new() { SqlColumn="DefectiveCount",           DisplayName=H_DefectiveCount,            Kind=FilterKind.Number, Roles=HiddenFromEngineer } },
                     { "Setup",                    new() { SqlColumn="Setup",                    DisplayName=H_Setup,                     Kind=FilterKind.Number } },
                     { "StartSetupTime",           new() { SqlColumn="",                         DisplayName=H_StartSetupTime,            Kind=FilterKind.None   } }, // HH:mm ≠ datetime в БД
                     { "StartMachiningTime",       new() { SqlColumn="",                         DisplayName=H_StartMachiningTime,        Kind=FilterKind.None   } },
@@ -129,22 +152,22 @@ namespace remeLog.Infrastructure
                     { "PartReplacementTime",      new() { SqlColumn="",                         DisplayName=H_PartReplacementTime,       Kind=FilterKind.None   } }, // вычисляемое
                     { "SingleProductionTime",     new() { SqlColumn="",                         DisplayName=H_SingleProductionTime,      Kind=FilterKind.None   } }, // вычисляемое
 
-                    { "ProductionTimeFact",       new() { SqlColumn="ProductionTimeFact",       DisplayName=H_ProductionTimeFact,        Kind=FilterKind.Number } },
-                    { "PlanForBatch",             new() { SqlColumn="",                         DisplayName=H_PlanForBatch,              Kind=FilterKind.None   } }, // вычисляемое
+                    { "ProductionTimeFact",       new() { SqlColumn="ProductionTimeFact",       DisplayName=H_ProductionTimeFact,        Kind=FilterKind.Number, Roles=HiddenFromMasterAndEngineer } },
+                    { "PlanForBatch",             new() { SqlColumn="",                         DisplayName=H_PlanForBatch,              Kind=FilterKind.None,   Roles=HiddenFromMasterAndEngineer } }, // вычисляемое
                     { "OperatorComment",          new() { SqlColumn="OperatorComment",          DisplayName=H_OperatorComment,           Kind=FilterKind.Text   } },
                     { "Problems",                 new() { SqlColumn="",                         DisplayName=H_Problems,                  Kind=FilterKind.None   } }, // вычисляемое
-                    { "SetupDowntimes",           new() { SqlColumn="SetupDowntimes",           DisplayName=H_SetupDowntimes,            Kind=FilterKind.Number } },
-                    { "MachiningDowntimes",       new() { SqlColumn="MachiningDowntimes",       DisplayName=H_MachiningDowntimes,        Kind=FilterKind.Number } },
+                    { "SetupDowntimes",           new() { SqlColumn="SetupDowntimes",           DisplayName=H_SetupDowntimes,            Kind=FilterKind.Number, Roles=HiddenFromEngineer } },
+                    { "MachiningDowntimes",       new() { SqlColumn="MachiningDowntimes",       DisplayName=H_MachiningDowntimes,        Kind=FilterKind.Number, Roles=HiddenFromEngineer } },
                     { "PartialSetupTime",         new() { SqlColumn="PartialSetupTime",         DisplayName=H_PartialSetupTime,          Kind=FilterKind.Number } },
-                    { "CreateNcProgramTime",      new() { SqlColumn="CreateNcProgramTime",      DisplayName=H_CreateNcProgramTime,       Kind=FilterKind.Number } },
-                    { "MaintenanceTime",          new() { SqlColumn="MaintenanceTime",          DisplayName=H_MaintenanceTime,           Kind=FilterKind.Number } },
-                    { "ToolSearchingTime",        new() { SqlColumn="ToolSearchingTime",        DisplayName=H_ToolSearchingTime,         Kind=FilterKind.Number } },
-                    { "ToolChangingTime",         new() { SqlColumn="ToolChangingTime",         DisplayName=H_ToolChangingTime,          Kind=FilterKind.Number } },
-                    { "MentoringTime",            new() { SqlColumn="MentoringTime",            DisplayName=H_MentoringTime,             Kind=FilterKind.Number } },
-                    { "ContactingDepartmentsTime",new() { SqlColumn="ContactingDepartmentsTime",DisplayName=H_ContactingDepartmentsTime, Kind=FilterKind.Number } },
-                    { "FixtureMakingTime",        new() { SqlColumn="FixtureMakingTime",        DisplayName=H_FixtureMakingTime,         Kind=FilterKind.Number } },
-                    { "HardwareFailureTime",      new() { SqlColumn="HardwareFailureTime",      DisplayName=H_HardwareFailureTime,       Kind=FilterKind.Number } },
-                    { "SpecialDowntimeTime",      new() { SqlColumn="SpecialDowntimeTime",      DisplayName=H_SpecialDowntimeTime,       Kind=FilterKind.Number } },
+                    { "CreateNcProgramTime",      new() { SqlColumn="CreateNcProgramTime",      DisplayName=H_CreateNcProgramTime,       Kind=FilterKind.Number, Roles=HiddenFromMasterAndEngineer } },
+                    { "MaintenanceTime",          new() { SqlColumn="MaintenanceTime",          DisplayName=H_MaintenanceTime,           Kind=FilterKind.Number, Roles=HiddenFromMasterAndEngineer } },
+                    { "ToolSearchingTime",        new() { SqlColumn="ToolSearchingTime",        DisplayName=H_ToolSearchingTime,         Kind=FilterKind.Number, Roles=HiddenFromMasterAndEngineer } },
+                    { "ToolChangingTime",         new() { SqlColumn="ToolChangingTime",         DisplayName=H_ToolChangingTime,          Kind=FilterKind.Number, Roles=HiddenFromMasterAndEngineer } },
+                    { "MentoringTime",            new() { SqlColumn="MentoringTime",            DisplayName=H_MentoringTime,             Kind=FilterKind.Number, Roles=HiddenFromMasterAndEngineer } },
+                    { "ContactingDepartmentsTime",new() { SqlColumn="ContactingDepartmentsTime",DisplayName=H_ContactingDepartmentsTime, Kind=FilterKind.Number, Roles=HiddenFromMasterAndEngineer } },
+                    { "FixtureMakingTime",        new() { SqlColumn="FixtureMakingTime",        DisplayName=H_FixtureMakingTime,         Kind=FilterKind.Number, Roles=HiddenFromMasterAndEngineer } },
+                    { "HardwareFailureTime",      new() { SqlColumn="HardwareFailureTime",      DisplayName=H_HardwareFailureTime,       Kind=FilterKind.Number, Roles=HiddenFromMasterAndEngineer } },
+                    { "SpecialDowntimeTime",      new() { SqlColumn="SpecialDowntimeTime",      DisplayName=H_SpecialDowntimeTime,       Kind=FilterKind.Number, Roles=HiddenFromMasterAndEngineer } },
 
                     // SpecifiedDowntimesRatio — вычисляется в модели из нескольких полей
                     { "SpecifiedDowntimesRatio", new() {
@@ -161,9 +184,10 @@ namespace remeLog.Infrastructure
                                 out var pct)
                                 && Math.Abs(p.SpecifiedDowntimesRatio * 100 - pct) < 0.5;
                         },
+                        Roles = HiddenFromEngineer,
                     }},
 
-                    { "SpecifiedDowntimesComment", new() { SqlColumn="SpecifiedDowntimesComment", DisplayName=H_SpecifiedDowntimesComment, Kind=FilterKind.Text } },
+                    { "SpecifiedDowntimesComment", new() { SqlColumn="SpecifiedDowntimesComment", DisplayName=H_SpecifiedDowntimesComment, Kind=FilterKind.Text, Roles=HiddenFromEngineer } },
 
                     // SetupRatioTitle — строка, вычисляемая в модели
                     { "SetupRatioTitle", new() {
@@ -220,13 +244,43 @@ namespace remeLog.Infrastructure
                             p.EffectiveMachiningDetail?.Contains(val, StringComparison.OrdinalIgnoreCase) == true,
                     }},
                     { "AiCheck",                  new() { SqlColumn="",                         DisplayName="ИИ-проверка",               Kind=FilterKind.None   } }, // вычисляемое, не фильтруется
-                    { "FixedSetupTimePlan",       new() { SqlColumn="FixedSetupTimePlan",       DisplayName=H_FixedSetupTimePlan,        Kind=FilterKind.Number } },
-                    { "FixedProductionTimePlan",  new() { SqlColumn="FixedProductionTimePlan",  DisplayName=H_FixedProductionTimePlan,   Kind=FilterKind.Number } },
-                    { "EngineerConclusion",       new() { SqlColumn="EngineerConclusion",       DisplayName=H_EngineerConclusion,        Kind=FilterKind.Text   } },
-                    { "EngineerComment",          new() { SqlColumn="EngineerComment",          DisplayName=H_EngineerComment,           Kind=FilterKind.Text   } },
-                    { "ExcludedOperationsTime",   new() { SqlColumn="ExcludedOperationsTime",   DisplayName=H_ExcludedOperationsTime,    Kind=FilterKind.Number } },
-                    { "IncreaseReason",           new() { SqlColumn="IncreaseReason",           DisplayName=H_IncreaseReason,            Kind=FilterKind.Text   } },
-                    { "ExcludeFromReports",       new() { SqlColumn="ExcludeFromReports",       DisplayName=H_ExcludeFromReports,        Kind=FilterKind.Bool   } },
+                    { "FixedSetupTimePlan",       new() { SqlColumn="FixedSetupTimePlan",       DisplayName=H_FixedSetupTimePlan,        Kind=FilterKind.Number, Roles=HiddenFromMaster } },
+                    { "FixedProductionTimePlan",  new() { SqlColumn="FixedProductionTimePlan",  DisplayName=H_FixedProductionTimePlan,   Kind=FilterKind.Number, Roles=HiddenFromMaster } },
+                    { "EngineerConclusion",       new() { SqlColumn="EngineerConclusion",       DisplayName=H_EngineerConclusion,        Kind=FilterKind.Text,   Roles=HiddenFromMaster } },
+                    { "EngineerComment",          new() { SqlColumn="EngineerComment",          DisplayName=H_EngineerComment,           Kind=FilterKind.Text,   Roles=HiddenFromMaster } },
+                    { "ExcludedOperationsTime",   new() { SqlColumn="ExcludedOperationsTime",   DisplayName=H_ExcludedOperationsTime,    Kind=FilterKind.Number, Roles=HiddenFromMaster } },
+                    { "IncreaseReason",           new() { SqlColumn="IncreaseReason",           DisplayName=H_IncreaseReason,            Kind=FilterKind.Text,   Roles=HiddenFromMaster } },
+                    { "ExcludeFromReports",       new() { SqlColumn="ExcludeFromReports",       DisplayName=H_ExcludeFromReports,        Kind=FilterKind.Bool,   Roles=HiddenFromMaster } },
                 });
+
+        /// <summary>
+        /// Идентификаторы колонок, видимых встроенному ролевому профилю (для обратной
+        /// совместимости с прежней ролевой моделью — используется как содержимое
+        /// профиля "по умолчанию" при выборе роли Мастер/Технолог/Показать всё).
+        /// </summary>
+        public static HashSet<string> GetColumnIdsForRole(User role) =>
+            Map.Where(kv => kv.Value.Roles.Contains(role)).Select(kv => kv.Key).ToHashSet();
+
+        /// <summary>
+        /// Порядок колонок PartsInfoWindow — единственный источник истины: сам грид
+        /// строит DataGrid.Columns по этому списку (см. конструктор PartsInfoWindow),
+        /// им же упорядочен чеклист в редакторе профилей столбцов. Не влияет на
+        /// ColumnId/Map и контекстные меню — те завязаны на строковый ID, не на позицию.
+        /// </summary>
+        public static readonly IReadOnlyList<string> ColumnOrder = new[]
+        {
+            "Machine", "ShiftDate", "Shift", "Operator", "PartName", "Order", "TotalCount",
+            "FinishedCount", "DefectiveCount", "Setup", "StartSetupTime", "StartMachiningTime",
+            "EndMachiningTime", "SetupTimePlan", "SetupTimeFact", "SingleProductionTimePlan",
+            "MachiningTime", "PartReplacementTime", "SingleProductionTime", "ProductionTimeFact",
+            "PlanForBatch", "OperatorComment", "Problems", "SetupDowntimes", "MachiningDowntimes",
+            "PartialSetupTime", "CreateNcProgramTime", "MaintenanceTime", "ToolSearchingTime",
+            "ToolChangingTime", "MentoringTime", "ContactingDepartmentsTime", "FixtureMakingTime",
+            "HardwareFailureTime", "SpecialDowntimeTime", "SpecifiedDowntimesRatio",
+            "SpecifiedDowntimesComment", "SetupRatioTitle", "MasterSetupComment", "MasterSetupDetail",
+            "ProductionRatioTitle", "MasterMachiningComment", "MasterMachiningDetail", "MasterComment",
+            "AiCheck", "FixedSetupTimePlan", "FixedProductionTimePlan", "EngineerComment",
+            "EngineerConclusion", "ExcludedOperationsTime", "IncreaseReason", "ExcludeFromReports",
+        };
     }
 }

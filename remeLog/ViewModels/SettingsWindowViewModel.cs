@@ -6,9 +6,11 @@ using libeLog.Models;
 using remeLog.Infrastructure;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
+using remeLog.Views;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.AccessControl;
 using System.Threading.Tasks;
 using System.Windows;
@@ -26,6 +28,7 @@ namespace remeLog.ViewModels
             SetGoogleCredentialPathCommand = new LambdaCommand(OnSetGoogleCredentialPathCommandExecuted, CanSetGoogleCredentialPathCommandExecute);
             CheckAssignedPartsSheetCommand = new LambdaCommand(OnCheckAssignedPartsSheetCommandExecuted, CanCheckAssignedPartsSheetCommandExecute);
             CheckConnectionStringCommand = new LambdaCommand(OnCheckConnectionStringCommandExecuted, CanCheckConnectionStringCommandExecute);
+            EditColumnProfilesCommand = new LambdaCommand(OnEditColumnProfilesCommandExecuted, CanEditColumnProfilesCommandExecute);
 
             _DataSource = AppSettings.Instance.DataSource;
             _QualificationSourcePath = new SettingsItem(AppSettings.Instance.QualificationSourcePath ?? "");
@@ -199,6 +202,20 @@ namespace remeLog.ViewModels
         }
 
         private static bool CanCheckAssignedPartsSheetCommandExecute(object p) => true;
+        #endregion
+
+        #region EditColumnProfiles
+        public ICommand EditColumnProfilesCommand { get; }
+        private void OnEditColumnProfilesCommandExecuted(object p)
+        {
+            ColumnProfilesWindow window = new() { Owner = Application.Current.MainWindow };
+            if (window.ShowDialog() == true && window.DataContext is ColumnProfilesWindowViewModel vm)
+            {
+                AppSettings.Instance.ColumnProfiles = vm.Profiles.ToList();
+                AppSettings.Save();
+            }
+        }
+        private static bool CanEditColumnProfilesCommandExecute(object p) => true;
         #endregion
 
         #region CheckConnectionString

@@ -37,7 +37,8 @@
             <cnv:ShortDateConverter x:Key="ShortDateConverter"/>
             <cnv:StatusVisibilityConverter x:Key="StatusVisibilityConverter"/>
             <cnv:TimeConverter x:Key="TimeConverter"/>
-            <cnv:UserRoleVisibilityConverter x:Key="UserRoleVisibilityConverter"/>
+            <cnv:ColumnVisibilityConverter x:Key="ColumnVisibilityConverter"/>
+            <cnv:AllVisibleMultiConverter x:Key="AllVisibleMultiConverter"/>
             <cnv:VisibilityConverter x:Key="VisibilityConverter"/>
             <cnv:MachineInspectionCalendarCellConverter x:Key="MachineInspectionCalendarCellConverter"/>
             <cnv:MachineInspectionCalendarCellIconMultiConverter x:Key="MachineInspectionCalendarCellIconMultiConverter"/>

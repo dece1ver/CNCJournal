@@ -74,6 +74,8 @@ namespace remeLog.ViewModels
             ChangeCalcFixedCommand = new LambdaCommand(OnChangeCalcFixedCommandExecuted, CanChangeCalcFixedCommandExecute);
             ChangeCompactViewCommand = new LambdaCommand(OnChangeCompactViewCommandExecuted, CanChangeCompactViewCommandExecute);
             ChangeRoleCommand = new LambdaCommand(OnChangeRoleCommandExecuted, CanChangeRoleCommandExecute);
+            SelectColumnProfileCommand = new LambdaCommand(OnSelectColumnProfileCommandExecuted, CanSelectColumnProfileCommandExecute);
+            ManageColumnProfilesCommand = new LambdaCommand(OnManageColumnProfilesCommandExecuted, CanManageColumnProfilesCommandExecute);
             ChangeShowUncheckedCommand = new LambdaCommand(OnChangeShowUncheckedCommandExecuted, CanChangeShowUncheckedCommandExecute);
             CheckAssignmentWithFactCommand = new LambdaCommand(OnCheckAssignmentWithFactCommandExecuted, CanCheckAssignmentWithFactCommandExecute);
             ClearContentCommand = new LambdaCommand(OnClearContentCommandExecuted, CanClearContentCommandExecute);
@@ -981,12 +983,52 @@ namespace remeLog.ViewModels
 
 
         private User _ViewMode;
-        /// <summary> Режим просмотра </summary>
+        /// <summary> Режим просмотра (встроенная роль) </summary>
         public User ViewMode
         {
             get => _ViewMode;
-            set => Set(ref _ViewMode, value);
+            set
+            {
+                Set(ref _ViewMode, value);
+                OnPropertyChanged(nameof(VisibleColumnIds));
+            }
         }
+
+        private string? _ActiveColumnProfileName;
+        /// <summary>
+        /// Имя активного пользовательского профиля столбцов. Null — видимость колонок
+        /// определяется встроенной ролью (ViewMode), иначе — набором ColumnIds
+        /// соответствующего профиля из AppSettings.Instance.ColumnProfiles.
+        /// </summary>
+        public string? ActiveColumnProfileName
+        {
+            get => _ActiveColumnProfileName;
+            set
+            {
+                Set(ref _ActiveColumnProfileName, value);
+                OnPropertyChanged(nameof(VisibleColumnIds));
+                OnPropertyChanged(nameof(IsRoleSelected));
+            }
+        }
+
+        /// <summary> Активна встроенная роль, а не пользовательский профиль столбцов </summary>
+        public bool IsRoleSelected => ActiveColumnProfileName == null;
+
+        /// <summary>
+        /// Идентификаторы колонок, видимых в текущем профиле — единственный источник
+        /// истины для видимости колонок PartsInfoWindow (см. ColumnVisibilityConverter).
+        /// </summary>
+        public HashSet<string> VisibleColumnIds =>
+            (ActiveColumnProfileName is string name
+                ? AppSettings.Instance.ColumnProfiles.FirstOrDefault(p => p.Name == name)?.ColumnIds
+                : null)?.ToHashSet()
+            ?? PartColumnMeta.GetColumnIdsForRole(ViewMode);
+
+        /// <summary> Пользовательские профили столбцов, доступные для выбора в меню "Вид" </summary>
+        public List<ColumnProfile> AvailableColumnProfiles => AppSettings.Instance.ColumnProfiles;
+
+        /// <summary> Есть ли хотя бы один пользовательский профиль столбцов </summary>
+        public bool HasColumnProfiles => AvailableColumnProfiles.Count > 0;
 
 
         private bool _ViewUnchecked;
@@ -2420,14 +2462,45 @@ namespace remeLog.ViewModels
 
         #region ChangeRole
         public ICommand ChangeRoleCommand { get; }
-        private void OnChangeRoleCommandExecuted(object p) 
+        private void OnChangeRoleCommandExecuted(object p)
         {
             if (p is string str && Enum.TryParse(str, out User newRole))
             {
+                ActiveColumnProfileName = null;
                 ViewMode = newRole;
             }
         }
         private static bool CanChangeRoleCommandExecute(object p) => true;
+        #endregion
+
+        #region SelectColumnProfile
+        public ICommand SelectColumnProfileCommand { get; }
+        private void OnSelectColumnProfileCommandExecuted(object p)
+        {
+            if (p is string name)
+            {
+                ActiveColumnProfileName = name;
+            }
+        }
+        private static bool CanSelectColumnProfileCommandExecute(object p) => true;
+        #endregion
+
+        #region ManageColumnProfiles
+        public ICommand ManageColumnProfilesCommand { get; }
+        private void OnManageColumnProfilesCommandExecuted(object p)
+        {
+            ColumnProfilesWindow window = new();
+            if (p is PartsInfoWindow w) window.Owner = w;
+            if (window.ShowDialog() == true && window.DataContext is ColumnProfilesWindowViewModel vm)
+            {
+                AppSettings.Instance.ColumnProfiles = vm.Profiles.ToList();
+                AppSettings.Save();
+                OnPropertyChanged(nameof(AvailableColumnProfiles));
+                OnPropertyChanged(nameof(HasColumnProfiles));
+                OnPropertyChanged(nameof(VisibleColumnIds));
+            }
+        }
+        private static bool CanManageColumnProfilesCommandExecute(object p) => true;
         #endregion
 
         #region ChangeShowUnchecked

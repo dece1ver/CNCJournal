@@ -129,6 +129,9 @@ namespace remeLog.Infrastructure
 
         public User? User { get; set; }
 
+        /// <summary> Пользовательские профили видимости колонок PartsInfoWindow </summary>
+        public List<ColumnProfile> ColumnProfiles { get; set; } = new();
+
 
         /// <summary> Создает конфиг с параметрами по-умолчанию </summary>
         private void CreateBaseConfig()
