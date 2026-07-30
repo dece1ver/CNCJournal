@@ -5,93 +5,105 @@
 @using remeLog.Infrastructure.Types
 @using remeLog.Models
 
-<PageTitle>Детали</PageTitle>
+<PageTitle>Детали · remeLog</PageTitle>
 
-<h1>Детали</h1>
+<div class="page-head">
+    <h1>Детали</h1>
+    <span class="meta">@FromDate.ToString("dd.MM.yyyy") — @ToDate.ToString("dd.MM.yyyy")</span>
+</div>
 
 <div class="filters">
-    <label>
-        С
-        <input type="date" @bind="FromDate" />
-    </label>
-    <label>
-        По
-        <input type="date" @bind="ToDate" />
-    </label>
-    <label>
-        Деталь
-        <input type="text" @bind="PartNameFilter" @bind:event="oninput" />
-    </label>
-    <label>
-        М/Л
-        <input type="text" @bind="OrderFilter" @bind:event="oninput" />
-    </label>
-    <label>
-        Оператор
-        <input type="text" @bind="OperatorFilter" @bind:event="oninput" />
-    </label>
-    <label>
-        Станки
+    <div class="filter-field">
+        <label class="field-label" for="from">С</label>
+        <input id="from" type="date" @bind="FromDate" />
+    </div>
+    <div class="filter-field">
+        <label class="field-label" for="to">По</label>
+        <input id="to" type="date" @bind="ToDate" />
+    </div>
+    <div class="filter-field">
+        <label class="field-label" for="partName">Деталь</label>
+        <input id="partName" type="text" @bind="PartNameFilter" @bind:event="oninput" />
+    </div>
+    <div class="filter-field">
+        <label class="field-label" for="order">М/Л</label>
+        <input id="order" type="text" @bind="OrderFilter" @bind:event="oninput" />
+    </div>
+    <div class="filter-field">
+        <label class="field-label" for="operatorFilter">Оператор</label>
+        <input id="operatorFilter" type="text" @bind="OperatorFilter" @bind:event="oninput" />
+    </div>
+    <fieldset class="filter-field">
+        <legend class="field-label">Станки</legend>
         <div class="machine-list">
             @foreach (var machine in _allMachines)
             {
-                <label style="flex-direction:row;align-items:center;gap:0.35rem;">
+                <label class="machine-item">
                     <input type="checkbox" checked="@_selectedMachines.Contains(machine)"
                            @onchange="@(e => ToggleMachine(machine, (bool)e.Value!))" />
                     @machine
                 </label>
             }
         </div>
-    </label>
+    </fieldset>
     <button @onclick="LoadAsync" disabled="@_loading">Показать</button>
 </div>
 
 @if (_loading)
 {
-    <p>Загрузка...</p>
+    <p class="state-line">Загрузка…</p>
 }
 else if (_error is not null)
 {
-    <p style="color:#991b1b">@_error</p>
+    <p class="state-line state-error">@_error</p>
 }
 else if (_parts is not null)
 {
-    <p>@_parts.Count дет.</p>
-    <table>
-        <thead>
-            <tr>
-                <th>Станок</th>
-                <th>Дата</th>
-                <th>Смена</th>
-                <th>Оператор</th>
-                <th>Деталь</th>
-                <th>М/Л</th>
-                <th>Уст.</th>
-                <th>Выполнено</th>
-                <th>Всего</th>
-                <th>Наладка (норм.)</th>
-                <th>Наладка (факт)</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var part in _parts)
-            {
-                <tr>
-                    <td>@part.Machine</td>
-                    <td>@part.ShiftDate.ToString("dd.MM.yyyy")</td>
-                    <td>@part.Shift</td>
-                    <td>@part.Operator</td>
-                    <td>@part.PartName</td>
-                    <td>@part.Order</td>
-                    <td>@part.Setup</td>
-                    <td>@part.FinishedCount</td>
-                    <td>@part.TotalCount</td>
-                    <td>@part.SetupTimePlan.ToString("0")</td>
-                    <td>@part.SetupTimeFact.ToString("0")</td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    @if (_parts.Count == 0)
+    {
+        <p class="state-line">Ничего не найдено по заданным условиям.</p>
+    }
+    else
+    {
+        <p class="table-caption">@_parts.Count дет.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Станок</th>
+                        <th>Дата</th>
+                        <th>Смена</th>
+                        <th>Оператор</th>
+                        <th>Деталь</th>
+                        <th>М/Л</th>
+                        <th class="num">Уст.</th>
+                        <th class="num">Выполнено</th>
+                        <th class="num">Всего</th>
+                        <th class="num">Наладка, норм.</th>
+                        <th class="num">Наладка, факт.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var part in _parts)
+                    {
+                        <tr>
+                            <td>@part.Machine</td>
+                            <td>@part.ShiftDate.ToString("dd.MM.yyyy")</td>
+                            <td>@part.Shift</td>
+                            <td>@part.Operator</td>
+                            <td>@part.PartName</td>
+                            <td>@part.Order</td>
+                            <td class="num">@part.Setup</td>
+                            <td class="num">@part.FinishedCount</td>
+                            <td class="num">@part.TotalCount</td>
+                            <td class="num">@part.SetupTimePlan.ToString("0")</td>
+                            <td class="num">@part.SetupTimeFact.ToString("0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 }
 
 @code {

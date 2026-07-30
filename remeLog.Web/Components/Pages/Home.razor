@@ -3,57 +3,72 @@
 @using remeLog.Core.Services
 @using remeLog.Models
 
-<PageTitle>Сводка по сменам</PageTitle>
+<PageTitle>Сводка по сменам · remeLog</PageTitle>
 
-<h1>Сводка по сменам</h1>
+<div class="page-head">
+    <h1>Сводка по сменам</h1>
+    <span class="meta">@FromDate.ToString("dd.MM.yyyy") — @ToDate.ToString("dd.MM.yyyy")</span>
+</div>
 
 <div class="filters">
-    <label>
-        С
-        <input type="date" @bind="FromDate" />
-    </label>
-    <label>
-        По
-        <input type="date" @bind="ToDate" />
-    </label>
+    <div class="filter-field">
+        <label class="field-label" for="from">С</label>
+        <input id="from" type="date" @bind="FromDate" />
+    </div>
+    <div class="filter-field">
+        <label class="field-label" for="to">По</label>
+        <input id="to" type="date" @bind="ToDate" />
+    </div>
     <button @onclick="LoadAsync" disabled="@_loading">Обновить</button>
 </div>
 
 @if (_loading)
 {
-    <p>Загрузка...</p>
+    <p class="state-line">Загрузка…</p>
 }
 else if (_error is not null)
 {
-    <p style="color:#991b1b">@_error</p>
+    <p class="state-line state-error">@_error</p>
 }
 else if (_rows is not null)
 {
-    <table>
-        <thead>
-            <tr>
-                <th>Станок</th>
-                <th>Отчёт за период</th>
-                <th>Проверен</th>
-                <th>Смен за период</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var row in _rows)
-            {
-                <tr>
-                    <td>@row.Machine</td>
-                    <td>
-                        <span class="badge @BadgeClass(row.State)">@StateText(row.State)</span>
-                    </td>
-                    <td>@(row.IsChecked ? "Да" : "Нет")</td>
-                    <td>@_shiftsByMachine.GetValueOrDefault(row.Machine, 0)</td>
-                    <td><a href="@($"/parts?machine={Uri.EscapeDataString(row.Machine)}&from={FromDate:yyyy-MM-dd}&to={ToDate:yyyy-MM-dd}")">детали →</a></td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    @if (_rows.Count == 0)
+    {
+        <p class="state-line">Нет станков.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Станок</th>
+                        <th>Отчёт за период</th>
+                        <th>Проверен</th>
+                        <th class="num">Смен за период</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        <tr>
+                            <td>@row.Machine</td>
+                            <td><span class="stamp @StampClass(row.State)">@StateText(row.State)</span></td>
+                            <td>@(row.IsChecked ? "Да" : "—")</td>
+                            <td class="num">@_shiftsByMachine.GetValueOrDefault(row.Machine, 0)</td>
+                            <td>
+                                <a class="row-link"
+                                   href="@($"/parts?machine={Uri.EscapeDataString(row.Machine)}&from={FromDate:yyyy-MM-dd}&to={ToDate:yyyy-MM-dd}")">
+                                    детали →
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 }
 
 @code {
@@ -97,11 +112,11 @@ else if (_rows is not null)
         }
     }
 
-    private static string BadgeClass(CombinedParts.ReportState state) => state switch
+    private static string StampClass(CombinedParts.ReportState state) => state switch
     {
-        CombinedParts.ReportState.Exist => "badge-exist",
-        CombinedParts.ReportState.Partial => "badge-partial",
-        _ => "badge-notexist",
+        CombinedParts.ReportState.Exist => "stamp-ok",
+        CombinedParts.ReportState.Partial => "stamp-warn",
+        _ => "stamp-alert",
     };
 
     private static string StateText(CombinedParts.ReportState state) => state switch
