@@ -236,7 +236,7 @@ namespace remeLog.ViewModels
             try
             {
                 var (status, machineFilters, _) = await Database.ReadMachinesAsync();
-                if (status != DbResult.Ok || machineFilters == null) return;
+                if (status != remeLog.Core.Db.DbResult.Ok || machineFilters == null) return;
 
                 var savedMachines = AppSettings.Instance.MachineInspectionCalendarSelectedMachines ?? new List<string>();
 

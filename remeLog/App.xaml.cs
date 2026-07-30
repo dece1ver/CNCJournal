@@ -28,6 +28,9 @@ namespace remeLog
 
         public App()
         {
+            Core.Log.Write = Util.WriteLog;
+            Core.Log.WriteError = (ex, msg) => Util.WriteLog(ex, msg ?? "");
+            Core.Persistence.Save = AppSettings.Save;
 
             _uniqueEventName = CreateUniqueEventName();
 

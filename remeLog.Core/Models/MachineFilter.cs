@@ -1,4 +1,4 @@
-﻿using libeLog.Base;
+﻿using remeLog.Core;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace remeLog.Models
 {
-    public class MachineFilter : ViewModel
+    public class MachineFilter : ObservableObject
     {
         public MachineFilter(string machine, string type, bool filter)
         {

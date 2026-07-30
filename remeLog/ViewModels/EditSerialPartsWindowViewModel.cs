@@ -401,7 +401,7 @@ namespace remeLog.ViewModels
                 {
                     InProgress = true;
                     if (MessageBoxWindow.Show("Удалить норматив?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.No) != MessageBoxResult.Yes) return;
-                    await Database.RemoveNormativeAsync(normative);
+                    await OperatorsDatabase.RemoveNormativeAsync(normative);
                     await LoadSerialPartsAsync();
                 }
                 catch (Exception ex)

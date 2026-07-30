@@ -1,11 +1,10 @@
-using libeLog.Extensions;
-using libeLog.Infrastructure;
-using libeLog.Models;
 using Microsoft.Data.SqlClient;
+using remeLog.Core;
+using remeLog.Core.Db;
+using remeLog.Core.Extensions;
 using remeLog.Infrastructure.Extensions;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
-using remeLog.Models.Reports;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -13,49 +12,17 @@ using System.Data;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using static libeLog.Infrastructure.Db.DbHelper;
 using Part = remeLog.Models.Part;
 
 namespace remeLog.Infrastructure
 {
     public static partial class Database
     {
-        public static async Task SaveSerialPartAsync(SerialPart part, IProgress<string>? progress = null)
-        {
-            string query = part.Id == 0
-                ? "IF NOT EXISTS (SELECT 1 FROM cnc_serial_parts WHERE PartName = @PartName) " +
-                  "BEGIN INSERT INTO cnc_serial_parts (PartName, YearCount) VALUES (@PartName, @YearCount); END"
-                : "UPDATE cnc_serial_parts SET PartName = @PartName, YearCount = @YearCount WHERE Id = @Id;";
-
-            using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
-            await connection.OpenAsync();
-
-            using var command = new SqlCommand(query, connection);
-            command.Parameters.AddWithValue("@PartName", part.PartName);
-            command.Parameters.AddWithValue("@YearCount", part.YearCount);
-            if (part.Id != 0)
-                command.Parameters.AddWithValue("@Id", part.Id);
-
-            progress?.Report($"Сохранение детали '{part.PartName}'...");
-            await command.ExecuteNonQueryAsync();
-            progress?.Report($"Деталь '{part.PartName}' успешно сохранена.");
-        }
-
-        public static async Task SaveSerialPartsAsync(IEnumerable<SerialPart> partNames, IProgress<string>? progress = null)
-        {
-            progress?.Report("Сохранение серийных деталей в БД...");
-            foreach (var part in partNames)
-            {
-                await SaveSerialPartAsync(part, progress);
-            }
-            progress?.Report("Сохранение серийных деталей завершено.");
-        }
-
         public static async Task DeleteSerialPartAsync(int partId, IProgress<string>? progress = null)
         {
             const string query = "DELETE FROM cnc_serial_parts WHERE Id = @Id;";
 
-            using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            using var connection = new SqlConnection(DomainSettings.ConnectionString);
             await connection.OpenAsync();
 
             using var command = new SqlCommand(query, connection);
@@ -79,7 +46,7 @@ namespace remeLog.Infrastructure
             List<Part> parts = new();
             await Task.Run(async () =>
             {
-                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                using (SqlConnection connection = new(DomainSettings.ConnectionString))
                 {
                     await connection.OpenAsync(cancellationToken);
                     string query = $"SELECT * FROM Parts WHERE {conditions} ORDER BY StartSetupTime ASC;";
@@ -95,7 +62,7 @@ namespace remeLog.Infrastructure
         public async static Task<ObservableCollection<Part>> ReadPartsByShiftDateAndMachine(DateTime fromDate, DateTime toDate, string machine, CancellationToken cancellationToken)
         {
             ObservableCollection<Part> parts = new();
-            using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+            using (SqlConnection connection = new(DomainSettings.ConnectionString))
             {
                 connection.Open();
 
@@ -115,7 +82,7 @@ namespace remeLog.Infrastructure
         public async static Task<ObservableCollection<Part>> ReadPartsByShiftDate(DateTime fromDate, DateTime toDate, CancellationToken cancellationToken)
         {
             ObservableCollection<Part> parts = new();
-            using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+            using (SqlConnection connection = new(DomainSettings.ConnectionString))
             {
                 connection.Open();
 
@@ -145,7 +112,7 @@ namespace remeLog.Infrastructure
                 .GroupBy(x => x.index / chunkSize)
                 .Select(g => g.Select(x => x.guid).ToList());
 
-            using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            using var connection = new SqlConnection(DomainSettings.ConnectionString);
             await connection.OpenAsync(cancellationToken);
 
             foreach (var chunk in chunks)
@@ -169,7 +136,7 @@ namespace remeLog.Infrastructure
         public async static Task<ObservableCollection<Part>> ReadPartsByPartNameAndOrder(string[] partNames, string[] orders, CancellationToken cancellationToken)
         {
             ObservableCollection<Part> parts = new();
-            using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+            using (SqlConnection connection = new(DomainSettings.ConnectionString))
             {
                 connection.Open();
 
@@ -186,7 +153,7 @@ namespace remeLog.Infrastructure
         {
             try
             {
-                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                using (SqlConnection connection = new(DomainSettings.ConnectionString))
                 {
                     await connection.OpenAsync();
                     string updateQuery = "UPDATE Parts SET " +
@@ -321,17 +288,17 @@ namespace remeLog.Infrastructure
                 {
                     case 18456:
                         var authMessage = $"Ошибка №{sqlEx.Number}:\nОшибка авторизации.";
-                        Util.WriteLog(sqlEx, authMessage);
+                        Log.WriteError(sqlEx,authMessage);
                         return DbResult<string>.Fail(DbResult.AuthError, authMessage);
                     default:
                         var sqlExMessage = $"Ошибка №{sqlEx.Number}:";
-                        Util.WriteLog(sqlEx, sqlExMessage);
+                        Log.WriteError(sqlEx,sqlExMessage);
                         return DbResult<string>.Fail(DbResult.Error, sqlExMessage);
                 }
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex);
+                Log.WriteError(ex, null);
                 return DbResult<string>.FailWithError(ex.Message);
             }
                 }
@@ -477,7 +444,7 @@ namespace remeLog.Infrastructure
             string partName, string order, string machine, int setup, DateTime beforeDate,
             int maxRecords, int maxDaysBack, CancellationToken cancellationToken)
         {
-            using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            using var connection = new SqlConnection(DomainSettings.ConnectionString);
             await connection.OpenAsync(cancellationToken);
 
             // Заказ ИСКЛЮЧАЕТСЯ (не совпадает), а не совпадает: цель истории — проверить
@@ -567,7 +534,7 @@ namespace remeLog.Infrastructure
             var masters = new List<string>();
             try
             {
-                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                using (SqlConnection connection = new(DomainSettings.ConnectionString))
                 {
                     connection.Open();
                     string query = $"SELECT FullName FROM masters WHERE IsActive = 1 ORDER BY FullName ASC";
@@ -589,16 +556,16 @@ namespace remeLog.Infrastructure
                 switch (sqlEx.Number)
                 {
                     case 18456:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
+                        Log.WriteError(sqlEx,$"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
                         return DbResult<List<string>>.Fail(DbResult.AuthError, "Ошибка авторизации.");
                     default:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
+                        Log.WriteError(sqlEx,$"Ошибка №{sqlEx.Number}:");
                         return DbResult<List<string>>.Fail(DbResult.Error, $"Ошибка №{sqlEx.Number}:");
                 }
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex);
+                Log.WriteError(ex, null);
                 return DbResult<List<string>>.FailWithError(ex.Message);
             }
         }
@@ -607,7 +574,7 @@ namespace remeLog.Infrastructure
         {
             try
             {
-                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                using (SqlConnection connection = new(DomainSettings.ConnectionString))
                 {
                     connection.Open();
                     string query = $"DELETE FROM parts WHERE GUID = @Guid";
@@ -624,16 +591,16 @@ namespace remeLog.Infrastructure
                 switch (sqlEx.Number)
                 {
                     case 18456:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
+                        Log.WriteError(sqlEx,$"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
                         return DbResult<bool>.Fail(DbResult.AuthError, "Ошибка авторизации.");
                     default:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
+                        Log.WriteError(sqlEx,$"Ошибка №{sqlEx.Number}:");
                         return DbResult<bool>.Fail(DbResult.Error, $"Ошибка №{sqlEx.Number}:");
                 }
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex);
+                Log.WriteError(ex, null);
                 return DbResult<bool>.FailWithError(ex.Message);
             }
         }

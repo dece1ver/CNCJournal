@@ -39,57 +39,134 @@ namespace remeLog.Infrastructure
         [JsonIgnore] public static readonly string LogFile = Path.Combine(BasePath, "log");
 
         /// <summary> Нормализованные имена серийных деталей </summary>
-        [JsonIgnore] public static HashSet<string> SerialParts { get; set; } = new();
+        [JsonIgnore]
+        public static HashSet<string> SerialParts
+        {
+            get => Core.DomainSettings.SerialParts;
+            set => Core.DomainSettings.SerialParts = value;
+        }
 
         [JsonIgnore]
         public static readonly string[] ShiftTypes = new string[] { "День", "Ночь" };
 
         [JsonIgnore]
-        public List<(string Reason, bool RequireComment)> SetupReasons { get; set; } = new();
+        public List<(string Reason, bool RequireComment)> SetupReasons
+        {
+            get => Core.DomainSettings.SetupReasons;
+            set => Core.DomainSettings.SetupReasons = value;
+        }
         [JsonIgnore]
-        public List<(string Reason, bool RequireComment)> MachiningReasons { get; set; } = new();
+        public List<(string Reason, bool RequireComment)> MachiningReasons
+        {
+            get => Core.DomainSettings.MachiningReasons;
+            set => Core.DomainSettings.MachiningReasons = value;
+        }
         [JsonIgnore]
         public List<string> UnspecifiedDowntimesReasons = new();
         [JsonIgnore]
-        public static RemeLogFeature EnabledFeatures { get; set; } = RemeLogFeature.None;
+        public static RemeLogFeature EnabledFeatures
+        {
+            get => Core.DomainSettings.EnabledFeatures;
+            set => Core.DomainSettings.EnabledFeatures = value;
+        }
         [JsonIgnore]
-        public static bool FeaturesExplicitlySet { get; set; }
+        public static bool FeaturesExplicitlySet
+        {
+            get => Core.DomainSettings.FeaturesExplicitlySet;
+            set => Core.DomainSettings.FeaturesExplicitlySet = value;
+        }
 
         [JsonIgnore]
-        public static double MaxSetupLimit { get; set; } = 2;
+        public static double MaxSetupLimit
+        {
+            get => Core.DomainSettings.MaxSetupLimit;
+            set => Core.DomainSettings.MaxSetupLimit = value;
+        }
         [JsonIgnore]
-        public static Dictionary<string, double> MaxSetupLimits { get; set; } = new();
+        public static Dictionary<string, double> MaxSetupLimits
+        {
+            get => Core.DomainSettings.MaxSetupLimits;
+            set => Core.DomainSettings.MaxSetupLimits = value;
+        }
         [JsonIgnore]
-        public static double FallbackMaxSetupLimitValue { get; set; } = 1.5;
+        public static double FallbackMaxSetupLimitValue
+        {
+            get => Core.DomainSettings.FallbackMaxSetupLimitValue;
+            set => Core.DomainSettings.FallbackMaxSetupLimitValue = value;
+        }
         [JsonIgnore]
-        public static double LongSetupLimit { get; set; } = 240;
+        public static double LongSetupLimit
+        {
+            get => Core.DomainSettings.LongSetupLimit;
+            set => Core.DomainSettings.LongSetupLimit = value;
+        }
         [JsonIgnore]
-        public static string NcArchivePath { get; set; } = "";
+        public static string NcArchivePath
+        {
+            get => Core.DomainSettings.NcArchivePath;
+            set => Core.DomainSettings.NcArchivePath = value;
+        }
         [JsonIgnore]
-        public static string NcIntermediatePath { get; set; } = "";
+        public static string NcIntermediatePath
+        {
+            get => Core.DomainSettings.NcIntermediatePath;
+            set => Core.DomainSettings.NcIntermediatePath = value;
+        }
         [JsonIgnore]
-        public static string[] Administrators { get; set; } = Array.Empty<string>();
+        public static string[] Administrators
+        {
+            get => Core.DomainSettings.Administrators;
+            set => Core.DomainSettings.Administrators = value;
+        }
         [JsonIgnore]
         public static string[] Users { get; set; } = Array.Empty<string>();
         [JsonIgnore]
-        public static string[] CncOperations { get; set; } = Array.Empty<string>();
+        public static string[] CncOperations
+        {
+            get => Core.DomainSettings.CncOperations;
+            set => Core.DomainSettings.CncOperations = value;
+        }
         [JsonIgnore]
-        public static string[] EngineerComments { get; set; } = Array.Empty<string>();
+        public static string[] EngineerComments
+        {
+            get => Core.DomainSettings.EngineerComments;
+            set => Core.DomainSettings.EngineerComments = value;
+        }
         [JsonIgnore]
-        public static DateTime[] Holidays { get; set; } = Array.Empty<DateTime>();
+        public static DateTime[] Holidays
+        {
+            get => Core.DomainSettings.Holidays;
+            set => Core.DomainSettings.Holidays = value;
+        }
         [JsonIgnore]
-        public static string? PcaReportPath { get; set; }
+        public static string? PcaReportPath
+        {
+            get => Core.DomainSettings.PcaReportPath;
+            set => Core.DomainSettings.PcaReportPath = value;
+        }
         [JsonIgnore]
-        public static string AiIp { get; set; } = string.Empty;
+        public static string AiIp
+        {
+            get => Core.DomainSettings.AiIp;
+            set => Core.DomainSettings.AiIp = value;
+        }
         public const int AiPort = 5050;
         [JsonIgnore]
-        public static string AiModel { get; set; } = "qwen3:14b";
+        public static string AiModel
+        {
+            get => Core.DomainSettings.AiModel;
+            set => Core.DomainSettings.AiModel = value;
+        }
         /// <summary>
         /// Версия схемы БД, зафиксированная в cnc_remelog_config при последнем "Обновлении БД"
         /// (любой сборкой). Читается при каждом обновлении настроек.
         /// </summary>
         [JsonIgnore]
-        public static int SchemaVersion { get; set; }
+        public static int SchemaVersion
+        {
+            get => Core.DomainSettings.SchemaVersion;
+            set => Core.DomainSettings.SchemaVersion = value;
+        }
         /// <summary>
         /// Версия схемы, на которую рассчитана ЭТА сборка. Бампать вместе с любым изменением
         /// структуры БД (новые обязательные столбцы, смена семантики существующих и т.п.) —
@@ -110,7 +187,11 @@ namespace remeLog.Infrastructure
 
 
         /// <summary> Режим отладки </summary>
-        public bool DebugMode { get; set; }
+        public bool DebugMode
+        {
+            get => Core.DomainSettings.DebugMode;
+            set => Core.DomainSettings.DebugMode = value;
+        }
         /// <summary> Источник информации </summary>
         public DataSource DataSource { get; set; }
 
@@ -123,7 +204,11 @@ namespace remeLog.Infrastructure
         /// <summary> ID таблицы СЗН </summary>
         public string? AssignedPartsSheet { get; set; }
         /// <summary> Строка подключения к БД </summary>
-        public string? ConnectionString { get; set; }
+        public string? ConnectionString
+        {
+            get => Core.DomainSettings.ConnectionString;
+            set => Core.DomainSettings.ConnectionString = value;
+        }
 
         public bool InstantUpdateOnMainWindow { get; set; }
 

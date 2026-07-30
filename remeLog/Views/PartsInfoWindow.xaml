@@ -11,7 +11,7 @@
         xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
         xmlns:cnt="clr-namespace:remeLog.Views.Controls"
         xmlns:vm="clr-namespace:remeLog.ViewModels"
-        xmlns:md="clr-namespace:remeLog.Models"
+        xmlns:md="clr-namespace:remeLog.Models;assembly=remeLog.Core"
         mc:Ignorable="d" 
         d:DataContext="{d:DesignInstance Type=vm:PartsInfoWindowViewModel}"
         Title="{Binding PartsInfo.Machine}" Height="800" Width="1700" 

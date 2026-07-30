@@ -1,12 +1,10 @@
-﻿using DocumentFormat.OpenXml.Wordprocessing;
-using libeLog.Base;
-using libeLog.Extensions;
+﻿using remeLog.Core;
 using System;
 using System.ComponentModel;
 
 namespace remeLog.Models
 {
-    public class OperatorInfo : ViewModel, IDataErrorInfo
+    public class OperatorInfo : ObservableObject, IDataErrorInfo
     {
         private string _originalFirstName;
         private string _originalLastName;

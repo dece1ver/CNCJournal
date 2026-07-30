@@ -52,13 +52,13 @@ namespace remeLog.Infrastructure
             var shiftsResult = Database.GetShiftsByPeriod(machines, fromDate, toDate, new Shift(ShiftType.All));
             switch (shiftsResult.Status)
             {
-                case libeLog.Models.DbResult.AuthError:
+                case remeLog.Core.Db.DbResult.AuthError:
                     MessageBoxWindow.Show("AuthError");
                     return "";
-                case libeLog.Models.DbResult.Error:
+                case remeLog.Core.Db.DbResult.Error:
                     MessageBoxWindow.Show("Error");
                     return "";
-                case libeLog.Models.DbResult.NoConnection:
+                case remeLog.Core.Db.DbResult.NoConnection:
                     MessageBoxWindow.Show("NoConnection");
                     return "";
             }

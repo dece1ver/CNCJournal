@@ -166,7 +166,7 @@ namespace remeLog.Views
             if (p is FrameworkElement fe && fe.DataContext is NormativeEntry normative)
             {
                 if (MessageBoxWindow.Show("Удалить норматив?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.No) != MessageBoxResult.Yes) return;
-                await Database.RemoveNormativeAsync(normative);
+                await OperatorsDatabase.RemoveNormativeAsync(normative);
             }
         }
         private bool CanRemoveNormativeCommandExecute(object p) => true;

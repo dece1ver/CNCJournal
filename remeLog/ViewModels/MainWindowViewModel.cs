@@ -728,8 +728,8 @@ namespace remeLog.ViewModels
 
                     var machinesTask = Task.Run(Database.ReadMachines, cancellationToken);
                     var downtimeTask = Task.Run(Database.ReadDowntimeReasons, cancellationToken);
-                    var setupTask = Task.Run(() => Database.ReadDeviationReasons(DeviationReasonType.Setup), cancellationToken);
-                    var machiningTask = Task.Run(() => Database.ReadDeviationReasons(DeviationReasonType.Machining), cancellationToken);
+                    var setupTask = Task.Run(() => Database.ReadDeviationReasons(remeLog.Core.Db.DeviationReasonType.Setup), cancellationToken);
+                    var machiningTask = Task.Run(() => Database.ReadDeviationReasons(remeLog.Core.Db.DeviationReasonType.Machining), cancellationToken);
 
                     await Task.WhenAll(machinesTask, downtimeTask, setupTask, machiningTask);
 #if DEBUG
@@ -741,10 +741,10 @@ namespace remeLog.ViewModels
                     var setupResult = setupTask.Result; var sr = setupResult.Status; var setup = setupResult.Value ?? new List<(string, bool)>();
                     var machiningResult = machiningTask.Result; var cr = machiningResult.Status; var machining = machiningResult.Value ?? new List<(string, bool)>();
 
-                    if (mr != DbResult.Ok) { ShowDbError(mr, "список станков"); return; }
-                    if (dr != DbResult.Ok) { ShowDbError(dr, "причины простоев"); return; }
-                    if (sr != DbResult.Ok) { ShowDbError(sr, "причины отклонений наладки"); return; }
-                    if (cr != DbResult.Ok) { ShowDbError(cr, "причины отклонений изгот."); return; }
+                    if (mr != remeLog.Core.Db.DbResult.Ok) { ShowDbError(mr, "список станков"); return; }
+                    if (dr != remeLog.Core.Db.DbResult.Ok) { ShowDbError(dr, "причины простоев"); return; }
+                    if (sr != remeLog.Core.Db.DbResult.Ok) { ShowDbError(sr, "причины отклонений наладки"); return; }
+                    if (cr != remeLog.Core.Db.DbResult.Ok) { ShowDbError(cr, "причины отклонений изгот."); return; }
 
                     Machines = machines;
                     AppSettings.Instance.UnspecifiedDowntimesReasons = downtimes;
@@ -924,12 +924,12 @@ namespace remeLog.ViewModels
         }
 
         /// <summary>Показывает стандартное сообщение об ошибке БД.</summary>
-        private static void ShowDbError(DbResult result, string entity)
+        private static void ShowDbError(remeLog.Core.Db.DbResult result, string entity)
         {
             var message = result switch
             {
-                DbResult.AuthError => $"Не удалось получить {entity} из-за неудачной авторизации в БД.",
-                DbResult.NoConnection => "Нет соединения с базой данных.",
+                remeLog.Core.Db.DbResult.AuthError => $"Не удалось получить {entity} из-за неудачной авторизации в БД.",
+                remeLog.Core.Db.DbResult.NoConnection => "Нет соединения с базой данных.",
                 _ => $"Не удалось получить {entity} из-за ошибки.",
             };
             MessageBoxWindow.Show(message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);

@@ -1,16 +1,13 @@
-using libeLog.Extensions;
-using libeLog.Infrastructure;
-using libeLog.Models;
 using Microsoft.Data.SqlClient;
-using remeLog.Infrastructure.Extensions;
+using remeLog.Core;
+using remeLog.Core.Db;
+using remeLog.Core.Extensions;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
-using libeLog.Views;
 
 namespace remeLog.Infrastructure
 {
@@ -27,13 +24,13 @@ namespace remeLog.Infrastructure
                 }
                 else if (readResult.IsOk && readResult.Value.Count > 1)
                 {
-                    MessageBoxWindow.Show("Найдена больше чем одна запись за смену, сообщите разработчику.", "Ошибка.", MessageBoxButton.OK, MessageBoxImage.Error);
-                    Util.WriteLog("Найдена больше чем одна запись за смену.");
-                    return DbResult<bool>.Fail(DbResult.Error, "Найдена больше чем одна запись за смену.");
+                    const string message = "Найдена больше чем одна запись за смену, сообщите разработчику.";
+                    Log.Write(message);
+                    return DbResult<bool>.Fail(DbResult.Error, message);
                 }
-                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                using (SqlConnection connection = new(DomainSettings.ConnectionString))
                 {
-                    if (AppSettings.Instance.DebugMode) Util.WriteLog("Запись в БД информации о смене.");
+                    if (DomainSettings.DebugMode) Log.Write("Запись в БД информации о смене.");
                     connection.Open();
                     string query = $"INSERT INTO cnc_shifts (ShiftDate, Shift, Machine, Master, UnspecifiedDowntimes, DowntimesComment, CommonComment, IsChecked) " +
                         $"VALUES (@ShiftDate, @Shift, @Machine, @Master, @UnspecifiedDowntimes, @DowntimesComment, @CommonComment, @IsChecked); SELECT SCOPE_IDENTITY()";
@@ -48,7 +45,7 @@ namespace remeLog.Infrastructure
                         command.Parameters.AddWithValue("CommonComment", shiftInfo.CommonComment);
                         command.Parameters.AddWithValue("IsChecked", shiftInfo.IsChecked);
                         var result = command.ExecuteScalar();
-                        if (AppSettings.Instance.DebugMode) Util.WriteLog($"Смена записана и присвоен ID: {shiftInfo.Id}");
+                        if (DomainSettings.DebugMode) Log.Write($"Смена записана и присвоен ID: {shiftInfo.Id}");
                     }
                     return DbResult<bool>.Ok(true);
                 }
@@ -58,22 +55,22 @@ namespace remeLog.Infrastructure
                 switch (sqlEx.Number)
                 {
                     case -1:
-                        Util.WriteLog("База данных недоступна.");
+                        Log.Write("База данных недоступна.");
                         return DbResult<bool>.Fail(DbResult.NoConnection, "База данных недоступна.");
                     case 2601 or 2627:
-                        Util.WriteLog($"Ошибка №{sqlEx.Number}:\nЗапись в БД уже существует.");
+                        Log.Write($"Ошибка №{sqlEx.Number}:\nЗапись в БД уже существует.");
                         return DbResult<bool>.Fail(DbResult.Error, $"Запись в БД уже существует.");
                     case 18456:
-                        Util.WriteLog($"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
+                        Log.Write($"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
                         return DbResult<bool>.Fail(DbResult.AuthError, "Ошибка авторизации.");
                     default:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
+                        Log.WriteError(sqlEx,$"Ошибка №{sqlEx.Number}:");
                         return DbResult<bool>.Fail(DbResult.Error, $"Ошибка №{sqlEx.Number}:");
                 }
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex);
+                Log.WriteError(ex, null);
                 return DbResult<bool>.FailWithError(ex.Message);
             }
         }
@@ -83,7 +80,7 @@ namespace remeLog.Infrastructure
             var shifts = new List<ShiftInfo>();
             try
             {
-                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                using (SqlConnection connection = new(DomainSettings.ConnectionString))
                 {
                     connection.Open();
                     string query = $"SELECT * FROM cnc_shifts WHERE ShiftDate = @ShiftDate AND Shift = @Shift AND Machine = @Machine";
@@ -133,16 +130,16 @@ namespace remeLog.Infrastructure
                 switch (sqlEx.Number)
                 {
                     case 18456:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
+                        Log.WriteError(sqlEx,$"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
                         return DbResult<List<ShiftInfo>>.Fail(DbResult.AuthError, "Ошибка авторизации.");
                     default:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
+                        Log.WriteError(sqlEx,$"Ошибка №{sqlEx.Number}:");
                         return DbResult<List<ShiftInfo>>.Fail(DbResult.Error, $"Ошибка №{sqlEx.Number}:");
                 }
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex);
+                Log.WriteError(ex, null);
                 return DbResult<List<ShiftInfo>>.FailWithError(ex.Message);
             }
         }
@@ -152,7 +149,7 @@ namespace remeLog.Infrastructure
             var shifts = new List<ShiftInfo>();
             try
             {
-                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                using (SqlConnection connection = new(DomainSettings.ConnectionString))
                 {
                     connection.Open();
                     string machinesNames = string.Join(", ", machines.Select(m => $"'{m}'"));
@@ -205,16 +202,16 @@ namespace remeLog.Infrastructure
                 switch (sqlEx.Number)
                 {
                     case 18456:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
+                        Log.WriteError(sqlEx,$"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
                         return DbResult<List<ShiftInfo>>.Fail(DbResult.AuthError, "Ошибка авторизации.");
                     default:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
+                        Log.WriteError(sqlEx,$"Ошибка №{sqlEx.Number}:");
                         return DbResult<List<ShiftInfo>>.Fail(DbResult.Error, $"Ошибка №{sqlEx.Number}:");
                 }
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex);
+                Log.WriteError(ex, null);
                 return DbResult<List<ShiftInfo>>.FailWithError(ex.Message);
             }
         }
@@ -223,7 +220,7 @@ namespace remeLog.Infrastructure
         {
             try
             {
-                using (SqlConnection connection = new(AppSettings.Instance.ConnectionString))
+                using (SqlConnection connection = new(DomainSettings.ConnectionString))
                 {
                     connection.Open();
                     string query = $"UPDATE cnc_shifts SET Master = @Master, UnspecifiedDowntimes = @UnspecifiedDowntimes, DowntimesComment = @DowntimesComment, CommonComment = @CommonComment, IsChecked = @IsChecked  " +
@@ -241,12 +238,12 @@ namespace remeLog.Infrastructure
                         int rowsAffected = command.ExecuteNonQuery();
                         if (rowsAffected == 0)
                         {
-                            Util.WriteLog("Смена не найдена, добавение новой.");
+                            Log.Write("Смена не найдена, добавение новой.");
                             return WriteShiftInfo(shiftInfo);
                         }
                         else
                         {
-                            if (AppSettings.Instance.DebugMode) Util.WriteLog($"Смена обновлена.");
+                            if (DomainSettings.DebugMode) Log.Write($"Смена обновлена.");
                         }
                     }
                     return DbResult<bool>.Ok(true);
@@ -257,22 +254,22 @@ namespace remeLog.Infrastructure
                 switch (sqlEx.Number)
                 {
                     case -1:
-                        Util.WriteLog("База данных недоступна.");
+                        Log.Write("База данных недоступна.");
                         return DbResult<bool>.Fail(DbResult.NoConnection, "База данных недоступна.");
                     case 2601 or 2627:
-                        Util.WriteLog($"Ошибка №{sqlEx.Number}:\nЗапись в БД уже существует.");
+                        Log.Write($"Ошибка №{sqlEx.Number}:\nЗапись в БД уже существует.");
                         return DbResult<bool>.Fail(DbResult.Error, $"Запись в БД уже существует.");
                     case 18456:
-                        Util.WriteLog($"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
+                        Log.Write($"Ошибка №{sqlEx.Number}:\nОшибка авторизации.");
                         return DbResult<bool>.Fail(DbResult.AuthError, "Ошибка авторизации.");
                     default:
-                        Util.WriteLog(sqlEx, $"Ошибка №{sqlEx.Number}:");
+                        Log.WriteError(sqlEx,$"Ошибка №{sqlEx.Number}:");
                         return DbResult<bool>.Fail(DbResult.Error, $"Ошибка №{sqlEx.Number}:");
                 }
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex);
+                Log.WriteError(ex, null);
                 return DbResult<bool>.FailWithError(ex.Message);
             }
         }

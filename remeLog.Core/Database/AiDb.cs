@@ -1,6 +1,6 @@
-using libeLog.Infrastructure;
-using libeLog.Models;
 using Microsoft.Data.SqlClient;
+using remeLog.Core;
+using remeLog.Core.Db;
 using remeLog.Infrastructure.Extensions;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
@@ -52,7 +52,7 @@ namespace remeLog.Infrastructure
 
             try
             {
-                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync();
                 await using var cmd = new SqlCommand(upsertSql, conn);
 
@@ -76,14 +76,14 @@ namespace remeLog.Infrastructure
             }
             catch (SqlException sqlEx)
             {
-                Util.WriteLog(sqlEx, $"SaveDayReviewAsync: #{sqlEx.Number}");
+                Log.WriteError(sqlEx, $"SaveDayReviewAsync: #{sqlEx.Number}");
                 return sqlEx.Number == 18456
                     ? DbResult<int>.Fail(DbResult.AuthError, $"Ошибка авторизации: {sqlEx.Message}")
                     : DbResult<int>.Fail(DbResult.Error, $"Ошибка БД #{sqlEx.Number}: {sqlEx.Message}");
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex, "SaveDayReviewAsync");
+                Log.WriteError(ex,"SaveDayReviewAsync");
                 return DbResult<int>.FailWithError(ex.Message);
             }
         }
@@ -105,7 +105,7 @@ namespace remeLog.Infrastructure
         WHERE Id = @Id";
             try
             {
-                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync();
                 await using var cmd = new SqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@Id", dayReviewId);
@@ -124,7 +124,7 @@ namespace remeLog.Infrastructure
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex, "SaveAiAnalysisAsync");
+                Log.WriteError(ex,"SaveAiAnalysisAsync");
                 return DbResult<bool>.FailWithError(ex.Message);
             }
         }
@@ -142,7 +142,7 @@ namespace remeLog.Infrastructure
 
             try
             {
-                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync();
                 await using var cmd = new SqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@Machine", machine);
@@ -153,7 +153,7 @@ namespace remeLog.Infrastructure
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex, "GetDayReviewAsync");
+                Log.WriteError(ex,"GetDayReviewAsync");
                 return null;
             }
         }
@@ -175,7 +175,7 @@ namespace remeLog.Infrastructure
 
             try
             {
-                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync();
                 await using var cmd = new SqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@From", fromDate.Date);
@@ -190,7 +190,7 @@ namespace remeLog.Infrastructure
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex, "GetDayReviewsForPeriodAsync");
+                Log.WriteError(ex,"GetDayReviewsForPeriodAsync");
             }
 
             return result;
@@ -211,7 +211,7 @@ namespace remeLog.Infrastructure
 
             try
             {
-                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync(ct);
                 await using var cmd = new SqlCommand(sql, conn);
                 await using var r = await cmd.ExecuteReaderAsync(ct);
@@ -222,7 +222,7 @@ namespace remeLog.Infrastructure
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex, "GetAllDayReviewsAsync");
+                Log.WriteError(ex,"GetAllDayReviewsAsync");
             }
 
             return result;
@@ -243,7 +243,7 @@ namespace remeLog.Infrastructure
 
             try
             {
-                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync();
                 await using var cmd = new SqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@DayReviewId", flag.DayReviewId);
@@ -257,7 +257,7 @@ namespace remeLog.Infrastructure
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex, "SavePartFlagAsync");
+                Log.WriteError(ex,"SavePartFlagAsync");
                 return DbResult<string>.FailWithError(ex.Message);
             }
         }
@@ -273,7 +273,7 @@ namespace remeLog.Infrastructure
             var result = new List<PartFlag>();
             try
             {
-                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync();
                 await using var cmd = new SqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@DayReviewId", dayReviewId);
@@ -298,7 +298,7 @@ namespace remeLog.Infrastructure
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex, "GetPartFlagsAsync");
+                Log.WriteError(ex,"GetPartFlagsAsync");
             }
             return result;
         }
@@ -310,7 +310,7 @@ namespace remeLog.Infrastructure
 
             try
             {
-                await using var conn = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync();
                 await using var cmd = new SqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@DayReviewId", dayReviewId);
@@ -319,7 +319,7 @@ namespace remeLog.Infrastructure
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex, "ClearPartFlagsAsync");
+                Log.WriteError(ex,"ClearPartFlagsAsync");
                 return DbResult<string>.FailWithError(ex.Message);
             }
         }

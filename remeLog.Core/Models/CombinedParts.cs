@@ -1,5 +1,4 @@
-﻿using libeLog.Base;
-using remeLog.Infrastructure;
+﻿using remeLog.Core;
 using remeLog.Infrastructure.Extensions;
 using remeLog.Infrastructure.Types;
 using System;
@@ -8,7 +7,7 @@ using System.Linq;
 
 namespace remeLog.Models
 {
-    public class CombinedParts : ViewModel
+    public class CombinedParts : ObservableObject
     {
         public enum ReportState
         {
@@ -112,7 +111,7 @@ namespace remeLog.Models
             }
         }
 
-        public int TotalShifts => Util.GetWorkDaysBeetween(FromDate, ToDate) * 2;
+        public int TotalShifts => DomainSettings.GetWorkDaysBetween(FromDate, ToDate) * 2;
         public int WorkedShifts => Parts.Where(part => part.ShiftDate >= FromDate && part.ShiftDate <= ToDate)
                                         .Select(part => new { part.ShiftDate.Date, part.Shift })
                                         .Distinct().Count();
@@ -120,7 +119,7 @@ namespace remeLog.Models
         public double ShiftsRatio => (double)WorkedShifts / TotalShifts * 100;
 
         public bool IsSingleShift => FromDate == ToDate;
-        public bool IsSingleWorkingShift => IsSingleShift && !AppSettings.Holidays.Contains(ToDate);
+        public bool IsSingleWorkingShift => IsSingleShift && !DomainSettings.Holidays.Contains(ToDate);
         public int Orders => Parts.GroupBy(p => p.Order).Count();
         public double AllFinishedCount => Parts.Sum(p => p.FinishedCount);
         public double FinishedCount => Parts.Where(p => p.Setup == 1).Sum(p => p.FinishedCount);

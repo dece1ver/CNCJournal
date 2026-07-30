@@ -1,16 +1,9 @@
-﻿using DocumentFormat.OpenXml.Spreadsheet;
+﻿using remeLog.Core;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using libeLog.Extensions;
-using libeLog.Models;
-using libeLog;
-using System.Security;
-using DocumentFormat.OpenXml.Wordprocessing;
-
 
 namespace remeLog.Infrastructure.Extensions
 {
@@ -24,7 +17,7 @@ namespace remeLog.Infrastructure.Extensions
 
         public static double AverageSetupRatio(this IEnumerable<Models.Part> parts, string? machine = null)
         {
-            var maxSetupLimit = string.IsNullOrEmpty(machine) ? AppSettings.MaxSetupLimit : AppSettings.MaxSetupLimits[machine];
+            var maxSetupLimit = string.IsNullOrEmpty(machine) ? DomainSettings.MaxSetupLimit : DomainSettings.MaxSetupLimits[machine];
             var validSetupRatios = parts
                 .Where(p => p.SetupRatio > 0 && !double.IsNaN(p.SetupRatio) && !double.IsPositiveInfinity(p.SetupRatio))
                 .Select(p => p.SetupRatio <= maxSetupLimit ? p.SetupRatio : maxSetupLimit)
@@ -40,12 +33,12 @@ namespace remeLog.Infrastructure.Extensions
             {
                 if (p.SetupRatio > 0 && !double.IsNaN(p.SetupRatio) && !double.IsPositiveInfinity(p.SetupRatio))
                 {
-                    setups.Add(p.SetupRatio <= AppSettings.MaxSetupLimit ? p.SetupRatio : AppSettings.MaxSetupLimit);
+                    setups.Add(p.SetupRatio <= DomainSettings.MaxSetupLimit ? p.SetupRatio : DomainSettings.MaxSetupLimit);
                 } 
                 else if (p.SetupTimePlanForReport > 0 && p.PartialSetupTime > 0 && p.PartialSetupTime > p.SetupTimePlanForReport)
                 {
                     var ratio = p.SetupTimePlanForReport / p.PartialSetupTime;
-                    setups.Add(ratio <= AppSettings.MaxSetupLimit ? ratio : AppSettings.MaxSetupLimit);
+                    setups.Add(ratio <= DomainSettings.MaxSetupLimit ? ratio : DomainSettings.MaxSetupLimit);
                 }
             }
             return setups.Any() ? setups.Average() : 0.0;
@@ -55,7 +48,7 @@ namespace remeLog.Infrastructure.Extensions
         {
             var validSetupRatios = parts
                 .Where(p => p.SetupRatioIncludeDowntimes > 0 && !double.IsNaN(p.SetupRatioIncludeDowntimes) && !double.IsPositiveInfinity(p.SetupRatioIncludeDowntimes))
-                .Select(p => p.SetupRatioIncludeDowntimes <= AppSettings.MaxSetupLimit ? p.SetupRatioIncludeDowntimes : AppSettings.MaxSetupLimit)
+                .Select(p => p.SetupRatioIncludeDowntimes <= DomainSettings.MaxSetupLimit ? p.SetupRatioIncludeDowntimes : DomainSettings.MaxSetupLimit)
                 .DefaultIfEmpty(0.0);
 
             return validSetupRatios.Any() ? validSetupRatios.Average() : 0.0;
@@ -359,7 +352,7 @@ namespace remeLog.Infrastructure.Extensions
             {
                 sum += part.SetupTimeFact + part.ProductionTimeFact + part.SetupDowntimes + part.MachiningDowntimes + part.PartialSetupTime;
             }
-            var totalWorkMinutes = Util.GetWorkDaysBeetween(fromDate, toDate) * shift.Minutes;
+            var totalWorkMinutes = DomainSettings.GetWorkDaysBetween(fromDate, toDate) * shift.Minutes;
             return (totalWorkMinutes - sum) / totalWorkMinutes;
         }
 
@@ -379,7 +372,7 @@ namespace remeLog.Infrastructure.Extensions
             {
                 sum += part.SetupTimeFact + part.ProductionTimeFact + part.SetupDowntimes + part.MachiningDowntimes + part.PartialSetupTime;
             }
-            var totalWorkMinutes = Util.GetWorkDaysBeetween(fromDate, toDate) * (int)shiftType;
+            var totalWorkMinutes = DomainSettings.GetWorkDaysBetween(fromDate, toDate) * (int)shiftType;
             return (totalWorkMinutes - sum) / totalWorkMinutes;
         }
 
@@ -413,7 +406,7 @@ namespace remeLog.Infrastructure.Extensions
             var sum = new TimeSpan();
             foreach (var part in parts)
             {
-                sum += part.EndMachiningTime - part.StartSetupTime - (TimeSpan.FromMinutes(DateTimes.GetPartialBreakBetween(part.StartSetupTime, part.EndMachiningTime)));
+                sum += part.EndMachiningTime - part.StartSetupTime - (TimeSpan.FromMinutes(Constants.GetPartialBreakBetween(part.StartSetupTime, part.EndMachiningTime)));
             }
             return sum;
         }
@@ -425,7 +418,7 @@ namespace remeLog.Infrastructure.Extensions
         /// <returns></returns>
         public static TimeSpan FullWorkedTime(this Models.Part part)
         {
-            return part.EndMachiningTime - part.StartSetupTime - (TimeSpan.FromMinutes(DateTimes.GetPartialBreakBetween(part.StartSetupTime, part.EndMachiningTime)));
+            return part.EndMachiningTime - part.StartSetupTime - (TimeSpan.FromMinutes(Constants.GetPartialBreakBetween(part.StartSetupTime, part.EndMachiningTime)));
         }
 
         /// <summary>

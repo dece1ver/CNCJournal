@@ -493,35 +493,35 @@ namespace remeLog.ViewModels
             var dayWriteResult = Database.WriteShiftInfo(dayShift);
             switch (dayWriteResult.Status)
             {
-                case libeLog.Models.DbResult.Ok:
+                case remeLog.Core.Db.DbResult.Ok:
                     Status = "Информация о дневной смене записана.";
                     break;
-                case libeLog.Models.DbResult.AuthError:
+                case remeLog.Core.Db.DbResult.AuthError:
                     Status = "Ошибка авторизации.";
                     break;
-                case libeLog.Models.DbResult.Error:
+                case remeLog.Core.Db.DbResult.Error:
                     Status = "Ошибка авторизации.";
                     break;
-                case libeLog.Models.DbResult.NoConnection:
+                case remeLog.Core.Db.DbResult.NoConnection:
                     Status = "Нет соединения с БД.";
                     break;
             }
             var nightWriteResult = Database.WriteShiftInfo(nightShift);
             switch (nightWriteResult.Status)
             {
-                case libeLog.Models.DbResult.Ok when dayWriteResult.Status is libeLog.Models.DbResult.Ok:
+                case remeLog.Core.Db.DbResult.Ok when dayWriteResult.Status is remeLog.Core.Db.DbResult.Ok:
                     Status = "Информация о сменах записана.";
                     break;
-                case libeLog.Models.DbResult.Ok:
+                case remeLog.Core.Db.DbResult.Ok:
                     Status = "Информация о ночной смене записана.";
                     break;
-                case libeLog.Models.DbResult.AuthError:
+                case remeLog.Core.Db.DbResult.AuthError:
                     Status = "Ошибка авторизации.";
                     break;
-                case libeLog.Models.DbResult.Error:
+                case remeLog.Core.Db.DbResult.Error:
                     Status = "Ошибка БД.";
                     break;
-                case libeLog.Models.DbResult.NoConnection:
+                case remeLog.Core.Db.DbResult.NoConnection:
                     Status = "Нет соединения с БД.";
                     break;
             }

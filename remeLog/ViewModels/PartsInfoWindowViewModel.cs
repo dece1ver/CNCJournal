@@ -2382,20 +2382,20 @@ namespace remeLog.ViewModels
             if (p is Part part && part == SelectedPart
                 && MessageBoxWindow.Show($"Удалить деталь: {part.PartName}?\nДанное действие невозможно отменить.", "Удаление информации", MessageBoxButton.YesNo, MessageBoxImage.Exclamation, MessageBoxDefaultButton.No) == MessageBoxResult.Yes)
             {
-                var deleteResult = Database.DeletePart(part);
+                var deleteResult = part.DeletePart();
                 switch (deleteResult.Status)
                 {
-                    case DbResult.Ok:
+                    case remeLog.Core.Db.DbResult.Ok:
                         _ = LoadPartsAsync();
                         Status = $"Деталь {SelectedPart.PartName} удалена из БД";
                         break;
-                    case DbResult.AuthError:
+                    case remeLog.Core.Db.DbResult.AuthError:
                         Status = "Ошибка авторизации";
                         break;
-                    case DbResult.Error:
+                    case remeLog.Core.Db.DbResult.Error:
                         Status = "Ошибка";
                         break;
-                    case DbResult.NoConnection:
+                    case remeLog.Core.Db.DbResult.NoConnection:
                         Status = "Нет соединения с БД";
                         break;
                 }
@@ -2420,13 +2420,13 @@ namespace remeLog.ViewModels
                 var updateResult = await part.UpdatePartAsync();
                 switch (updateResult.Status)
                 {
-                    case DbResult.Ok:
+                    case remeLog.Core.Db.DbResult.Ok:
                         part.NeedUpdate = false;
                         break;
-                    case DbResult.AuthError:
+                    case remeLog.Core.Db.DbResult.AuthError:
                         MessageBoxWindow.Show(updateResult.Error);
                         break;
-                    case DbResult.Error:
+                    case remeLog.Core.Db.DbResult.Error:
                         MessageBoxWindow.Show(updateResult.Error);
                         break;
                 }
@@ -3605,7 +3605,7 @@ namespace remeLog.ViewModels
             Status = "Сохранение решения...";
             var (result, dayReviewId, message) = await Database.SaveDayReviewAsync(review);
 
-            if (result != DbResult.Ok)
+            if (result != remeLog.Core.Db.DbResult.Ok)
             {
                 MessageBoxWindow.Show(message, "Ошибка сохранения", MessageBoxButton.OK, MessageBoxImage.Error);
                 Status = string.Empty;

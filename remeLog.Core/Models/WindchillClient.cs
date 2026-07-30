@@ -1,5 +1,5 @@
 using Newtonsoft.Json.Linq;
-using remeLog.Infrastructure;
+using remeLog.Core;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -246,7 +246,7 @@ namespace remeLog.Models
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                Util.WriteLog($"Ошибка поиска в Windchill: {response.StatusCode}\n{json}");
+                Log.Write($"Ошибка поиска в Windchill: {response.StatusCode}\n{json}");
                 throw new HttpRequestException($"Ошибка поиска в Windchill: {response.StatusCode}");
             }
 
@@ -289,7 +289,7 @@ namespace remeLog.Models
             if (!DateTime.TryParse(isoUtc, CultureInfo.InvariantCulture,
                     DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var utc))
                 return isoUtc;
-            return utc.AddHours(3).ToString(libeLog.Constants.DateTimeFormat);
+            return utc.AddHours(3).ToString(Constants.DateTimeFormat);
         }
 
         /// <summary> В строковых литералах OData одинарная кавычка экранируется удвоением. </summary>

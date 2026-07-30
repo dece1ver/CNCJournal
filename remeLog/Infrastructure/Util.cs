@@ -419,7 +419,7 @@ namespace remeLog.Infrastructure
             var wncResult = Database.GetWncConfig();
             var wncConfig = wncResult.Value;
             Util.Debug(wncConfig);
-            if (wncResult.Status != DbResult.Ok || wncConfig == null)
+            if (wncResult.Status != remeLog.Core.Db.DbResult.Ok || wncConfig == null)
             {
                 throw new Exception("Не удалось получить конфигурацию Windchill");
             }
@@ -438,7 +438,7 @@ namespace remeLog.Infrastructure
         {
             var wncResult = Database.GetWncConfig();
             var wncConfig = wncResult.Value;
-            if (wncResult.Status != DbResult.Ok || wncConfig == null)
+            if (wncResult.Status != remeLog.Core.Db.DbResult.Ok || wncConfig == null)
             {
                 throw new Exception("Не удалось получить конфигурацию Windchill");
             }

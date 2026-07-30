@@ -1,5 +1,5 @@
-using libeLog.Infrastructure;
 using Microsoft.Data.SqlClient;
+using remeLog.Core;
 using remeLog.Models;
 using System;
 using System.Collections.Generic;
@@ -44,7 +44,7 @@ namespace remeLog.Infrastructure
 
             var result = new List<AppPresence>();
 
-            await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await using var connection = new SqlConnection(DomainSettings.ConnectionString);
             await connection.OpenAsync();
             await using var command = new SqlCommand(sql, connection);
             await using var reader = await command.ExecuteReaderAsync();
@@ -82,7 +82,7 @@ VALUES
             var id = Guid.NewGuid();
             try
             {
-                await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await using var connection = new SqlConnection(DomainSettings.ConnectionString);
                 await connection.OpenAsync();
                 await using var command = new SqlCommand(sql, connection);
                 command.Parameters.AddWithValue("@Id", id);
@@ -96,13 +96,13 @@ VALUES
                 command.Parameters.AddWithValue("@Payload", (object?)payload ?? DBNull.Value);
                 await command.ExecuteNonQueryAsync();
 
-                Util.WriteLog($"Отправлена команда '{commandType}' на {targetMachine}" +
+                Log.Write($"Отправлена команда '{commandType}' на {targetMachine}" +
                     (targetUser is not null ? $"\\{targetUser}" : "") +
                     (payload is not null ? $": {payload}" : ""));
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex, $"Ошибка отправки команды '{commandType}' на {targetMachine}");
+                Log.WriteError(ex,$"Ошибка отправки команды '{commandType}' на {targetMachine}");
                 throw;
             }
 
@@ -116,7 +116,7 @@ SELECT Result
 FROM remeLog_app_commands
 WHERE Id = @Id AND ProcessedUtc IS NOT NULL;";
 
-            await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await using var connection = new SqlConnection(DomainSettings.ConnectionString);
             await connection.OpenAsync();
             await using var command = new SqlCommand(sql, connection);
             command.Parameters.AddWithValue("@Id", commandId);
@@ -138,7 +138,7 @@ VALUES
             var ids = new List<Guid>();
             try
             {
-                await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+                await using var connection = new SqlConnection(DomainSettings.ConnectionString);
                 await connection.OpenAsync();
                 await using var transaction = connection.BeginTransaction();
 
@@ -161,12 +161,12 @@ VALUES
 
                 await transaction.CommitAsync();
 
-                Util.WriteLog($"Отправлена команда '{commandType}' на {targets.Count} экземпляров" +
+                Log.Write($"Отправлена команда '{commandType}' на {targets.Count} экземпляров" +
                     (payload is not null ? $": {payload}" : ""));
             }
             catch (Exception ex)
             {
-                Util.WriteLog(ex, $"Ошибка массовой отправки команды '{commandType}'");
+                Log.WriteError(ex,$"Ошибка массовой отправки команды '{commandType}'");
                 throw;
             }
 
@@ -177,7 +177,7 @@ VALUES
         {
             const string sql = "SELECT COUNT(*) FROM remeLog_app_commands WHERE ProcessedUtc IS NULL;";
 
-            await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await using var connection = new SqlConnection(DomainSettings.ConnectionString);
             await connection.OpenAsync();
             await using var command = new SqlCommand(sql, connection);
             return (int)(await command.ExecuteScalarAsync())!;
@@ -194,7 +194,7 @@ ORDER BY CreatedUtc;";
 
             var result = new List<(Guid, string, string, string, string, DateTime)>();
 
-            await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await using var connection = new SqlConnection(DomainSettings.ConnectionString);
             await connection.OpenAsync();
             await using var command = new SqlCommand(sql, connection);
             await using var reader = await command.ExecuteReaderAsync();
@@ -222,7 +222,7 @@ SET ProcessedUtc = SYSUTCDATETIME(),
     Result = 'Cancelled'
 WHERE Id = @Id AND ProcessedUtc IS NULL;";
 
-            await using var connection = new SqlConnection(AppSettings.Instance.ConnectionString);
+            await using var connection = new SqlConnection(DomainSettings.ConnectionString);
             await connection.OpenAsync();
             await using var command = new SqlCommand(sql, connection);
             command.Parameters.AddWithValue("@Id", commandId);

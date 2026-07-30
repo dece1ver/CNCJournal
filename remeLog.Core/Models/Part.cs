@@ -1,6 +1,5 @@
-﻿using libeLog.Base;
-using libeLog.Extensions;
-using remeLog.Infrastructure;
+﻿using remeLog.Core;
+using remeLog.Core.Extensions;
 using remeLog.Infrastructure.Types;
 using System;
 using System.Collections.Generic;
@@ -10,7 +9,7 @@ using System.Text;
 
 namespace remeLog.Models
 {
-    public class Part : ViewModel, IDataErrorInfo
+    public class Part : ObservableObject, IDataErrorInfo
     {
         public Part(
             Guid guid,
@@ -367,7 +366,7 @@ namespace remeLog.Models
             get
             {
                 // делать ли вхождение имен вместо полного совпадения?
-                return AppSettings.SerialParts.Contains(PartName.NormalizedPartNameWithoutComments());
+                return DomainSettings.SerialParts.Contains(PartName.NormalizedPartNameWithoutComments());
             }
         }
 
@@ -1643,7 +1642,7 @@ namespace remeLog.Models
 
         //public double SetupRatio => PartialSetupTime == 0 
         //    ? SetupTimePlanForCalc / SetupTimeFact 
-        //    : SetupTimePlanForCalc * AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue) < PartialSetupTime
+        //    : SetupTimePlanForCalc * DomainSettings.MaxSetupLimits.GetValueOrDefault(Machine, DomainSettings.FallbackMaxSetupLimitValue) < PartialSetupTime
         //        ? SetupTimePlanForCalc / PartialSetupTime 
         //        : 0;
 
@@ -1652,8 +1651,8 @@ namespace remeLog.Models
         public double SetupRatioIncludeDowntimes => SetupTimeFact > 0 ? SetupTimePlanForCalc / (SetupTimeFact + SetupDowntimes) : 0;
         public string SetupRatioTitle => SetupRatio is double.NaN or double.PositiveInfinity 
             ? "б/н" 
-            : SetupRatio > AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue) 
-                ? $"{SetupRatio:0%}\n({AppSettings.MaxSetupLimits.GetValueOrDefault(Machine, AppSettings.FallbackMaxSetupLimitValue):0%})" 
+            : SetupRatio > DomainSettings.MaxSetupLimits.GetValueOrDefault(Machine, DomainSettings.FallbackMaxSetupLimitValue) 
+                ? $"{SetupRatio:0%}\n({DomainSettings.MaxSetupLimits.GetValueOrDefault(Machine, DomainSettings.FallbackMaxSetupLimitValue):0%})" 
                 : $"{SetupRatio:0%}";
         // Единственная деталь партии при наличии наладки (полноценной или частичной
         // завершающей) считается выполненной в наладке: изготовления не было → б/и,
@@ -1681,9 +1680,9 @@ namespace remeLog.Models
         
 
         public Dictionary<string, bool> SetupReasonsRequireComment =>
-            AppSettings.Instance.SetupReasons.ToDictionary(x => x.Reason, x => x.RequireComment);
+            DomainSettings.SetupReasons.ToDictionary(x => x.Reason, x => x.RequireComment);
         public Dictionary<string, bool> MachiningReasonsRequireComment =>
-            AppSettings.Instance.MachiningReasons.ToDictionary(x => x.Reason, x => x.RequireComment);
+            DomainSettings.MachiningReasons.ToDictionary(x => x.Reason, x => x.RequireComment);
 
         private static bool RequiresComment(string? comment, Dictionary<string, bool> reasonsDict)
         {
@@ -1813,8 +1812,8 @@ namespace remeLog.Models
             {
                 if (SetupTimePlanForCalc <= 0 && HasOrder)
                     result.Add((nameof(MasterSetupDetail), "Отсутствует норматив наладки при реальном заказе"));
-                if ((SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0 && (SetupTimePlanForCalc > 0 || HasOrder))
-                    result.Add((nameof(MasterSetupDetail), $"КПД наладки {SetupRatio:0%} вне нормы (70–{AppSettings.MaxSetupLimit:0%})"));
+                if ((SetupRatio < 0.695 || SetupRatio > DomainSettings.MaxSetupLimit) && SetupTimeFact > 0 && (SetupTimePlanForCalc > 0 || HasOrder))
+                    result.Add((nameof(MasterSetupDetail), $"КПД наладки {SetupRatio:0%} вне нормы (70–{DomainSettings.MaxSetupLimit:0%})"));
                 if (PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695)
                     result.Add((nameof(MasterSetupDetail), $"Частичная наладка {PartialSetupTime:0} мин превышает норматив {SetupTimePlanForCalc:0} мин"));
             }
@@ -1868,7 +1867,7 @@ namespace remeLog.Models
                     // была ли выполнена работа в эту смену (б/н/б/и/частичная наладка) — норматив
                     // привязан к заказу/техпроцессу, а не к факту работы (см. HasOrder).
                     nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && SetupTimePlanForCalc <= 0 && HasOrder => "Необходимо указать причину отсутствия норматива наладки.",
-                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > AppSettings.MaxSetupLimit) && SetupTimeFact > 0 && (SetupTimePlanForCalc > 0 || HasOrder) => "Необходимо указать причину невыполнения норматива наладки.",
+                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > DomainSettings.MaxSetupLimit) && SetupTimeFact > 0 && (SetupTimePlanForCalc > 0 || HasOrder) => "Необходимо указать причину невыполнения норматива наладки.",
                     nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695 => "Необходимо указать причину превышения частичной наладки.",
                     nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionTimePlanForCalc <= 0 && HasOrder => "Необходимо указать причину отсутствия норматива изготовления.",
                     nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2 && (ProductionTimePlanForCalc > 0 || HasOrder) => "Необходимо указать причину невыполнения норматива изготовления.",
