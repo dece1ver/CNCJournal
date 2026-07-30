@@ -8,6 +8,7 @@ namespace remeLog.Core
     /// </summary>
     public static class DateTimes
     {
+        /// <summary>Суммарное время перерывов, полностью попадающих в интервал.</summary>
         public static TimeSpan GetBreaksBetween(DateTime startDateTime, DateTime endDateTime, bool calcOnEnd = true)
         {
             var dayShiftFirstBreak = Constants.WorkTime.DayShiftFirstBreak;

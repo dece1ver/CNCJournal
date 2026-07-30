@@ -11,7 +11,9 @@ namespace remeLog.Core
     /// </summary>
     public static class Log
     {
+        /// <summary>Записывает информационное сообщение.</summary>
         public static Action<string> Write { get; set; } = _ => { };
+        /// <summary>Записывает исключение с опциональным поясняющим сообщением.</summary>
         public static Action<Exception, string?> WriteError { get; set; } = (_, _) => { };
     }
 
@@ -21,6 +23,7 @@ namespace remeLog.Core
     /// </summary>
     public static class Persistence
     {
+        /// <summary>Сохраняет текущие настройки хоста (файл конфигурации, БД и т.п.).</summary>
         public static Action Save { get; set; } = () => { };
     }
 }

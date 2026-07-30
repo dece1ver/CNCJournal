@@ -11,12 +11,15 @@ namespace remeLog.Core.Extensions
     /// </summary>
     public static class SqlDataReaderExt
     {
+        /// <summary>Значение колонки или <c>null</c>, если в ней DBNull.</summary>
         public static bool? GetNullableBoolean(this SqlDataReader reader, int ordinal) =>
             reader.IsDBNull(ordinal) ? null : reader.GetBoolean(ordinal);
 
+        /// <summary>Значение колонки или <c>null</c>, если в ней DBNull.</summary>
         public static double? GetNullableDouble(this SqlDataReader reader, int ordinal) =>
             reader.IsDBNull(ordinal) ? null : reader.GetDouble(ordinal);
 
+        /// <summary>Асинхронно получает значение из БД с обработкой DBNull.</summary>
         public static async Task<T> GetValueOrDefaultAsync<T>(
             this SqlDataReader reader,
             int index,
@@ -68,6 +71,7 @@ namespace remeLog.Core.Extensions
             }
         }
 
+        /// <summary>Перегрузка по имени столбца.</summary>
         public static Task<T> GetValueOrDefaultAsync<T>(
             this SqlDataReader reader,
             string columnName,
@@ -78,6 +82,7 @@ namespace remeLog.Core.Extensions
             return reader.GetValueOrDefaultAsync(index, defaultValue, cancellationToken);
         }
 
+        /// <summary>Перегрузка только с CancellationToken.</summary>
         public static Task<T> GetValueOrDefaultAsync<T>(
             this SqlDataReader reader,
             int index,

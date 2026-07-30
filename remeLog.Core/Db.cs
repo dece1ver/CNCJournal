@@ -15,8 +15,11 @@ namespace remeLog.Core.Db
     /// <summary>Результат обращения к БД с типизированным значением.</summary>
     public readonly struct DbResult<T>
     {
+        /// <summary>Статус операции.</summary>
         public DbResult Status { get; }
+        /// <summary>Значение при успехе, иначе <c>default</c>.</summary>
         public T? Value { get; }
+        /// <summary>Текст ошибки при неуспехе.</summary>
         public string? Error { get; }
 
         public bool IsOk => Status == DbResult.Ok;
@@ -29,9 +32,13 @@ namespace remeLog.Core.Db
             Error = error;
         }
 
+        /// <summary>Успешный результат.</summary>
         public static DbResult<T> Ok(T value) => new(DbResult.Ok, value, null);
+        /// <summary>Результат с ошибкой заданного статуса.</summary>
         public static DbResult<T> Fail(DbResult status, string error) => new(status, default, error);
+        /// <summary>Запись не найдена.</summary>
         public static DbResult<T> NotFound(string error = "NOT FOUND") => new(DbResult.NotFound, default, error);
+        /// <summary>Результат с ошибкой статуса <see cref="DbResult.Error"/>.</summary>
         public static DbResult<T> FailWithError(string error) => new(DbResult.Error, default, error);
 
         public void Deconstruct(out DbResult status, out T? value, out string? error)
@@ -51,6 +58,7 @@ namespace remeLog.Core.Db
     /// <summary>Открытие SQL-соединения — минимальная копия нужных методов <c>libeLog.Infrastructure.Db.DbHelper</c>.</summary>
     public static class DbHelper
     {
+        /// <summary>Открывает соединение синхронно.</summary>
         public static SqlConnection OpenConnection(string connectionString)
         {
             var conn = new SqlConnection(connectionString);
@@ -58,6 +66,7 @@ namespace remeLog.Core.Db
             return conn;
         }
 
+        /// <summary>Открывает соединение асинхронно.</summary>
         public static async Task<SqlConnection> OpenConnectionAsync(string connectionString)
         {
             var conn = new SqlConnection(connectionString);

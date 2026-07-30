@@ -8,8 +8,10 @@ namespace remeLog.Core
     /// </summary>
     public static class Constants
     {
+        /// <summary>Единый формат даты/времени, используемый remeLog.</summary>
         public const string DateTimeFormat = "dd.MM.yyyy HH:mm";
 
+        /// <summary>Время регламентных перерывов дневной/ночной смены.</summary>
         public static class WorkTime
         {
             public static readonly DateTime DayShiftFirstBreak = new(1, 1, 1, 9, 0, 0);

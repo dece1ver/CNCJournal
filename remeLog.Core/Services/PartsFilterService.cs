@@ -37,6 +37,7 @@ namespace remeLog.Core.Services
     /// </summary>
     public static class PartsFilterService
     {
+        /// <summary>Собирает SQL-условие WHERE для таблицы Parts из заданных критериев.</summary>
         public static string BuildConditions(PartsFilterCriteria c)
         {
             var sb = new StringBuilder();

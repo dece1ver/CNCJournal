@@ -18,6 +18,7 @@ namespace remeLog.Core.Services
     /// </summary>
     public static class MainDashboardService
     {
+        /// <summary>Результат параллельной загрузки справочников.</summary>
         public record ReferenceData(
             DbResult<List<string>> Machines,
             DbResult<List<string>> DowntimeReasons,
@@ -37,8 +38,10 @@ namespace remeLog.Core.Services
             return new ReferenceData(machinesTask.Result, downtimeTask.Result, setupTask.Result, machiningTask.Result);
         }
 
+        /// <summary>Наличие и статус проверки отчёта по станку за период.</summary>
         public record MachineReportState(string Machine, CombinedParts.ReportState State, bool IsChecked);
 
+        /// <summary>Результат <see cref="LoadShiftOverviewAsync"/>.</summary>
         public record ShiftOverview(List<MachineReportState> ReportStates, List<ShiftInfo> TotalShifts);
 
         /// <summary>
