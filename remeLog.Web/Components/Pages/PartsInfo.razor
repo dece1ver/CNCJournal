@@ -90,8 +90,16 @@ else if (_parts is not null)
                         <th class="num">Уст.</th>
                         <th class="num">Выполнено</th>
                         <th class="num">Всего</th>
+                        <th class="num">Начало наладки</th>
+                        <th class="num">Начало изгот.</th>
                         <th class="num">Наладка, норм.</th>
                         <th class="num">Наладка, факт.</th>
+                        <th class="num">Простои, наладка</th>
+                        <th class="num">Простои, изгот.</th>
+                        <th class="num">Наладка, %</th>
+                        <th class="num">Изготовление, %</th>
+                        <th>Причина, наладка</th>
+                        <th>Причина, изгот.</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -107,8 +115,16 @@ else if (_parts is not null)
                             <td class="num">@part.Setup</td>
                             <td class="num">@part.FinishedCount</td>
                             <td class="num">@part.TotalCount</td>
+                            <td class="num">@FormatTime(part.StartSetupTime)</td>
+                            <td class="num">@FormatTime(part.StartMachiningTime)</td>
                             <td class="num">@part.SetupTimePlan.ToString("0")</td>
                             <td class="num">@part.SetupTimeFact.ToString("0")</td>
+                            <td class="num">@part.SetupDowntimes.ToString("0")</td>
+                            <td class="num">@part.MachiningDowntimes.ToString("0")</td>
+                            <td class="num">@part.SetupRatioTitle</td>
+                            <td class="num">@part.ProductionRatioTitle</td>
+                            <td>@part.EffectiveSetupReason</td>
+                            <td>@part.EffectiveMachiningReason</td>
                         </tr>
                     }
                 </tbody>
@@ -147,6 +163,8 @@ else if (_parts is not null)
 
         await LoadAsync();
     }
+
+    private static string FormatTime(DateTime value) => value == DateTime.MinValue ? "—" : value.ToString("HH:mm");
 
     private void ToggleMachine(string machine, bool isSelected)
     {
