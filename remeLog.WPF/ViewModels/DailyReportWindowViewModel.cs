@@ -486,7 +486,7 @@ namespace remeLog.ViewModels
                 MessageBoxWindow.Show("Некорректное заполнение.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
-            if (MessageBoxWindow.Show("Обновить информацию?", "Вы точно уверены?", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.No) is MessageBoxResult.No) 
+            if (MessageBoxWindow.Show("Обновить информацию?", "Вы точно уверены?", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.Yes) is MessageBoxResult.No) 
                 return;
             var dayShift = new ShiftInfo(null, ShiftDate, ShiftType.Day, Machine, CurrentMaster, UnspecifiedDayDowntimes, DayDowntimesReason, DayMasterComment, IsChecked, DayGiverWorkplaceCleaned, DayGiverFailures, DayGiverExtraneousNoises, DayGiverLiquidLeaks, DayGiverToolBreakage, DayGiverCoolantConcentration, DayRecieverWorkplaceCleaned, DayRecieverFailures, DayRecieverExtraneousNoises, DayRecieverLiquidLeaks, DayRecieverToolBreakage, DayRecieverCoolantConcentration);
             var nightShift = new ShiftInfo(null, ShiftDate, ShiftType.Night, Machine, CurrentMaster, UnspecifiedNightDowntimes, NightDowntimesReason, NightMasterComment, IsChecked, NightGiverWorkplaceCleaned, NightGiverFailures, NightGiverExtraneousNoises, NightGiverLiquidLeaks, NightGiverToolBreakage, NightGiverCoolantConcentration, NightRecieverWorkplaceCleaned, NightRecieverFailures, NightRecieverExtraneousNoises, NightRecieverLiquidLeaks, NightRecieverToolBreakage, NightRecieverCoolantConcentration);

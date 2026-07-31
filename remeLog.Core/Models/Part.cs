@@ -1867,10 +1867,10 @@ namespace remeLog.Models
                     // была ли выполнена работа в эту смену (б/н/б/и/частичная наладка) — норматив
                     // привязан к заказу/техпроцессу, а не к факту работы (см. HasOrder).
                     nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && SetupTimePlanForCalc <= 0 && HasOrder => "Необходимо указать причину отсутствия норматива наладки.",
-                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > DomainSettings.MaxSetupLimit) && SetupTimeFact > 0 && (SetupTimePlanForCalc > 0 || HasOrder) => "Необходимо указать причину невыполнения норматива наладки.",
+                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > DomainSettings.MaxSetupLimit) && SetupTimeFact > 0 && (SetupTimePlanForCalc > 0 || HasOrder) => "Необходимо указать причину отклонения от норматива наладки.",
                     nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695 => "Необходимо указать причину превышения частичной наладки.",
                     nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionTimePlanForCalc <= 0 && HasOrder => "Необходимо указать причину отсутствия норматива изготовления.",
-                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2 && (ProductionTimePlanForCalc > 0 || HasOrder) => "Необходимо указать причину невыполнения норматива изготовления.",
+                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2 && (ProductionTimePlanForCalc > 0 || HasOrder) => "Необходимо указать причину отклонения от норматива изготовления.",
                     // Проверки «причина против отсутствия норматива» идут ПЕРЕД частными правилами
                     // ниже: при нулевом нормативе КПД вырождается в 0, и правило про «Изготовление
                     // типовой детали» сработало бы первым, сообщив про низкий показатель вместо
