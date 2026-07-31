@@ -85,12 +85,9 @@ else
                     <thead>
                         <tr>
                             <th>Станок</th>
-                            @if (FromDate == ToDate)
-                            {
-                                <th>Проверено МЦ</th>
-                                <th>Проверено ТО</th>
-                            }
-                            else
+                            <th class="@(FromDate != ToDate ? "num" : "")">Проверено МЦ</th>
+                            <th class="@(FromDate != ToDate ? "num" : "")">Проверено ТО</th>
+                            @if (FromDate != ToDate)
                             {
                                 <th class="num">Смен за период</th>
                             }
@@ -109,6 +106,8 @@ else
                                 }
                                 else
                                 {
+                                    <td class="num">@FormatMachineRatio(row.Machine, checkedOnly: false)</td>
+                                    <td class="num">@FormatMachineRatio(row.Machine, checkedOnly: true)</td>
                                     <td class="num">@_shiftsByMachine.GetValueOrDefault(row.Machine, 0)</td>
                                 }
                                 <td>
@@ -139,6 +138,8 @@ else
     private int _periodReportsCount;
     private int _periodCheckedCount;
     private int _periodTotalSlots;
+    private int _periodWorkDays;
+    private Dictionary<string, (int Reports, int Checked)> _periodByMachine = new();
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -192,11 +193,19 @@ else
             else
             {
                 _workStatus = null;
-                // Та же формула, что ReportsSummaryForPeriod/CheckedSummaryForPeriod в MainWindowViewModel.
-                var workDays = DomainSettings.GetWorkDaysBetween(FromDate, ToDate);
-                _periodTotalSlots = machines.Count * workDays;
+                // Та же формула, что ReportsSummaryForPeriod/CheckedSummaryForPeriod в MainWindowViewModel,
+                // здесь же — вдобавок постаночно (WPF считает эти цифры только по всем станкам сразу).
+                _periodWorkDays = DomainSettings.GetWorkDaysBetween(FromDate, ToDate);
+                _periodTotalSlots = machines.Count * _periodWorkDays;
                 _periodReportsCount = overview.TotalShifts.Count / 2;
                 _periodCheckedCount = overview.TotalShifts.Count(s => s.IsChecked) / 2;
+
+                var shiftsByMachine = overview.TotalShifts.GroupBy(s => s.Machine).ToDictionary(g => g.Key, g => g.ToList());
+                _periodByMachine = machines.ToDictionary(m => m, m =>
+                {
+                    var shifts = shiftsByMachine.GetValueOrDefault(m) ?? new List<ShiftInfo>();
+                    return (shifts.Count / 2, shifts.Count(s => s.IsChecked) / 2);
+                });
             }
         }
         catch (Exception ex)
@@ -213,6 +222,13 @@ else
     {
         var percent = total > 0 && count > 0 ? $" ({(double)count / total:0.#%})" : "";
         return $"{label}: {count:00}/{total:00}{percent}";
+    }
+
+    private string FormatMachineRatio(string machine, bool checkedOnly)
+    {
+        var (reports, @checked) = _periodByMachine.GetValueOrDefault(machine, (0, 0));
+        var count = checkedOnly ? @checked : reports;
+        return $"{count:00}/{_periodWorkDays:00}";
     }
 
     private static string TileClass(MainDashboardService.MachineWorkStatus w) =>
