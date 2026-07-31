@@ -1,5 +1,6 @@
 @page "/"
 @rendermode InteractiveServer
+@using remeLog.Core
 @using remeLog.Core.Services
 @using remeLog.Models
 
@@ -71,14 +72,25 @@ else
         }
         else
         {
+            @if (FromDate != ToDate)
+            {
+                <p class="table-caption">
+                    @FormatSummary("МЦ", _periodReportsCount, _periodTotalSlots)
+                    &nbsp;·&nbsp;
+                    @FormatSummary("ТО", _periodCheckedCount, _periodTotalSlots)
+                </p>
+            }
             <div class="table-wrap">
                 <table>
                     <thead>
                         <tr>
                             <th>Станок</th>
-                            <th>Проверено МЦ</th>
-                            <th>Проверено ТО</th>
-                            @if (FromDate != ToDate)
+                            @if (FromDate == ToDate)
+                            {
+                                <th>Проверено МЦ</th>
+                                <th>Проверено ТО</th>
+                            }
+                            else
                             {
                                 <th class="num">Смен за период</th>
                             }
@@ -90,9 +102,12 @@ else
                         {
                             <tr>
                                 <td>@row.Machine</td>
-                                <td><span class="stamp @StampClass(row.State)">@StateText(row.State)</span></td>
-                                <td><span class="stamp @(row.IsChecked ? "stamp-ok" : "stamp-alert")">@(row.IsChecked ? "Да" : "Нет")</span></td>
-                                @if (FromDate != ToDate)
+                                @if (FromDate == ToDate)
+                                {
+                                    <td><span class="stamp @StampClass(row.State)">@StateText(row.State)</span></td>
+                                    <td><span class="stamp @(row.IsChecked ? "stamp-ok" : "stamp-alert")">@(row.IsChecked ? "Да" : "Нет")</span></td>
+                                }
+                                else
                                 {
                                     <td class="num">@_shiftsByMachine.GetValueOrDefault(row.Machine, 0)</td>
                                 }
@@ -121,6 +136,9 @@ else
     private List<MainDashboardService.MachineWorkStatus>? _workStatus;
     private List<MainDashboardService.MachineWorkStatus> _sortedWorkStatus = new();
     private int _idleCount;
+    private int _periodReportsCount;
+    private int _periodCheckedCount;
+    private int _periodTotalSlots;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -174,6 +192,11 @@ else
             else
             {
                 _workStatus = null;
+                // Та же формула, что ReportsSummaryForPeriod/CheckedSummaryForPeriod в MainWindowViewModel.
+                var workDays = DomainSettings.GetWorkDaysBetween(FromDate, ToDate);
+                _periodTotalSlots = machines.Count * workDays;
+                _periodReportsCount = overview.TotalShifts.Count / 2;
+                _periodCheckedCount = overview.TotalShifts.Count(s => s.IsChecked) / 2;
             }
         }
         catch (Exception ex)
@@ -184,6 +207,12 @@ else
         {
             _loading = false;
         }
+    }
+
+    private static string FormatSummary(string label, int count, int total)
+    {
+        var percent = total > 0 && count > 0 ? $" ({(double)count / total:0.#%})" : "";
+        return $"{label}: {count:00}/{total:00}{percent}";
     }
 
     private static string TileClass(MainDashboardService.MachineWorkStatus w) =>
