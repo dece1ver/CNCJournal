@@ -7,7 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "eLog", "eLog\eLog.csproj", 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "libeLog", "libeLog\libeLog.csproj", "{24686872-C7C8-42B3-BB97-EB067BC2791F}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "remeLog", "remeLog\remeLog.csproj", "{29EDF6D2-D5C4-4633-9F6A-4AD8ACF45E2E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "remeLog.WPF", "remeLog.WPF\remeLog.WPF.csproj", "{29EDF6D2-D5C4-4633-9F6A-4AD8ACF45E2E}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{103C1399-C95B-4B9C-B0F4-A5A885E359F3}"
 	ProjectSection(SolutionItems) = preProject
