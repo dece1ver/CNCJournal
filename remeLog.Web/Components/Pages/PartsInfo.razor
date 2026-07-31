@@ -14,6 +14,10 @@
 
 <div class="filters">
     <div class="filter-field">
+        <label class="field-label" for="pick">📅 Выбрать день</label>
+        <input id="pick" type="date" title="Установится и «С», и «По»" @onchange="OnPickSpecificDateAsync" />
+    </div>
+    <div class="filter-field">
         <label class="field-label" for="from">С</label>
         <input id="from" type="date" @bind="FromDate" />
     </div>
@@ -155,6 +159,16 @@ else if (_parts is not null)
         FromDate = FromDate.AddDays(days);
         ToDate = ToDate.AddDays(days);
         await LoadAsync();
+    }
+
+    private async Task OnPickSpecificDateAsync(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var picked))
+        {
+            FromDate = picked;
+            ToDate = picked;
+            await LoadAsync();
+        }
     }
 
     private async Task LoadAsync()
