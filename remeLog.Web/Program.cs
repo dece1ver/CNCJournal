@@ -1,11 +1,20 @@
 using remeLog.Core;
 using remeLog.Infrastructure;
 using remeLog.Web.Components;
+using remeLog.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Под службой нет консоли — без файла разбирать сбои после старта будет нечем.
+builder.Logging.AddProvider(new FileLoggerProvider(Path.Combine(AppContext.BaseDirectory, "logs")));
+
+// Позволяет тому же .exe работать и интерактивно (dotnet run), и как служба Windows —
+// сама определяет режим запуска (через SCM или нет) и настраивает ContentRoot/Event Log.
+builder.Host.UseWindowsService(options => options.ServiceName = "remeLog.Web");
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddHostedService<SettingsRefreshService>();
 
 var app = builder.Build();
 
