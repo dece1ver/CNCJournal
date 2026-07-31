@@ -1,28 +1,29 @@
 /* ============================================================
    remeLog.Web — дизайн-система
-   Отсчётный лист цеха: холодная сталь, чертёжный синий, штампы ОТК.
-   Шрифт: IBM Plex Mono (заголовки, все числа) + IBM Plex Sans (текст).
+   Отсчётный лист цеха на корпоративной палитре Areopag (см. libeLog
+   Constants.Colors, используется в QCTasks) + корпоративный шрифт
+   IBM Plex Mono (заголовки, все числа) / IBM Plex Sans (текст).
    ============================================================ */
 
 :root {
-    --paper: #EEF1F3;
-    --paper-raised: #F7F9FA;
-    --ink: #20242A;
-    --ink-soft: #5B636B;
-    --ink-faint: #8A9198;
-    --line: #C9D0D5;
-    --line-soft: #DFE4E7;
+    --paper: #EEF1F5;
+    --paper-raised: #F8F9FB;
+    --ink: #00243D;        /* AreopagBlue */
+    --ink-soft: #5E6784;   /* AreopagBlue70 */
+    --ink-faint: #757C95;  /* AreopagBlue60 */
+    --line: #BABECA;       /* AreopagBlue30 */
+    --line-soft: #D1D4DC;  /* AreopagBlue20 */
 
-    --blueprint: #2C5C8A;
-    --blueprint-soft: #E3ECF4;
-    --blueprint-on-dark: #7FB4E0;
+    --accent: #303C60;        /* AreopagBlue90 */
+    --accent-soft: #E4E6EC;
+    --accent-on-dark: #8BA3D6;
 
-    --signal-ok: #3E7A52;
-    --signal-ok-soft: #E1EEE5;
-    --signal-warn: #A8781F;
+    --signal-ok: #00AD68;      /* AreopagGreen */
+    --signal-ok-soft: #CDEEE1; /* AreopagGreen20 */
+    --signal-warn: #B8862E;
     --signal-warn-soft: #F3E7D2;
-    --signal-alert: #AE4438;
-    --signal-alert-soft: #F3E0DD;
+    --signal-alert: #E63C2F;   /* AreopagRed */
+    --signal-alert-soft: #FAD8D6; /* AreopagRed20 */
 
     --font-display: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
     --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
@@ -48,12 +49,12 @@ h1, h2, h3 {
     margin: 0;
 }
 
-a { color: var(--blueprint); }
+a { color: var(--accent); }
 
 button { font-family: inherit; }
 
 :focus-visible {
-    outline: 2px solid var(--blueprint);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
 
@@ -83,7 +84,7 @@ button { font-family: inherit; }
 }
 
 .topbar-brand span {
-    color: var(--blueprint-on-dark);
+    color: var(--accent-on-dark);
 }
 
 .topbar-nav {
@@ -109,8 +110,8 @@ button { font-family: inherit; }
 }
 
 .topbar-nav a.active {
-    color: var(--blueprint-on-dark);
-    border-bottom-color: var(--blueprint-on-dark);
+    color: var(--accent-on-dark);
+    border-bottom-color: var(--accent-on-dark);
 }
 
 main.content {
@@ -207,11 +208,42 @@ fieldset.filter-field {
 }
 
 .filters button:hover:not(:disabled) {
-    background: var(--blueprint);
-    border-color: var(--blueprint);
+    background: var(--accent);
+    border-color: var(--accent);
 }
 
 .filters button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.day-nav {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.day-nav-btn {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 600;
+    width: 2.15rem;
+    height: 2.15rem;
+    line-height: 1;
+    background: #fff;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.day-nav-btn:hover:not(:disabled) {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.day-nav-btn:disabled {
     opacity: 0.5;
     cursor: default;
 }
@@ -238,7 +270,7 @@ fieldset.filter-field {
 }
 
 .machine-item input {
-    accent-color: var(--blueprint);
+    accent-color: var(--accent);
 }
 
 /* ---------- Таблицы ---------- */
@@ -278,7 +310,7 @@ tbody td {
 }
 
 tbody tr:hover td {
-    background: var(--blueprint-soft);
+    background: var(--accent-soft);
 }
 
 td.num, th.num {

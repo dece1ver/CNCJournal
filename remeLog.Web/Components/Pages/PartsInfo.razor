@@ -22,6 +22,13 @@
         <input id="to" type="date" @bind="ToDate" />
     </div>
     <div class="filter-field">
+        <span class="field-label">Сутки</span>
+        <div class="day-nav">
+            <button type="button" class="day-nav-btn" disabled="@_loading" @onclick="() => ShiftDaysAsync(-1)" title="Минус сутки">−</button>
+            <button type="button" class="day-nav-btn" disabled="@_loading" @onclick="() => ShiftDaysAsync(1)" title="Плюс сутки">+</button>
+        </div>
+    </div>
+    <div class="filter-field">
         <label class="field-label" for="partName">Деталь</label>
         <input id="partName" type="text" @bind="PartNameFilter" @bind:event="oninput" />
     </div>
@@ -141,6 +148,13 @@ else if (_parts is not null)
     {
         if (isSelected) _selectedMachines.Add(machine);
         else _selectedMachines.Remove(machine);
+    }
+
+    private async Task ShiftDaysAsync(int days)
+    {
+        FromDate = FromDate.AddDays(days);
+        ToDate = ToDate.AddDays(days);
+        await LoadAsync();
     }
 
     private async Task LoadAsync()
