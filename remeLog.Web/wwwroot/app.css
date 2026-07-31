@@ -310,11 +310,13 @@ fieldset.filter-field {
 }
 
 .work-tile-machine {
+    display: block;
     font-family: var(--font-display);
     font-weight: 600;
     font-size: 0.8rem;
     color: var(--ink);
     line-height: 1.25;
+    min-height: 2.1rem;
 }
 
 .work-tile-shifts {
