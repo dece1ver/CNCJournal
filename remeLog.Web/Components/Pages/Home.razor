@@ -87,7 +87,7 @@ else
                             <tr>
                                 <td>@row.Machine</td>
                                 <td><span class="stamp @StampClass(row.State)">@StateText(row.State)</span></td>
-                                <td>@(row.IsChecked ? "+" : "—")</td>
+                                <td><span class="stamp @(row.IsChecked ? "stamp-ok" : "stamp-alert")">@(row.IsChecked ? "Да" : "Нет")</span></td>
                                 @if (FromDate != ToDate)
                                 {
                                     <td class="num">@_shiftsByMachine.GetValueOrDefault(row.Machine, 0)</td>
