@@ -18,11 +18,11 @@
     </div>
     <div class="filter-field">
         <label class="field-label" for="from">С</label>
-        <input id="from" type="date" @bind="FromDate" />
+        <input id="from" type="date" @bind="FromDate" @bind:after="LoadAsync" />
     </div>
     <div class="filter-field">
         <label class="field-label" for="to">По</label>
-        <input id="to" type="date" @bind="ToDate" />
+        <input id="to" type="date" @bind="ToDate" @bind:after="LoadAsync" />
     </div>
     <div class="filter-field">
         <span class="field-label">Сутки</span>
@@ -248,7 +248,7 @@ else
 
     private static string StateText(CombinedParts.ReportState state) => state switch
     {
-        CombinedParts.ReportState.Exist => "Есть",
+        CombinedParts.ReportState.Exist => "Да",
         CombinedParts.ReportState.Partial => "Частично",
         _ => "Нет",
     };
