@@ -62,6 +62,28 @@ namespace remeLog.Core.Services
             return new ShiftOverview(reportStatesTask.Result, totalShiftsTask.Result.Value ?? new List<ShiftInfo>());
         }
 
+        /// <summary>Отработал ли станок дневную/ночную смену указанных суток (есть ли детали).</summary>
+        public record MachineWorkStatus(string Machine, bool WorkedDay, bool WorkedNight);
+
+        /// <summary>
+        /// Фактическая работа станка за одни сутки — по наличию деталей на день/ночь
+        /// (та же логика, что <see cref="CombinedParts.ShiftsInfo"/> в MainWindow), а не по
+        /// тому, подан ли отчёт мастером (см. <see cref="LoadShiftOverviewAsync"/>).
+        /// </summary>
+        public static async Task<List<MachineWorkStatus>> LoadMachineWorkStatusAsync(
+            List<string> machines, DateTime date, CancellationToken cancellationToken)
+        {
+            var tasks = machines.Select(async machine =>
+            {
+                var parts = await Database.ReadPartsByShiftDateAndMachine(date, date, machine, cancellationToken);
+                var workedDay = parts.Any(p => p.ShiftDate == date && p.Shift == "День");
+                var workedNight = parts.Any(p => p.ShiftDate == date && p.Shift == "Ночь");
+                return new MachineWorkStatus(machine, workedDay, workedNight);
+            });
+
+            return (await Task.WhenAll(tasks)).ToList();
+        }
+
         private static List<MachineReportState> ComputeReportStates(List<string> machines, DateTime fromDate, DateTime toDate)
         {
             var list = new List<MachineReportState>();

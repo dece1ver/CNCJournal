@@ -37,45 +37,67 @@ else if (_error is not null)
 {
     <p class="state-line state-error">@_error</p>
 }
-else if (_rows is not null)
+else
 {
-    @if (_rows.Count == 0)
+    @if (FromDate == ToDate && _workStatus is not null)
     {
-        <p class="state-line">Нет станков.</p>
-    }
-    else
-    {
-        <p class="table-caption">
-            не работали: <strong>@_notWorkedCount</strong> из @_rows.Count
-        </p>
-        <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Станок</th>
-                        <th>Работал</th>
-                        <th class="num">Смен за период</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var row in _sortedRows)
-                    {
-                        <tr>
-                            <td>@row.Machine</td>
-                            <td><span class="stamp @StampClass(row.State)">@StateText(row.State)</span></td>
-                            <td class="num">@_shiftsByMachine.GetValueOrDefault(row.Machine, 0)</td>
-                            <td>
-                                <a class="row-link"
-                                   href="@($"/parts?machine={Uri.EscapeDataString(row.Machine)}&from={FromDate:yyyy-MM-dd}&to={ToDate:yyyy-MM-dd}")">
-                                    детали →
-                                </a>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+        <div class="dashboard-head">
+            <h2>Кто работал @FromDate.ToString("dd.MM.yyyy")</h2>
+            <span class="meta">простаивали: @_idleCount из @_workStatus.Count</span>
         </div>
+        <div class="work-grid">
+            @foreach (var w in _sortedWorkStatus)
+            {
+                <div class="work-tile @TileClass(w)">
+                    <span class="work-tile-machine">@w.Machine</span>
+                    <div class="work-tile-shifts">
+                        <span class="shift-chip @(w.WorkedDay ? "on" : "")">День</span>
+                        <span class="shift-chip @(w.WorkedNight ? "on" : "")">Ночь</span>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_rows is not null)
+    {
+        @if (_rows.Count == 0)
+        {
+            <p class="state-line">Нет станков.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Станок</th>
+                            <th>Проверено МЦ</th>
+                            <th>Проверено ТО</th>
+                            <th class="num">Смен за период</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _rows)
+                        {
+                            <tr>
+                                <td>@row.Machine</td>
+                                <td><span class="stamp @StampClass(row.State)">@StateText(row.State)</span></td>
+                                <td>@(row.IsChecked ? "+" : "—")</td>
+                                <td class="num">@_shiftsByMachine.GetValueOrDefault(row.Machine, 0)</td>
+                                <td>
+                                    <a class="row-link"
+                                       href="@($"/parts?machine={Uri.EscapeDataString(row.Machine)}&from={FromDate:yyyy-MM-dd}&to={ToDate:yyyy-MM-dd}")">
+                                        детали →
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
     }
 }
 
@@ -85,9 +107,10 @@ else if (_rows is not null)
     private bool _loading;
     private string? _error;
     private List<MainDashboardService.MachineReportState>? _rows;
-    private List<MainDashboardService.MachineReportState> _sortedRows = new();
-    private int _notWorkedCount;
     private Dictionary<string, int> _shiftsByMachine = new();
+    private List<MainDashboardService.MachineWorkStatus>? _workStatus;
+    private List<MainDashboardService.MachineWorkStatus> _sortedWorkStatus = new();
+    private int _idleCount;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -119,17 +142,19 @@ else if (_rows is not null)
                 .GroupBy(s => s.Machine)
                 .ToDictionary(g => g.Key, g => g.Count());
 
-            // Не работавшие станки — первым делом на виду, дальше частичные, рабочие — в конце.
-            _sortedRows = _rows
-                .OrderBy(r => r.State switch
-                {
-                    CombinedParts.ReportState.NotExist => 0,
-                    CombinedParts.ReportState.Partial => 1,
-                    _ => 2,
-                })
-                .ThenBy(r => r.Machine)
-                .ToList();
-            _notWorkedCount = _rows.Count(r => r.State == CombinedParts.ReportState.NotExist);
+            if (FromDate == ToDate)
+            {
+                _workStatus = await MainDashboardService.LoadMachineWorkStatusAsync(machines, FromDate, CancellationToken.None);
+                _sortedWorkStatus = _workStatus
+                    .OrderBy(w => w.WorkedDay || w.WorkedNight ? (w.WorkedDay && w.WorkedNight ? 2 : 1) : 0)
+                    .ThenBy(w => w.Machine)
+                    .ToList();
+                _idleCount = _workStatus.Count(w => !w.WorkedDay && !w.WorkedNight);
+            }
+            else
+            {
+                _workStatus = null;
+            }
         }
         catch (Exception ex)
         {
@@ -141,6 +166,14 @@ else if (_rows is not null)
         }
     }
 
+    private static string TileClass(MainDashboardService.MachineWorkStatus w) =>
+        (w.WorkedDay, w.WorkedNight) switch
+        {
+            (false, false) => "idle",
+            (true, true) => "",
+            _ => "partial",
+        };
+
     private static string StampClass(CombinedParts.ReportState state) => state switch
     {
         CombinedParts.ReportState.Exist => "stamp-ok",
@@ -150,7 +183,7 @@ else if (_rows is not null)
 
     private static string StateText(CombinedParts.ReportState state) => state switch
     {
-        CombinedParts.ReportState.Exist => "Да",
+        CombinedParts.ReportState.Exist => "Есть",
         CombinedParts.ReportState.Partial => "Частично",
         _ => "Нет",
     };

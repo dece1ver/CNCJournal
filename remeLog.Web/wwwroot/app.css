@@ -273,6 +273,88 @@ fieldset.filter-field {
     accent-color: var(--accent);
 }
 
+/* ---------- Дашборд "работал/не работал" ---------- */
+
+.dashboard-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 0 0 0.8rem;
+}
+
+.dashboard-head h2 {
+    font-size: 1rem;
+}
+
+.dashboard-head .meta {
+    font-family: var(--font-display);
+    font-size: 0.76rem;
+    color: var(--ink-soft);
+}
+
+.work-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+    gap: 0.65rem;
+    margin-bottom: 2.25rem;
+}
+
+.work-tile {
+    border: 1.5px solid var(--line);
+    background: var(--paper-raised);
+    padding: 0.7rem 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    transition: transform .12s ease;
+}
+
+.work-tile-machine {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--ink);
+    line-height: 1.25;
+}
+
+.work-tile-shifts {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.shift-chip {
+    font-family: var(--font-display);
+    font-size: 0.64rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.18rem 0.5rem;
+    border-radius: 2px;
+    border: 1px solid var(--line);
+    color: var(--ink-faint);
+    background: var(--paper);
+}
+
+.shift-chip.on {
+    background: var(--signal-ok-soft);
+    color: var(--signal-ok);
+    border-color: var(--signal-ok);
+    font-weight: 600;
+}
+
+.work-tile.idle {
+    border-color: var(--signal-alert);
+    border-width: 2px;
+    background: var(--signal-alert-soft);
+}
+
+.work-tile.idle .work-tile-machine {
+    color: var(--signal-alert);
+}
+
+.work-tile.partial {
+    border-color: var(--signal-warn);
+}
+
 /* ---------- Таблицы ---------- */
 
 .table-wrap {
