@@ -45,24 +45,25 @@ else if (_rows is not null)
     }
     else
     {
+        <p class="table-caption">
+            не работали: <strong>@_notWorkedCount</strong> из @_rows.Count
+        </p>
         <div class="table-wrap">
             <table>
                 <thead>
                     <tr>
                         <th>Станок</th>
-                        <th>Отчёт за период</th>
-                        <th>Проверен</th>
+                        <th>Работал</th>
                         <th class="num">Смен за период</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var row in _rows)
+                    @foreach (var row in _sortedRows)
                     {
                         <tr>
                             <td>@row.Machine</td>
                             <td><span class="stamp @StampClass(row.State)">@StateText(row.State)</span></td>
-                            <td>@(row.IsChecked ? "Да" : "—")</td>
                             <td class="num">@_shiftsByMachine.GetValueOrDefault(row.Machine, 0)</td>
                             <td>
                                 <a class="row-link"
@@ -79,11 +80,13 @@ else if (_rows is not null)
 }
 
 @code {
-    private DateTime FromDate = DateTime.Today;
-    private DateTime ToDate = DateTime.Today;
+    private DateTime FromDate = DateTime.Today.AddDays(-1);
+    private DateTime ToDate = DateTime.Today.AddDays(-1);
     private bool _loading;
     private string? _error;
     private List<MainDashboardService.MachineReportState>? _rows;
+    private List<MainDashboardService.MachineReportState> _sortedRows = new();
+    private int _notWorkedCount;
     private Dictionary<string, int> _shiftsByMachine = new();
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
@@ -115,6 +118,18 @@ else if (_rows is not null)
             _shiftsByMachine = overview.TotalShifts
                 .GroupBy(s => s.Machine)
                 .ToDictionary(g => g.Key, g => g.Count());
+
+            // Не работавшие станки — первым делом на виду, дальше частичные, рабочие — в конце.
+            _sortedRows = _rows
+                .OrderBy(r => r.State switch
+                {
+                    CombinedParts.ReportState.NotExist => 0,
+                    CombinedParts.ReportState.Partial => 1,
+                    _ => 2,
+                })
+                .ThenBy(r => r.Machine)
+                .ToList();
+            _notWorkedCount = _rows.Count(r => r.State == CombinedParts.ReportState.NotExist);
         }
         catch (Exception ex)
         {
@@ -135,7 +150,7 @@ else if (_rows is not null)
 
     private static string StateText(CombinedParts.ReportState state) => state switch
     {
-        CombinedParts.ReportState.Exist => "Есть",
+        CombinedParts.ReportState.Exist => "Да",
         CombinedParts.ReportState.Partial => "Частично",
         _ => "Нет",
     };

@@ -118,8 +118,8 @@ else if (_parts is not null)
     [SupplyParameterFromQuery] public string? From { get; set; }
     [SupplyParameterFromQuery] public string? To { get; set; }
 
-    private DateTime FromDate = DateTime.Today;
-    private DateTime ToDate = DateTime.Today;
+    private DateTime FromDate = DateTime.Today.AddDays(-1);
+    private DateTime ToDate = DateTime.Today.AddDays(-1);
     private string PartNameFilter = "";
     private string OrderFilter = "";
     private string OperatorFilter = "";
