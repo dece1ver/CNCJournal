@@ -598,6 +598,24 @@ namespace libeLog.Infrastructure.Sql
                     name: "IX_app_commands_cleanup"
                 )
                 .Build(),
+            // Живой статус станка (наладка/изготовление/простой), который тихо пишет eLog,
+            // пока строка ещё не закрыта (SyncParts синхронизирует в parts только завершённые
+            // строки). MERGE по Machine — одна строка на станок. UpdatedUtc — heartbeat: если
+            // давно не обновлялся, читающая сторона показывает "нет данных", а не "простой".
+            new TableBuilder("cnc_machine_activity")
+                .AddColumn("Machine", "NVARCHAR(50)", opt => opt.PrimaryKey().Nullable(false))
+                .AddStringColumn("Status", 20, false)
+                .AddStringColumn("PartName", -1)
+                .AddStringColumn("Order", 50)
+                .AddStringColumn("Operator", -1)
+                .AddByteColumn("Setup")
+                .AddNCharColumn("Shift", 4)
+                // Локальное время начала фазы (как StartSetupTime/StartMachiningTime в parts) —
+                // в отличие от UpdatedUtc, это не heartbeat, а бизнес-время для отображения.
+                .AddDateTimeColumn("PhaseStartLocal")
+                .AddDateTimeColumn("UpdatedUtc", false)
+                .Build(),
+
             new TableBuilder("ai_day_reviews")
                 .AddIdColumn()
                 .AddStringColumn("Machine", 50, false)

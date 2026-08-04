@@ -68,6 +68,9 @@
                               ToolTip="Пакетный ИИ-анализ всех суток-станков с записями в ai_day_reviews"/>
                     <MenuItem Header="Мониторинг"
                               Command="{Binding ShowMonitorCommand}" Icon="{StaticResource AboutIcon}"/>
+                    <MenuItem Header="Сейчас на станках"
+                              Command="{Binding ShowMachineActivityCommand}" Icon="{StaticResource AboutIcon}"
+                              ToolTip="Текущий статус станков (наладка/изготовление/простой) по данным eLog"/>
                     <MenuItem Header="Проверка БД"
                               Command="{Binding UpdateDatabaseCommand}" Icon="{StaticResource SyncIcon}"/>
                     <MenuItem Header="Активные экземпляры"

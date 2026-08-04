@@ -362,7 +362,7 @@ namespace libeLog.Infrastructure
                 HttpClientInitializer = Credential,
             });
 
-            var request = SheetsService.Spreadsheets.Values.Get(_sheetId, "Загрузка станков!A1:L200");
+            var request = SheetsService.Spreadsheets.Values.Get(_sheetId, "Загрузка станков!A1:L500");
             var response = await request.ExecuteAsync(cancellationToken);
             var values = response.Values;
 

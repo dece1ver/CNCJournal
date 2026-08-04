@@ -84,6 +84,19 @@ namespace remeLog.Core.Services
             return (await Task.WhenAll(tasks)).ToList();
         }
 
+        /// <summary>
+        /// Текущий статус станков (наладка/изготовление/простой) по heartbeat из eLog.
+        /// Станки без записи в cnc_machine_activity получают null — вызывающая сторона
+        /// должна показать это как "нет данных" (как и запись с истёкшим <see cref="MachineActivity.IsStale"/>).
+        /// </summary>
+        public static async Task<Dictionary<string, MachineActivity?>> LoadMachineActivityAsync(
+            List<string> machines, CancellationToken cancellationToken)
+        {
+            var activity = await Database.ReadMachineActivityAsync();
+            var byMachine = activity.ToDictionary(a => a.Machine);
+            return machines.ToDictionary(m => m, m => byMachine.GetValueOrDefault(m));
+        }
+
         private static List<MachineReportState> ComputeReportStates(List<string> machines, DateTime fromDate, DateTime toDate)
         {
             var list = new List<MachineReportState>();

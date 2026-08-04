@@ -77,6 +77,9 @@ namespace eLog.ViewModels
             var serialPartsWatcher = new Thread(SerialPartsWatcher) { IsBackground = true };
             serialPartsWatcher.Start();
 
+            var machineActivityThread = new Thread(() => _ = WriteMachineActivityHeartbeat()) { IsBackground = true };
+            machineActivityThread.Start();
+
             Task.Run(UpdateToolTypes);
             Task.Run(UpdateOrderQualifiers);
 
@@ -1246,6 +1249,59 @@ namespace eLog.ViewModels
                     break;
             }
             ProgressBarVisibility = Visibility.Hidden;
+        }
+
+        /// <summary>
+        /// Тихий heartbeat для дашборда (remeLog.Web) и окна remeLog.WPF: раз в 12 сек пишет
+        /// текущий статус станка по строке, которая ещё не закрыта (SyncParts её не трогает).
+        /// Значения статусов должны совпадать с remeLog.Core.Models.MachineActivity.
+        /// </summary>
+        private async Task WriteMachineActivityHeartbeat()
+        {
+            const string SetupStatus = "Наладка";
+            const string MachiningStatus = "Изготовление";
+            const string IdleStatus = "Простой";
+
+            while (true)
+            {
+                try
+                {
+                    var machine = AppSettings.Instance.Machine?.Name;
+                    if (!string.IsNullOrEmpty(machine))
+                    {
+                        var current = Parts.FirstOrDefault(p => p.IsFinished == Part.State.InProgress);
+
+                        if (current is null)
+                        {
+                            await Database.WriteMachineActivityAsync(machine, IdleStatus, "", "", "", 0, "", null);
+                        }
+                        else
+                        {
+                            // Открытый простой (незакрытый DownTime) живёт внутри наладки/изготовления —
+                            // пока он не закрыт, станок физически не работает. Показываем конкретную причину
+                            // с суффиксом фазы, в которой простой открыт: [Н] наладка, [И] изготовление.
+                            string status;
+                            if (!current.DownTimesIsClosed && current.LastDownTime is { } lastDownTime)
+                            {
+                                var phaseSuffix = lastDownTime.Relation == DownTime.Relations.Machining ? "И" : "Н";
+                                status = $"{lastDownTime.Name} [{phaseSuffix}]";
+                            }
+                            else
+                            {
+                                status = current.SetupIsFinished ? MachiningStatus : SetupStatus;
+                            }
+                            var phaseStart = current.SetupIsFinished ? current.StartMachiningTime : current.StartSetupTime;
+                            await Database.WriteMachineActivityAsync(machine, status, current.FullName, current.Order,
+                                current.Operator.FullName, current.Setup, current.Shift, phaseStart);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WriteLog(ex, "Ошибка записи статуса станка");
+                }
+                await Task.Delay(12000);
+            }
         }
 
         async Task SetPartsTaskInfo()

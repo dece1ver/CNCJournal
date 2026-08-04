@@ -255,52 +255,52 @@ namespace remeLog.Infrastructure
                 ws.Cell(row, 1).SetValue(qual.Value); // Квалификация
 
                 // Пороги эффективности
-                ws.Cell(row, 2).SetValue(qual.EfficiencyValueHH);
-                ws.Cell(row, 3).SetValue(qual.EfficiencyValueH);
-                ws.Cell(row, 4).SetValue(qual.EfficiencyValueN);
-                ws.Cell(row, 5).SetValue(qual.EfficiencyValueL);
-                ws.Cell(row, 6).SetValue(qual.EfficiencyValueLL);
-                ws.Cell(row, 7).SetValue(qual.EfficiencyValueLLL);
+                ws.Cell(row, 2).SetValue(qual.Efficiency.HH.Value);
+                ws.Cell(row, 3).SetValue(qual.Efficiency.H.Value);
+                ws.Cell(row, 4).SetValue(qual.Efficiency.N.Value);
+                ws.Cell(row, 5).SetValue(qual.Efficiency.L.Value);
+                ws.Cell(row, 6).SetValue(qual.Efficiency.LL.Value);
+                ws.Cell(row, 7).SetValue(qual.Efficiency.LLL.Value);
 
                 // Коэффициенты эффективности
-                ws.Cell(row, 8).SetValue(qual.EfficiencyCoefficientHH);
-                ws.Cell(row, 9).SetValue(qual.EfficiencyCoefficientH);
-                ws.Cell(row, 10).SetValue(qual.EfficiencyCoefficientN);
-                ws.Cell(row, 11).SetValue(qual.EfficiencyCoefficientL);
-                ws.Cell(row, 12).SetValue(qual.EfficiencyCoefficientLL);
-                ws.Cell(row, 13).SetValue(qual.EfficiencyCoefficientLLL);
+                ws.Cell(row, 8).SetValue(qual.Efficiency.HH.Coefficient);
+                ws.Cell(row, 9).SetValue(qual.Efficiency.H.Coefficient);
+                ws.Cell(row, 10).SetValue(qual.Efficiency.N.Coefficient);
+                ws.Cell(row, 11).SetValue(qual.Efficiency.L.Coefficient);
+                ws.Cell(row, 12).SetValue(qual.Efficiency.LL.Coefficient);
+                ws.Cell(row, 13).SetValue(qual.Efficiency.LLL.Coefficient);
 
                 // Пороги простоев
-                ws.Cell(row, 14).SetValue(qual.DownTimesValueHH);
-                ws.Cell(row, 15).SetValue(qual.DownTimesValueH);
-                ws.Cell(row, 16).SetValue(qual.DownTimesValueN);
-                ws.Cell(row, 17).SetValue(qual.DownTimesValueL);
-                ws.Cell(row, 18).SetValue(qual.DownTimesValueLL);
-                ws.Cell(row, 19).SetValue(qual.DownTimesValueLLL);
+                ws.Cell(row, 14).SetValue(qual.DownTimes.HH.Value);
+                ws.Cell(row, 15).SetValue(qual.DownTimes.H.Value);
+                ws.Cell(row, 16).SetValue(qual.DownTimes.N.Value);
+                ws.Cell(row, 17).SetValue(qual.DownTimes.L.Value);
+                ws.Cell(row, 18).SetValue(qual.DownTimes.LL.Value);
+                ws.Cell(row, 19).SetValue(qual.DownTimes.LLL.Value);
 
                 // Коэффициенты простоев
-                ws.Cell(row, 20).SetValue(qual.DownTimesCoefficientHH);
-                ws.Cell(row, 21).SetValue(qual.DownTimesCoefficientH);
-                ws.Cell(row, 22).SetValue(qual.DownTimesCoefficientN);
-                ws.Cell(row, 23).SetValue(qual.DownTimesCoefficientL);
-                ws.Cell(row, 24).SetValue(qual.DownTimesCoefficientLL);
-                ws.Cell(row, 25).SetValue(qual.DownTimesCoefficientLLL);
+                ws.Cell(row, 20).SetValue(qual.DownTimes.HH.Coefficient);
+                ws.Cell(row, 21).SetValue(qual.DownTimes.H.Coefficient);
+                ws.Cell(row, 22).SetValue(qual.DownTimes.N.Coefficient);
+                ws.Cell(row, 23).SetValue(qual.DownTimes.L.Coefficient);
+                ws.Cell(row, 24).SetValue(qual.DownTimes.LL.Coefficient);
+                ws.Cell(row, 25).SetValue(qual.DownTimes.LLL.Coefficient);
 
                 // Пороги эффективности (не серийные)
-                ws.Cell(row, 26).SetValue(qual.NonSerialEfficiencyValueHH);
-                ws.Cell(row, 27).SetValue(qual.NonSerialEfficiencyValueH);
-                ws.Cell(row, 28).SetValue(qual.NonSerialEfficiencyValueN);
-                ws.Cell(row, 29).SetValue(qual.NonSerialEfficiencyValueL);
-                ws.Cell(row, 30).SetValue(qual.NonSerialEfficiencyValueLL);
-                ws.Cell(row, 31).SetValue(qual.NonSerialEfficiencyValueLLL);
+                ws.Cell(row, 26).SetValue(qual.NonSerialEfficiency.HH.Value);
+                ws.Cell(row, 27).SetValue(qual.NonSerialEfficiency.H.Value);
+                ws.Cell(row, 28).SetValue(qual.NonSerialEfficiency.N.Value);
+                ws.Cell(row, 29).SetValue(qual.NonSerialEfficiency.L.Value);
+                ws.Cell(row, 30).SetValue(qual.NonSerialEfficiency.LL.Value);
+                ws.Cell(row, 31).SetValue(qual.NonSerialEfficiency.LLL.Value);
 
                 // Коэффициенты эффективности (не серийные)
-                ws.Cell(row, 32).SetValue(qual.NonSerialEfficiencyCoefficientHH);
-                ws.Cell(row, 33).SetValue(qual.NonSerialEfficiencyCoefficientH);
-                ws.Cell(row, 34).SetValue(qual.NonSerialEfficiencyCoefficientN);
-                ws.Cell(row, 35).SetValue(qual.NonSerialEfficiencyCoefficientL);
-                ws.Cell(row, 36).SetValue(qual.NonSerialEfficiencyCoefficientLL);
-                ws.Cell(row, 37).SetValue(qual.NonSerialEfficiencyCoefficientLLL);
+                ws.Cell(row, 32).SetValue(qual.NonSerialEfficiency.HH.Coefficient);
+                ws.Cell(row, 33).SetValue(qual.NonSerialEfficiency.H.Coefficient);
+                ws.Cell(row, 34).SetValue(qual.NonSerialEfficiency.N.Coefficient);
+                ws.Cell(row, 35).SetValue(qual.NonSerialEfficiency.L.Coefficient);
+                ws.Cell(row, 36).SetValue(qual.NonSerialEfficiency.LL.Coefficient);
+                ws.Cell(row, 37).SetValue(qual.NonSerialEfficiency.LLL.Coefficient);
                 row++;
             }
 

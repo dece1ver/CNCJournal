@@ -3,6 +3,7 @@
 @using remeLog.Core
 @using remeLog.Core.Services
 @using remeLog.Models
+@implements IAsyncDisposable
 
 <PageTitle>Сводка по сменам · remeLog</PageTitle>
 
@@ -10,6 +11,51 @@
     <h1>Сводка по сменам</h1>
     <span class="meta">@FromDate.ToString("dd.MM.yyyy") — @ToDate.ToString("dd.MM.yyyy")</span>
 </div>
+
+@if (_activityMachines.Count > 0)
+{
+    <div class="dashboard-head">
+        <h2>Сейчас на станках</h2>
+        <span class="meta">обновляется автоматически</span>
+    </div>
+    <div class="table-wrap activity-table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Станок</th>
+                    <th>Статус</th>
+                    <th>Деталь</th>
+                    <th class="num">Установ</th>
+                    <th>Заказ</th>
+                    <th>Начало фазы</th>
+                    <th>Оператор</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var machine in _activityMachines)
+                {
+                    var activity = _activity.GetValueOrDefault(machine);
+                    <tr title="@UpdatedTooltip(activity)">
+                        <td>@machine</td>
+                        <td><span class="stamp @StatusStampClass(activity)">@StatusText(activity)</span></td>
+                        @if (activity is not null && !activity.IsStale && activity.Status != MachineActivity.IdleStatus)
+                        {
+                            <td>@activity.PartName</td>
+                            <td class="num">@activity.Setup</td>
+                            <td>@activity.Order</td>
+                            <td>@(activity.PhaseStartLocal?.ToString("dd.MM HH:mm:ss") ?? "-")</td>
+                            <td>@activity.Operator</td>
+                        }
+                        else
+                        {
+                            <td colspan="5">—</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
 
 <div class="filters">
     <div class="filter-field">
@@ -141,7 +187,74 @@ else
     private int _periodWorkDays;
     private Dictionary<string, (int Reports, int Checked)> _periodByMachine = new();
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    // "Сейчас на станках" — независимая от FromDate/ToDate живая панель (heartbeat из eLog).
+    private List<string> _activityMachines = new();
+    private Dictionary<string, MachineActivity?> _activity = new();
+    private PeriodicTimer? _activityTimer;
+    private CancellationTokenSource? _activityCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        await RefreshActivityAsync();
+        _ = RunActivityLoopAsync();
+    }
+
+    private async Task RefreshActivityAsync()
+    {
+        try
+        {
+            if (_activityMachines.Count == 0)
+            {
+                var reference = await MainDashboardService.LoadReferenceDataAsync(CancellationToken.None);
+                _activityMachines = reference.Machines.Value ?? new List<string>();
+            }
+            _activity = await MainDashboardService.LoadMachineActivityAsync(_activityMachines, CancellationToken.None);
+        }
+        catch
+        {
+            // Живая панель вспомогательная — молчим, чтобы не ронять остальную страницу.
+        }
+    }
+
+    private async Task RunActivityLoopAsync()
+    {
+        _activityCts = new CancellationTokenSource();
+        _activityTimer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+        try
+        {
+            while (await _activityTimer.WaitForNextTickAsync(_activityCts.Token))
+            {
+                await RefreshActivityAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private static string StatusStampClass(MachineActivity? activity) =>
+        activity is null || activity.IsStale ? "stamp-muted" : activity.Status switch
+        {
+            MachineActivity.MachiningStatus => "stamp-ok",
+            MachineActivity.SetupStatus => "stamp-warn",
+            _ => "stamp-alert",
+        };
+
+    private static string StatusText(MachineActivity? activity) =>
+        activity is null || activity.IsStale ? "Нет данных" : activity.Status;
+
+    private static string UpdatedTooltip(MachineActivity? activity) =>
+        activity is null ? "" : $"Обновлено: {activity.UpdatedLocal:dd.MM.yyyy HH:mm:ss}";
+
+    public async ValueTask DisposeAsync()
+    {
+        _activityCts?.Cancel();
+        _activityTimer?.Dispose();
+        _activityCts?.Dispose();
+        await Task.CompletedTask;
+    }
 
     private async Task ShiftDaysAsync(int days)
     {

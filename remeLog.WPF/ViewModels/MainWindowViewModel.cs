@@ -68,6 +68,7 @@ namespace remeLog.ViewModels
             SetSpecificMonthCommand = new LambdaCommand(OnSetSpecificMonthCommandExecuted, CanSetSpecificMonthCommandExecute);
             SetSpecificYearCommand = new LambdaCommand(OnSetSpecificYearCommandExecuted, CanSetSpecificYearCommandExecute);
             ShowActiveInstancesCommand = new LambdaCommand(OnShowActiveInstancesCommandExecuted, CanShowActiveInstancesCommandExecute);
+            ShowMachineActivityCommand = new LambdaCommand(OnShowMachineActivityCommandExecuted, CanShowMachineActivityCommandExecute);
             OpenMachineInspectionCalendarCommand = new LambdaCommand(OnOpenMachineInspectionCalendarCommandExecuted, CanOpenMachineInspectionCalendarCommandExecute);
             _Machines = new();
             if (AppSettings.Instance.InstantUpdateOnMainWindow) { _ = LoadPartsAsync(true); }
@@ -607,6 +608,29 @@ namespace remeLog.ViewModels
         }
 
         private bool CanShowActiveInstancesCommandExecute(object p) => HasFeatureInstances && !InProgress;
+        #endregion
+
+        #region ShowMachineActivity
+        public ICommand ShowMachineActivityCommand { get; }
+
+        private void OnShowMachineActivityCommandExecuted(object p)
+        {
+            foreach (Window w in Application.Current.Windows)
+            {
+                if (w is MachineActivityWindow existing)
+                {
+                    existing.Activate();
+                    return;
+                }
+            }
+
+            new MachineActivityWindow
+            {
+                Owner = Application.Current.MainWindow
+            }.Show();
+        }
+
+        private bool CanShowMachineActivityCommandExecute(object p) => true;
         #endregion
 
         #region OpenMachineInspectionCalendar

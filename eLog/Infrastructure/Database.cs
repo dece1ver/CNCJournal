@@ -236,6 +236,40 @@ namespace eLog.Infrastructure
             }
         }
 
+        /// <summary>
+        /// Тихо пишет текущий статус станка (наладка/изготовление/простой) в cnc_machine_activity —
+        /// heartbeat для дашборда remeLog.Web и окна remeLog.WPF, не связанный с закрытием строки в parts.
+        /// Строки со значениями статусов должны совпадать с remeLog.Core.Models.MachineActivity.
+        /// </summary>
+        public static async Task WriteMachineActivityAsync(string machine, string status, string partName,
+            string order, string @operator, byte setup, string shift, DateTime? phaseStart)
+        {
+            const string sql = @"
+                MERGE cnc_machine_activity AS target
+                USING (SELECT @Machine AS Machine) AS source
+                ON target.Machine = source.Machine
+                WHEN MATCHED THEN
+                    UPDATE SET
+                        Status = @Status, PartName = @PartName, [Order] = @Order, Operator = @Operator,
+                        Setup = @Setup, Shift = @Shift, PhaseStartLocal = @PhaseStart, UpdatedUtc = SYSUTCDATETIME()
+                WHEN NOT MATCHED THEN
+                    INSERT (Machine, Status, PartName, [Order], Operator, Setup, Shift, PhaseStartLocal, UpdatedUtc)
+                    VALUES (@Machine, @Status, @PartName, @Order, @Operator, @Setup, @Shift, @PhaseStart, SYSUTCDATETIME());";
+
+            await using var conn = await OpenConnectionAsync(AppSettings.Instance.ConnectionString);
+            await conn.ExecuteAsync(sql, new
+            {
+                Machine = machine,
+                Status = status,
+                PartName = partName,
+                Order = order,
+                Operator = @operator,
+                Setup = setup,
+                Shift = shift,
+                PhaseStart = phaseStart
+            });
+        }
+
         public static async Task<(DbResult Result, List<string> ToolTypes, string? Error)> GetSearchToolTypes()
         {
             var toolTypes = new List<string>();

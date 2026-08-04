@@ -143,12 +143,8 @@ namespace remeLog.Infrastructure
             {
                 await using var conn = await DbHelper.OpenConnectionAsync(DomainSettings.ConnectionString);
                 progress?.Report("Чтение данных из БД...");
-                var rows = (await conn.QueryAsync<(int, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double, double)>(sql)).AsList();
-                var result = rows.Select(r => new Qualification(
-                    r.Item1, r.Item2, r.Item3, r.Item4, r.Item5, r.Item6, r.Item7, r.Item8, r.Item9, r.Item10,
-                    r.Item11, r.Item12, r.Item13, r.Item14, r.Item15, r.Item16, r.Item17, r.Item18, r.Item19, r.Item20,
-                    r.Item21, r.Item22, r.Item23, r.Item24, r.Item25, r.Item26, r.Item27, r.Item28, r.Item29, r.Item30,
-                    r.Item31, r.Item32, r.Item33, r.Item34, r.Item35, r.Item36, r.Item37)).ToList();
+                var rows = (await conn.QueryAsync<QualificationRow>(sql)).AsList();
+                var result = rows.Select(Qualification.FromRow).ToList();
                 progress?.Report("Чтение завершено");
                 return result;
             }

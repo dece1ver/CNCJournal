@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
 
@@ -59,16 +60,20 @@ namespace remeLog.Core.Db
     public static class DbHelper
     {
         /// <summary>Открывает соединение синхронно.</summary>
-        public static SqlConnection OpenConnection(string connectionString)
+        public static SqlConnection OpenConnection(string? connectionString)
         {
+            if (string.IsNullOrWhiteSpace(connectionString))
+                throw new InvalidOperationException("Строка подключения не задана.");
             var conn = new SqlConnection(connectionString);
             conn.Open();
             return conn;
         }
 
         /// <summary>Открывает соединение асинхронно.</summary>
-        public static async Task<SqlConnection> OpenConnectionAsync(string connectionString)
+        public static async Task<SqlConnection> OpenConnectionAsync(string? connectionString)
         {
+            if (string.IsNullOrWhiteSpace(connectionString))
+                throw new InvalidOperationException("Строка подключения не задана.");
             var conn = new SqlConnection(connectionString);
             await conn.OpenAsync();
             return conn;
