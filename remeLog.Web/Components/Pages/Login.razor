@@ -1,0 +1,38 @@
+@page "/login"
+@layout LoginLayout
+
+<PageTitle>Вход · remeLog</PageTitle>
+
+<div class="login-box">
+    <span class="login-brand">REME<span>LOG</span></span>
+
+    @if (Error == "1")
+    {
+        <p class="login-error">Неверный логин или пароль.</p>
+    }
+    else if (Error == "lockout")
+    {
+        <p class="login-error">Слишком много неудачных попыток. Повторите позже.</p>
+    }
+
+    <form method="post" action="/account/login">
+        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+        <label class="login-field">
+            <span>Логин</span>
+            <input type="text" name="username" autocomplete="username" required autofocus />
+        </label>
+        <label class="login-field">
+            <span>Пароль</span>
+            <input type="password" name="password" autocomplete="current-password" required />
+        </label>
+        <button type="submit">Войти</button>
+    </form>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery(Name = "error")]
+    public string? Error { get; set; }
+}
