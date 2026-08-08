@@ -9,11 +9,20 @@ namespace remeLog.Infrastructure
 {
     public static partial class Database
     {
-        public static async Task<List<AppPresence>> ReadActiveInstancesAsync()
+        /// <summary>
+        /// Читает последние записи присутствия по всем приложениям (remeLog, eLog).
+        /// </summary>
+        /// <param name="application">
+        /// Ограничить выборку одним приложением (<see cref="AppNames"/>); null — вернуть все.
+        /// </param>
+        public static async Task<List<AppPresence>> ReadActiveInstancesAsync(string? application = null)
         {
+            // Партиционирование включает Application: на одной машине под одним пользователем
+            // могут одновременно жить и eLog, и remeLog — это разные экземпляры, не дубликаты.
             const string sql = @"
     SELECT
         SessionId,
+        Application,
         MachineName,
         UserName,
         AppVersion,
@@ -25,6 +34,7 @@ namespace remeLog.Infrastructure
     (
         SELECT
             SessionId,
+            Application,
             MachineName,
             UserName,
             AppVersion,
@@ -33,11 +43,12 @@ namespace remeLog.Infrastructure
             StartedUtc,
             LastSeenUtc,
             ROW_NUMBER() OVER (
-                PARTITION BY MachineName, UserName
+                PARTITION BY Application, MachineName, UserName
                 ORDER BY LastSeenUtc DESC
             ) AS rn
         FROM remeLog_app_presence
         WHERE LastSeenUtc >= DATEADD(DAY, -1, GETUTCDATE())
+          AND (@Application IS NULL OR Application = @Application)
     ) t
     WHERE rn = 1
     ORDER BY LastSeenUtc DESC;";
@@ -47,6 +58,7 @@ namespace remeLog.Infrastructure
             await using var connection = new SqlConnection(DomainSettings.ConnectionString);
             await connection.OpenAsync();
             await using var command = new SqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@Application", (object?)application ?? DBNull.Value);
             await using var reader = await command.ExecuteReaderAsync();
 
             while (await reader.ReadAsync())
@@ -54,21 +66,30 @@ namespace remeLog.Infrastructure
                 result.Add(new AppPresence
                 {
                     SessionId = reader.GetGuid(0),
-                    MachineName = reader.GetString(1),
-                    UserName = reader.GetString(2),
-                    AppVersion = reader.GetString(3),
-                    IpAddress = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
-                    EnabledFeatures = reader.GetInt32(5),
-                    StartedLocal = DateTime.SpecifyKind(reader.GetDateTime(6), DateTimeKind.Utc).ToLocalTime(),
-                    LastSeenLocal = DateTime.SpecifyKind(reader.GetDateTime(7), DateTimeKind.Utc).ToLocalTime()
+                    Application = reader.IsDBNull(1) ? AppNames.RemeLog : reader.GetString(1),
+                    MachineName = reader.GetString(2),
+                    UserName = reader.GetString(3),
+                    AppVersion = reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                    IpAddress = reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
+                    EnabledFeatures = reader.GetInt32(6),
+                    StartedLocal = DateTime.SpecifyKind(reader.GetDateTime(7), DateTimeKind.Utc).ToLocalTime(),
+                    LastSeenLocal = DateTime.SpecifyKind(reader.GetDateTime(8), DateTimeKind.Utc).ToLocalTime()
                 });
             }
 
             return result;
         }
 
+        /// <summary>
+        /// Ставит команду в очередь конкретному экземпляру.
+        /// </summary>
+        /// <param name="targetApplication">
+        /// Приложение-получатель (<see cref="AppNames"/>). Обязательно: на одной машине могут
+        /// одновременно опрашивать очередь и eLog, и remeLog, и без этого поля команда
+        /// достанется не тому.
+        /// </param>
         public static async Task<Guid> SendAppCommandAsync(
-            Guid? targetSessionId, string targetMachine, string? targetUser,
+            Guid? targetSessionId, string targetApplication, string targetMachine, string? targetUser,
             string commandType, string? payload)
         {
             const string sql = @"
@@ -87,7 +108,7 @@ VALUES
                 await using var command = new SqlCommand(sql, connection);
                 command.Parameters.AddWithValue("@Id", id);
                 command.Parameters.AddWithValue("@TargetSessionId", (object?)targetSessionId ?? DBNull.Value);
-                command.Parameters.AddWithValue("@TargetApplication", "remeLog");
+                command.Parameters.AddWithValue("@TargetApplication", targetApplication);
                 command.Parameters.AddWithValue("@TargetMachine", targetMachine);
                 command.Parameters.AddWithValue("@TargetUser", (object?)targetUser ?? DBNull.Value);
                 command.Parameters.AddWithValue("@SenderMachine", Environment.MachineName);
@@ -96,7 +117,7 @@ VALUES
                 command.Parameters.AddWithValue("@Payload", (object?)payload ?? DBNull.Value);
                 await command.ExecuteNonQueryAsync();
 
-                Log.Write($"Отправлена команда '{commandType}' на {targetMachine}" +
+                Log.Write($"Отправлена команда '{commandType}' ({targetApplication}) на {targetMachine}" +
                     (targetUser is not null ? $"\\{targetUser}" : "") +
                     (payload is not null ? $": {payload}" : ""));
             }
@@ -148,7 +169,7 @@ VALUES
                     await using var command = new SqlCommand(sql, connection, transaction);
                     command.Parameters.AddWithValue("@Id", id);
                     command.Parameters.AddWithValue("@TargetSessionId", (object?)target.SessionId ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@TargetApplication", "remeLog");
+                    command.Parameters.AddWithValue("@TargetApplication", target.Application);
                     command.Parameters.AddWithValue("@TargetMachine", target.MachineName);
                     command.Parameters.AddWithValue("@TargetUser", target.UserName);
                     command.Parameters.AddWithValue("@SenderMachine", Environment.MachineName);
@@ -173,30 +194,43 @@ VALUES
             return ids;
         }
 
-        public static async Task<int> GetPendingCommandCountAsync()
+        /// <param name="application">
+        /// Считать только команды этому приложению (<see cref="AppNames"/>); null — все.
+        /// </param>
+        public static async Task<int> GetPendingCommandCountAsync(string? application = null)
         {
-            const string sql = "SELECT COUNT(*) FROM remeLog_app_commands WHERE ProcessedUtc IS NULL;";
+            const string sql = @"
+SELECT COUNT(*) FROM remeLog_app_commands
+WHERE ProcessedUtc IS NULL
+  AND (@Application IS NULL OR TargetApplication = @Application);";
 
             await using var connection = new SqlConnection(DomainSettings.ConnectionString);
             await connection.OpenAsync();
             await using var command = new SqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@Application", (object?)application ?? DBNull.Value);
             return (int)(await command.ExecuteScalarAsync())!;
         }
 
-        public static async Task<List<(Guid Id, string CommandType, string TargetMachine,
-            string TargetUser, string Payload, DateTime CreatedUtc)>> GetPendingCommandsAsync()
+        /// <param name="application">
+        /// Вернуть только команды этому приложению (<see cref="AppNames"/>); null — все.
+        /// </param>
+        public static async Task<List<(Guid Id, string CommandType, string TargetApplication,
+            string TargetMachine, string TargetUser, string Payload, DateTime CreatedUtc)>>
+            GetPendingCommandsAsync(string? application = null)
         {
             const string sql = @"
-SELECT Id, CommandType, TargetMachine, TargetUser, Payload, CreatedUtc
+SELECT Id, CommandType, TargetApplication, TargetMachine, TargetUser, Payload, CreatedUtc
 FROM remeLog_app_commands
 WHERE ProcessedUtc IS NULL
+  AND (@Application IS NULL OR TargetApplication = @Application)
 ORDER BY CreatedUtc;";
 
-            var result = new List<(Guid, string, string, string, string, DateTime)>();
+            var result = new List<(Guid, string, string, string, string, string, DateTime)>();
 
             await using var connection = new SqlConnection(DomainSettings.ConnectionString);
             await connection.OpenAsync();
             await using var command = new SqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@Application", (object?)application ?? DBNull.Value);
             await using var reader = await command.ExecuteReaderAsync();
 
             while (await reader.ReadAsync())
@@ -204,10 +238,11 @@ ORDER BY CreatedUtc;";
                 result.Add((
                     reader.GetGuid(0),
                     reader.GetString(1),
-                    reader.GetString(2),
-                    reader.IsDBNull(3) ? "" : reader.GetString(3),
+                    reader.IsDBNull(2) ? AppNames.RemeLog : reader.GetString(2),
+                    reader.GetString(3),
                     reader.IsDBNull(4) ? "" : reader.GetString(4),
-                    DateTime.SpecifyKind(reader.GetDateTime(5), DateTimeKind.Utc).ToLocalTime()
+                    reader.IsDBNull(5) ? "" : reader.GetString(5),
+                    DateTime.SpecifyKind(reader.GetDateTime(6), DateTimeKind.Utc).ToLocalTime()
                 ));
             }
 

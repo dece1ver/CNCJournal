@@ -14,5 +14,11 @@ namespace libeLog.Infrastructure.Sql
         public List<string> CompositePrimaryKey { get; set; } = new();
         public List<List<string>> CompositeUniques { get; set; } = new();
         public List<IndexDefinition> Indexes { get; set; } = new();
+
+        /// <summary>
+        /// Строки справочных данных, которые вставляются в таблицу по умолчанию,
+        /// если она пуста (seed-if-empty). Ключ — имя столбца, значение — литерал.
+        /// </summary>
+        public List<Dictionary<string, object?>> DefaultRows { get; set; } = new();
     }
 }

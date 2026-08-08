@@ -16,6 +16,9 @@ namespace remeLog.ViewModels
     {
         private readonly CancellationTokenSource _cts = new();
 
+        /// <summary>Приложение, чью очередь показываем (remeLog.Core.AppNames); null — все.</summary>
+        private readonly string? _application;
+
         public ObservableCollection<CommandEntry> Commands { get; } = new();
 
         private bool _inProgress;
@@ -30,8 +33,10 @@ namespace remeLog.ViewModels
         public LambdaCommand CancelCommand { get; }
         public LambdaCommand CloseCommand { get; }
 
-        public PendingCommandsViewModel()
+        public PendingCommandsViewModel(string? application = null)
         {
+            _application = application;
+
             Task.Run(PollLoopAsync);
 
             CancelCommand = LambdaCommand.Create(
@@ -99,12 +104,13 @@ namespace remeLog.ViewModels
                 {
                     InProgress = true;
 
-                    var items = await Database.GetPendingCommandsAsync().ConfigureAwait(false);
+                    var items = await Database.GetPendingCommandsAsync(_application).ConfigureAwait(false);
 
                     var entries = items.Select(i => new CommandEntry
                     {
                         Id = i.Id,
                         CommandType = i.CommandType,
+                        TargetApplication = i.TargetApplication,
                         TargetMachine = i.TargetMachine,
                         TargetUser = i.TargetUser,
                         Payload = i.Payload,

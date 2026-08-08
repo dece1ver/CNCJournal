@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        project: [eLog, remeLog, QCTasks]
+        project: [eLog, remeLog.WPF, QCTasks]
       fail-fast: false
 
     env:
@@ -48,7 +48,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.project }}-artifact
-          path: publish/${{ matrix.project }}/${{ matrix.project }}.exe
+          # Публикуем всю папку: имя exe совпадает с AssemblyName проекта
+          # (remeLog.WPF → remeLog.exe), а не с именем каталога.
+          path: publish/${{ matrix.project }}/
           retention-days: 1
 
   create-release:

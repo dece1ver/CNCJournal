@@ -96,6 +96,8 @@ namespace remeLog.Infrastructure
                 .Add(CM.GeneralRatio)
                 .Add(CM.SetupsCount)
                 .Add(CM.ProductionsCount)
+                .Add(CM.TotalSetupsCount)
+                .Add(CM.TotalProductionsCount)
                 .Add(CM.WorkedShifts)
                 .Add(CM.IncludedOperationsTime)
                 .Add(CM.TotalTime)
@@ -159,8 +161,17 @@ namespace remeLog.Infrastructure
                 var productionsCount = groupParts.Count(p =>
                     !IsInvalidRatio(p.ProductionRatio) && (includeSmallBatch || !p.IsSmallBatch));
 
+                // Знаменатели для setupsCount/productionsCount: сколько наладок/изготовлений
+                // было предпринято вообще (факт есть), а не только сколько из них засчиталось
+                // в КПД. Разница между этой парой и учтённой — записи без норматива, б/н, б/и
+                // и т.п., а не «ничего не делал».
+                var totalSetupsCount = groupParts.Count(p => p.SetupTimeFact > 0);
+                var totalProductionsCount = groupParts.Count(p => p.FinishedCount > 0 || p.ProductionTimeFact > 0);
+
                 ws.Cell(row, ci[CM.SetupsCount]).SetValue(setupsCount);
                 ws.Cell(row, ci[CM.ProductionsCount]).SetValue(productionsCount);
+                ws.Cell(row, ci[CM.TotalSetupsCount]).SetValue(totalSetupsCount);
+                ws.Cell(row, ci[CM.TotalProductionsCount]).SetValue(totalProductionsCount);
 
                 string setupRatioAddr = ws.Cell(row, ci[CM.SetupRatio]).Address.ToStringRelative();
                 string productionRatioAddr = ws.Cell(row, ci[CM.ProductionRatio]).Address.ToStringRelative();

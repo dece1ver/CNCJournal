@@ -64,10 +64,12 @@ namespace remeLog.Models
             string increaseReason = "",
             string setupReasonOverride = "",
             string setupReasonOverrideComment = "",
-            bool setupReasonOverrideIsMasterFault = true,
+            bool setupReasonOverrideIsMasterFault = false,
+            string setupReasonOverrideMasterFaultComment = "",
             string machiningReasonOverride = "",
             string machiningReasonOverrideComment = "",
-            bool machiningReasonOverrideIsMasterFault = true,
+            bool machiningReasonOverrideIsMasterFault = false,
+            string machiningReasonOverrideMasterFaultComment = "",
             string reasonOverrideBy = "",
             DateTime? reasonOverrideAt = null
             )
@@ -124,9 +126,11 @@ namespace remeLog.Models
             _SetupReasonOverride = setupReasonOverride;
             _SetupReasonOverrideComment = setupReasonOverrideComment;
             _SetupReasonOverrideIsMasterFault = setupReasonOverrideIsMasterFault;
+            _SetupReasonOverrideMasterFaultComment = setupReasonOverrideMasterFaultComment;
             _MachiningReasonOverride = machiningReasonOverride;
             _MachiningReasonOverrideComment = machiningReasonOverrideComment;
             _MachiningReasonOverrideIsMasterFault = machiningReasonOverrideIsMasterFault;
+            _MachiningReasonOverrideMasterFaultComment = machiningReasonOverrideMasterFaultComment;
             _ReasonOverrideBy = reasonOverrideBy;
             _ReasonOverrideAt = reasonOverrideAt;
         }
@@ -184,9 +188,11 @@ namespace remeLog.Models
             _SetupReasonOverride = part.SetupReasonOverride;
             _SetupReasonOverrideComment = part.SetupReasonOverrideComment;
             _SetupReasonOverrideIsMasterFault = part.SetupReasonOverrideIsMasterFault;
+            _SetupReasonOverrideMasterFaultComment = part.SetupReasonOverrideMasterFaultComment;
             _MachiningReasonOverride = part.MachiningReasonOverride;
             _MachiningReasonOverrideComment = part.MachiningReasonOverrideComment;
             _MachiningReasonOverrideIsMasterFault = part.MachiningReasonOverrideIsMasterFault;
+            _MachiningReasonOverrideMasterFaultComment = part.MachiningReasonOverrideMasterFaultComment;
             _ReasonOverrideBy = part.ReasonOverrideBy;
             _ReasonOverrideAt = part.ReasonOverrideAt;
         }
@@ -1335,16 +1341,31 @@ namespace remeLog.Models
 
         private bool _SetupReasonOverrideIsMasterFault;
         /// <summary>
-        /// Считать ли переопределение причины наладки ошибкой мастера. По умолчанию true —
-        /// сам факт переопределения считается. Аналитик снимает флаг, когда у мастера не было
-        /// данных для верного выбора (СГТ смотрит историю изготовления, Winnum, 1С — мастер
-        /// видит только смену и цифры), чтобы метрика не била незаслуженно.
+        /// Считать ли переопределение причины наладки ошибкой мастера. По умолчанию false —
+        /// сам факт переопределения ещё не значит, что мастер виноват. Аналитик ставит флаг,
+        /// когда действительно была возможность выбрать правильно (СГТ смотрит историю
+        /// изготовления, Winnum, 1С — мастер видит только смену и цифры).
         /// </summary>
         public bool SetupReasonOverrideIsMasterFault
         {
             get => _SetupReasonOverrideIsMasterFault;
             set {
                 if (Set(ref _SetupReasonOverrideIsMasterFault, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(SetupOverrideTooltip));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
+        private string _SetupReasonOverrideMasterFaultComment;
+        /// <summary> Пояснение аналитика, в чём именно ошибся мастер (наладка). Заполняется только при <see cref="SetupReasonOverrideIsMasterFault"/> = true. </summary>
+        public string SetupReasonOverrideMasterFaultComment
+        {
+            get => _SetupReasonOverrideMasterFaultComment;
+            set {
+                if (Set(ref _SetupReasonOverrideMasterFaultComment, value))
                 {
                     NeedUpdate = true;
                     OnPropertyChanged(nameof(SetupOverrideTooltip));
@@ -1394,6 +1415,21 @@ namespace remeLog.Models
             get => _MachiningReasonOverrideIsMasterFault;
             set {
                 if (Set(ref _MachiningReasonOverrideIsMasterFault, value))
+                {
+                    NeedUpdate = true;
+                    OnPropertyChanged(nameof(MachiningOverrideTooltip));
+                    OnPropertyChanged(nameof(NeedUpdate));
+                }
+            }
+        }
+
+        private string _MachiningReasonOverrideMasterFaultComment;
+        /// <summary> Пояснение аналитика, в чём именно ошибся мастер (изготовление). См. <see cref="SetupReasonOverrideMasterFaultComment"/>. </summary>
+        public string MachiningReasonOverrideMasterFaultComment
+        {
+            get => _MachiningReasonOverrideMasterFaultComment;
+            set {
+                if (Set(ref _MachiningReasonOverrideMasterFaultComment, value))
                 {
                     NeedUpdate = true;
                     OnPropertyChanged(nameof(MachiningOverrideTooltip));
@@ -1461,13 +1497,16 @@ namespace remeLog.Models
 
         /// <summary> null, когда переопределения нет — WPF тогда просто не показывает тултип. </summary>
         public string? SetupOverrideTooltip => BuildOverrideTooltip(
-            MasterSetupComment, SetupReasonOverride, SetupReasonOverrideComment, SetupReasonOverrideIsMasterFault);
+            MasterSetupComment, SetupReasonOverride, SetupReasonOverrideComment,
+            SetupReasonOverrideIsMasterFault, SetupReasonOverrideMasterFaultComment);
 
         /// <summary> null, когда переопределения нет. См. <see cref="SetupOverrideTooltip"/>. </summary>
         public string? MachiningOverrideTooltip => BuildOverrideTooltip(
-            MasterMachiningComment, MachiningReasonOverride, MachiningReasonOverrideComment, MachiningReasonOverrideIsMasterFault);
+            MasterMachiningComment, MachiningReasonOverride, MachiningReasonOverrideComment,
+            MachiningReasonOverrideIsMasterFault, MachiningReasonOverrideMasterFaultComment);
 
-        private string? BuildOverrideTooltip(string masterReason, string overrideReason, string overrideComment, bool isMasterFault)
+        private string? BuildOverrideTooltip(string masterReason, string overrideReason, string overrideComment,
+            bool isMasterFault, string masterFaultComment)
         {
             if (string.IsNullOrWhiteSpace(overrideReason)) return null;
 
@@ -1479,8 +1518,12 @@ namespace remeLog.Models
             var sb = new StringBuilder($"Мастер: {master} → СГТ: «{overrideReason}»{who}");
             if (!string.IsNullOrWhiteSpace(overrideComment))
                 sb.Append($"\n\n{overrideComment}");
-            if (!isMasterFault)
-                sb.Append("\n\nНе считается ошибкой мастера.");
+            if (isMasterFault)
+            {
+                sb.Append("\n\nОшибка мастера.");
+                if (!string.IsNullOrWhiteSpace(masterFaultComment))
+                    sb.Append($" {masterFaultComment}");
+            }
             return sb.ToString();
         }
         #endregion

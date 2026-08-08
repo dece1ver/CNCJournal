@@ -2,9 +2,11 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net6.0-windows</TargetFramework>
+    <!-- 10.0.19041.0 нужен ради WinRT-тостов в AppPresenceService (как в remeLog.WPF). -->
+    <TargetFramework>net6.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
+    <UseWinUI>false</UseWinUI>
     <Authors>dece1ver</Authors>
     <Description>Электронный журнал</Description>
     <Copyright>dece1ver © 2024</Copyright>

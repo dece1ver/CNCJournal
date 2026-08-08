@@ -1,15 +1,19 @@
 using remeLog.ViewModels;
+using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Threading;
 
 namespace remeLog.Views
 {
     public partial class MachineInspectionCalendarWindow : Window
     {
         private readonly MachineInspectionCalendarViewModel _vm;
+        private bool _suppressSelectionSync;
 
         internal MachineInspectionCalendarWindow(MachineInspectionCalendarViewModel vm)
         {
@@ -19,6 +23,9 @@ namespace remeLog.Views
             vm.PropertyChanged += Vm_PropertyChanged;
             vm.Days.CollectionChanged += (_, _) => RebuildColumns();
             CalendarGrid.MouseDoubleClick += CalendarGrid_MouseDoubleClick;
+            CalendarGrid.LoadingRow += CalendarGrid_LoadingRow;
+            CalendarGrid.SelectionChanged += CalendarGrid_SelectionChanged;
+            CalendarGrid.AddHandler(DataGridRowHeader.ClickEvent, new RoutedEventHandler(OnRowHeaderClick), true);
             Closed += (_, _) => _vm.Dispose();
             Loaded += (_, _) => RebuildColumns();
         }
@@ -46,31 +53,90 @@ namespace remeLog.Views
             }
         }
 
+        private void CalendarGrid_LoadingRow(object? sender, DataGridRowEventArgs e)
+        {
+            if (e.Row.Item is MachineInspectionCalendarDayRow row && _vm.IsDateHighlighted(row.Date))
+            {
+                e.Row.IsSelected = true;
+            }
+        }
+
+        private void OnRowHeaderClick(object sender, RoutedEventArgs e)
+        {
+            if (e.OriginalSource is not DataGridRowHeader header) return;
+            if (header.DataContext is not MachineInspectionCalendarDayRow row) return;
+
+            var highlight = !_vm.IsDateHighlighted(row.Date);
+            _vm.SetDateHighlighted(row.Date, highlight);
+            if (CalendarGrid.ItemContainerGenerator.ContainerFromItem(row) is DataGridRow gridRow)
+            {
+                gridRow.IsSelected = highlight;
+            }
+        }
+
+        private void CalendarGrid_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressSelectionSync || _vm.IsReloading) return;
+
+            foreach (var item in e.AddedItems)
+            {
+                if (item is MachineInspectionCalendarDayRow row)
+                {
+                    _vm.SetDateHighlighted(row.Date, true);
+                }
+            }
+
+            foreach (var item in e.RemovedItems)
+            {
+                if (item is MachineInspectionCalendarDayRow row)
+                {
+                    _vm.SetDateHighlighted(row.Date, false);
+                }
+            }
+        }
+
         private void RebuildColumns()
         {
-            CalendarGrid.Columns.Clear();
-
-            var dateColumn = new DataGridTextColumn
+            _suppressSelectionSync = true;
+            try
             {
-                Header = "Дата",
-                Binding = new Binding("DateDisplay"),
-                Width = new DataGridLength(100),
-                ElementStyle = (Style)FindResource("DateCellStyle")
-            };
-            CalendarGrid.Columns.Add(dateColumn);
+                CalendarGrid.Columns.Clear();
 
-            var cellConverter = (IValueConverter)FindResource("MachineInspectionCalendarCellConverter");
-            var iconMultiConverter = (IMultiValueConverter)FindResource("MachineInspectionCalendarCellIconMultiConverter");
-
-            foreach (var machine in _vm.FilteredMachines)
-            {
-                var column = new DataGridTemplateColumn
+                var dateColumn = new DataGridTextColumn
                 {
-                    Header = machine,
-                    Width = new DataGridLength(50),
-                    CellTemplate = CreateMachineCellTemplate(machine, cellConverter, iconMultiConverter)
+                    Header = "Дата",
+                    Binding = new Binding("DateDisplay"),
+                    Width = new DataGridLength(100),
+                    ElementStyle = (Style)FindResource("DateCellStyle")
                 };
-                CalendarGrid.Columns.Add(column);
+                CalendarGrid.Columns.Add(dateColumn);
+
+                var cellConverter = (IValueConverter)FindResource("MachineInspectionCalendarCellConverter");
+                var iconMultiConverter = (IMultiValueConverter)FindResource("MachineInspectionCalendarCellIconMultiConverter");
+
+                foreach (var machine in _vm.FilteredMachines)
+                {
+                    var column = new DataGridTemplateColumn
+                    {
+                        Header = machine,
+                        Width = new DataGridLength(50),
+                        CellTemplate = CreateMachineCellTemplate(machine, cellConverter, iconMultiConverter)
+                    };
+                    CalendarGrid.Columns.Add(column);
+                }
+
+                var percentColumn = new DataGridTextColumn
+                {
+                    Header = "Проверено",
+                    Binding = new Binding(nameof(MachineInspectionCalendarDayRow.CheckedPercent)),
+                    Width = new DataGridLength(110),
+                    ElementStyle = (Style)FindResource("PercentCellStyle")
+                };
+                CalendarGrid.Columns.Add(percentColumn);
+            }
+            finally
+            {
+                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => _suppressSelectionSync = false));
             }
         }
 

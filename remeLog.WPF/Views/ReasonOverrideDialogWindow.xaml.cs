@@ -48,7 +48,11 @@ namespace remeLog.Views
 
         public static readonly DependencyProperty IsMasterFaultProperty =
             DependencyProperty.Register(nameof(IsMasterFault), typeof(bool), typeof(ReasonOverrideDialogWindow),
-                new PropertyMetadata(true));
+                new PropertyMetadata(false));
+
+        public static readonly DependencyProperty MasterFaultCommentProperty =
+            DependencyProperty.Register(nameof(MasterFaultComment), typeof(string), typeof(ReasonOverrideDialogWindow),
+                new PropertyMetadata(string.Empty));
 
         public static readonly DependencyProperty CommentRequiredProperty =
             DependencyProperty.Register(nameof(CommentRequired), typeof(bool), typeof(ReasonOverrideDialogWindow),
@@ -108,14 +112,22 @@ namespace remeLog.Views
         }
 
         /// <summary>
-        /// Считать ли переопределение ошибкой мастера. По умолчанию да — сам факт
-        /// переопределения считается. Снимается, когда у мастера не было данных для верного
-        /// выбора: СГТ смотрит историю изготовления, Winnum, 1С, мастер — только смену и цифры.
+        /// Считать ли переопределение ошибкой мастера. По умолчанию нет — сам факт
+        /// переопределения ещё не значит вину мастера. Аналитик ставит флаг сам, когда была
+        /// возможность выбрать верно: СГТ смотрит историю изготовления, Winnum, 1С, мастер —
+        /// только смену и цифры.
         /// </summary>
         public bool IsMasterFault
         {
             get => (bool)GetValue(IsMasterFaultProperty);
             set => SetValue(IsMasterFaultProperty, value);
+        }
+
+        /// <summary> Опциональное пояснение, в чём именно ошибся мастер. Видно только при <see cref="IsMasterFault"/> = true. </summary>
+        public string MasterFaultComment
+        {
+            get => (string)GetValue(MasterFaultCommentProperty);
+            set => SetValue(MasterFaultCommentProperty, value);
         }
 
         /// <summary> Требует ли выбранная причина обязательного обоснования. </summary>
@@ -145,7 +157,8 @@ namespace remeLog.Views
             IReadOnlyDictionary<string, bool> requireComment,
             string? currentOverride = null,
             string currentComment = "",
-            bool currentIsMasterFault = true)
+            bool currentIsMasterFault = false,
+            string currentMasterFaultComment = "")
         {
             InitializeComponent();
 
@@ -158,6 +171,7 @@ namespace remeLog.Views
             Reasons = reasons;
             OverrideComment = currentComment ?? string.Empty;
             IsMasterFault = currentIsMasterFault;
+            MasterFaultComment = currentMasterFaultComment ?? string.Empty;
             SelectedReason = string.IsNullOrWhiteSpace(currentOverride) ? null : currentOverride;
 
             DataContext = this;

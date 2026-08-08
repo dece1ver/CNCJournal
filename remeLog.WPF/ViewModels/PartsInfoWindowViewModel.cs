@@ -95,6 +95,7 @@ namespace remeLog.ViewModels
             ExportToExcelCommand = new LambdaCommand(OnExportToExcelCommandExecuted, CanExportToExcelCommandExecute);
             ExportToolSearchCasesToExcelCommand = new LambdaCommand(OnExportToolSearchCasesToExcelCommandExecuted, CanExportToolSearchCasesToExcelCommandExecute);
             ExportValidationErrorsCommand = new LambdaCommand(OnExportValidationErrorsCommandExecuted, CanExportValidationErrorsCommandExecute);
+            ExportIncorrectFillsCommand = new LambdaCommand(OnExportIncorrectFillsCommandExecuted, CanExportIncorrectFillsCommandExecute);
             ExportVerevkinReportCommand = new LambdaCommand(OnExportVerevkinReportCommandExecuted, CanExportVerevkinReportCommandExecute);
             HideAllMachinesCommand = new LambdaCommand(OnHideAllMachinesCommandExecuted, CanHideAllMachinesCommandExecute);
             IncreaseDateCommand = new LambdaCommand(OnIncreaseDateCommandExecuted, CanIncreaseDateCommandExecute);
@@ -1897,6 +1898,40 @@ namespace remeLog.ViewModels
         private static bool CanExportValidationErrorsCommandExecute(object p) => true;
         #endregion
 
+        #region ExportIncorrectFills
+        public ICommand ExportIncorrectFillsCommand { get; }
+        private async void OnExportIncorrectFillsCommandExecuted(object p)
+        {
+            try
+            {
+                if (!Xl.HasReasonOverrides(Parts))
+                {
+                    MessageBoxWindow.Show("За выбранный период переопределённых причин не найдено.",
+                        "Переопределений нет", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                var path = Util.GetXlsxPath();
+                if (string.IsNullOrEmpty(path))
+                {
+                    Status = "Выбор файла отменён";
+                    return;
+                }
+                await Task.Run(() =>
+                {
+                    InProgress = true;
+                    Status = Xl.ExportIncorrectFills(Parts, path);
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBoxWindow.Show(ex.Message);
+            }
+            finally { InProgress = false; }
+        }
+        private static bool CanExportIncorrectFillsCommandExecute(object p) => true;
+        #endregion
+
         #region ExportHistoryToExcel
         public ICommand ExportHistoryToExcelCommand { get; }
         private async void OnExportHistoryToExcelCommandExecuted(object p)
@@ -2044,9 +2079,6 @@ namespace remeLog.ViewModels
         private static bool CanNormsAndWorkloadAnalysisCommandExecute(object p) => true;
         #endregion
         
-        /// <summary>
-        /// todo
-        /// </summary>
         #region ExportShiftsInfoReport
         public ICommand ExportShiftsInfoReportCommand { get; }
         private async void OnExportShiftsInfoReportCommandExecuted(object p)

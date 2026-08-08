@@ -24,6 +24,16 @@
             <ContentControl Width="16" Height="16"
                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </DataTemplate>
+
+        <!-- Стиль ячейки % — центрированный текст -->
+        <Style x:Key="PercentCellStyle" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="#303030"/>
+            <Setter Property="ToolTip" Value="{Binding CheckedPercent}"/>
+        </Style>
     </Window.Resources>
     <DockPanel Margin="8">
         <TextBlock DockPanel.Dock="Top" FontSize="14" FontFamily="Consolas"
@@ -92,33 +102,27 @@
                   ItemsSource="{Binding Days}"
                   AutoGenerateColumns="False"
                   IsReadOnly="True"
+                  CanUserResizeRows="False"
                   CanUserResizeColumns="True"
                   CanUserSortColumns="False"
                   GridLinesVisibility="All"
                   HorizontalGridLinesBrush="#E0E0E0"
                   VerticalGridLinesBrush="#E0E0E0"
-                  HeadersVisibility="Column"
+                  HeadersVisibility="All"
                   FrozenColumnCount="1"
                   AlternatingRowBackground="#01D3D3D3"
                   BorderThickness="1"
                   BorderBrush="Gray"
                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
                   ScrollViewer.VerticalScrollBarVisibility="Auto"
-                  RowHeaderWidth="0"
-                  SelectionUnit="Cell"
+                  RowHeaderWidth="24"
+                  SelectionUnit="CellOrRowHeader"
                   Background="White">
-            <DataGrid.CellStyle>
-                <Style TargetType="DataGridCell">
-                    <Setter Property="VerticalAlignment" Value="Center"/>
-                    <Style.Triggers>
-                        <Trigger Property="IsSelected" Value="True">
-                            <Setter Property="Background" Value="LightBlue"/>
-                            <Setter Property="Foreground" Value="Black"/>
-                        </Trigger>
-                    </Style.Triggers>
-                </Style>
-            </DataGrid.CellStyle>
             <DataGrid.Resources>
+                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#D9F3E8"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#303030"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#D9F3E8"/>
+                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#303030"/>
                 <Style TargetType="DataGridColumnHeader">
                     <Setter Property="Background" Value="#F0F0F0"/>
                     <Setter Property="BorderBrush" Value="#E0E0E0"/>

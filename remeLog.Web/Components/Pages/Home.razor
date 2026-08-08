@@ -15,7 +15,7 @@
 @if (_activityMachines.Count > 0)
 {
     <div class="dashboard-head">
-        <h2>Сейчас на станках</h2>
+        <h2>Сейчас в работе</h2>
         <span class="meta">обновляется автоматически</span>
     </div>
     <div class="table-wrap activity-table-wrap">
@@ -187,7 +187,7 @@ else
     private int _periodWorkDays;
     private Dictionary<string, (int Reports, int Checked)> _periodByMachine = new();
 
-    // "Сейчас на станках" — независимая от FromDate/ToDate живая панель (heartbeat из eLog).
+    // "Сейчас в работе" — независимая от FromDate/ToDate живая панель (heartbeat из eLog).
     private List<string> _activityMachines = new();
     private Dictionary<string, MachineActivity?> _activity = new();
     private PeriodicTimer? _activityTimer;

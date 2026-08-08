@@ -234,8 +234,10 @@ namespace remeLog.Views
                             break;
 
                         // Комментарий мастера к наладке/изготовлению (варианты в меню — станок/
-                        // операция, пригодны для обеих категорий отклонений)
-                        case "MasterSetupDetail" or "MasterMachiningDetail":
+                        // операция, пригодны для обеих категорий отклонений). Пункты только
+                        // для роли Мастер — остальным ролям здесь предлагать нечего, они этот
+                        // комментарий не заполняют (см. MasterOwnedColumns/DataGrid_BeginningEdit).
+                        case "MasterSetupDetail" or "MasterMachiningDetail" when d.ViewMode == User.Master:
                             e.Handled = true;
                             cell.Focus();
                             var masterMenu = (ContextMenu)FindResource("MasterCommentCellContextMenu");
@@ -349,24 +351,31 @@ namespace remeLog.Views
                 requireComment: isSetup ? vm.SetupReasonsRequireComment : vm.MachiningReasonsRequireComment,
                 currentOverride: isSetup ? part.SetupReasonOverride : part.MachiningReasonOverride,
                 currentComment: isSetup ? part.SetupReasonOverrideComment : part.MachiningReasonOverrideComment,
-                currentIsMasterFault: isSetup ? part.SetupReasonOverrideIsMasterFault : part.MachiningReasonOverrideIsMasterFault)
+                currentIsMasterFault: isSetup ? part.SetupReasonOverrideIsMasterFault : part.MachiningReasonOverrideIsMasterFault,
+                currentMasterFaultComment: isSetup ? part.SetupReasonOverrideMasterFaultComment : part.MachiningReasonOverrideMasterFaultComment)
             {
                 Owner = this,
             };
 
             if (dialog.ShowDialog() != true) return;
 
+            // Комментарий об ошибке мастера имеет смысл только вместе с флагом — если аналитик
+            // снял «Ошибка мастера», не оставляем текст висеть невидимым до следующей отметки.
+            var masterFaultComment = dialog.IsMasterFault ? dialog.MasterFaultComment : string.Empty;
+
             if (isSetup)
             {
                 part.SetupReasonOverride = dialog.SelectedReason ?? string.Empty;
                 part.SetupReasonOverrideComment = dialog.OverrideComment;
                 part.SetupReasonOverrideIsMasterFault = dialog.IsMasterFault;
+                part.SetupReasonOverrideMasterFaultComment = masterFaultComment;
             }
             else
             {
                 part.MachiningReasonOverride = dialog.SelectedReason ?? string.Empty;
                 part.MachiningReasonOverrideComment = dialog.OverrideComment;
                 part.MachiningReasonOverrideIsMasterFault = dialog.IsMasterFault;
+                part.MachiningReasonOverrideMasterFaultComment = masterFaultComment;
             }
 
             StampOverrideAuthor(part);
@@ -378,13 +387,15 @@ namespace remeLog.Views
             {
                 part.SetupReasonOverride = string.Empty;
                 part.SetupReasonOverrideComment = string.Empty;
-                part.SetupReasonOverrideIsMasterFault = true;
+                part.SetupReasonOverrideIsMasterFault = false;
+                part.SetupReasonOverrideMasterFaultComment = string.Empty;
             }
             else
             {
                 part.MachiningReasonOverride = string.Empty;
                 part.MachiningReasonOverrideComment = string.Empty;
-                part.MachiningReasonOverrideIsMasterFault = true;
+                part.MachiningReasonOverrideIsMasterFault = false;
+                part.MachiningReasonOverrideMasterFaultComment = string.Empty;
             }
 
             // Автор/время общие на запись — чистим только когда снято последнее переопределение.
@@ -873,6 +884,7 @@ namespace remeLog.Views
 
             if (!string.IsNullOrWhiteSpace(propertyName))
             {
+                propertyName = MapToWritableProperty(propertyName);
                 var prop = itemData.GetType().GetProperty(propertyName);
                 if (prop != null && prop.CanWrite)
                 {
@@ -1070,6 +1082,7 @@ namespace remeLog.Views
 
             if (!string.IsNullOrWhiteSpace(propertyName))
             {
+                propertyName = MapToWritableProperty(propertyName);
                 var prop = itemData.GetType().GetProperty(propertyName);
                 if (prop != null && prop.CanWrite)
                 {
@@ -1213,6 +1226,20 @@ namespace remeLog.Views
                 return TextBlock.TextProperty;
             throw new NotSupportedException($"Неподдерживаемый тип: {element.GetType()}");
         }
+
+        /// <summary>
+        /// В режиме просмотра (не редактирования) ячейки MasterSetupDetail/MasterMachiningDetail
+        /// показывают Effective*Detail (может отражать обоснование СГТ при переопределении причины —
+        /// см. Part.EffectiveSetupDetail), а не сам комментарий мастера. Это read-only свойство, поэтому
+        /// запись из контекстного меню нужно перенаправлять на исходное Master*Detail — иначе prop.CanWrite
+        /// молчаливо отклоняет запись и пункт меню выглядит нерабочим.
+        /// </summary>
+        private static string MapToWritableProperty(string propertyName) => propertyName switch
+        {
+            nameof(Part.EffectiveSetupDetail) => nameof(Part.MasterSetupDetail),
+            nameof(Part.EffectiveMachiningDetail) => nameof(Part.MasterMachiningDetail),
+            _ => propertyName,
+        };
 
         private static T FindVisualParent<T>(DependencyObject obj) where T : DependencyObject
         {

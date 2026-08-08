@@ -68,7 +68,7 @@
                               ToolTip="Пакетный ИИ-анализ всех суток-станков с записями в ai_day_reviews"/>
                     <MenuItem Header="Мониторинг"
                               Command="{Binding ShowMonitorCommand}" Icon="{StaticResource AboutIcon}"/>
-                    <MenuItem Header="Сейчас на станках"
+                    <MenuItem Header="Сейчас в работе"
                               Command="{Binding ShowMachineActivityCommand}" Icon="{StaticResource AboutIcon}"
                               ToolTip="Текущий статус станков (наладка/изготовление/простой) по данным eLog"/>
                     <MenuItem Header="Проверка БД"
@@ -511,7 +511,7 @@
                                                 <StackPanel Orientation="Horizontal">
                                                     <TextBlock >
                                                         <TextBlock.Text>
-                                                            <MultiBinding StringFormat="Отработано смен: {0}/{1} ({2}%)">
+                                                            <MultiBinding StringFormat="Отработано смен: {0}/{1} ({2:0}%)">
                                                                 <Binding Path="WorkedShifts"/>
                                                                 <Binding Path="TotalShifts"/>
                                                                 <Binding Path="ShiftsRatio"/>

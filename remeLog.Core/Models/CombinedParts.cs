@@ -91,6 +91,7 @@ namespace remeLog.Models
                 {
                     OnPropertyChanged(nameof(TotalShifts));
                     OnPropertyChanged(nameof(WorkedShifts));
+                    OnPropertyChanged(nameof(ShiftsRatio));
                     OnPropertyChanged(nameof(AverageSetupRatio));
                     OnPropertyChanged(nameof(AverageProductionRatio));
                     OnPropertyChanged(nameof(SetupTimeRatio));
@@ -116,7 +117,7 @@ namespace remeLog.Models
                                         .Select(part => new { part.ShiftDate.Date, part.Shift })
                                         .Distinct().Count();
 
-        public double ShiftsRatio => (double)WorkedShifts / TotalShifts * 100;
+        public double ShiftsRatio => TotalShifts == 0 ? 0 : (double)WorkedShifts / TotalShifts * 100;
 
         public bool IsSingleShift => FromDate == ToDate;
         public bool IsSingleWorkingShift => IsSingleShift && !DomainSettings.Holidays.Contains(ToDate);

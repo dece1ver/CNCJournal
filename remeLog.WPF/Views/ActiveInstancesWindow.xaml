@@ -1,4 +1,4 @@
-﻿<Window x:Class="remeLog.Views.ActiveInstancesWindow"
+<Window x:Class="remeLog.Views.ActiveInstancesWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -11,95 +11,145 @@
     <Window.DataContext>
         <vm:ActiveInstancesViewModel/>
     </Window.DataContext>
-    <DockPanel>
-        <Border DockPanel.Dock="Top" Padding="8,4" BorderThickness="0,0,0,1" BorderBrush="LightGray">
-            <StackPanel Orientation="Horizontal">
-                <CheckBox IsChecked="{Binding AllSelected}"
-                          Command="{Binding ToggleAllCommand}"
-                          Content="Выбрать всех" VerticalAlignment="Center"/>
-                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,0"/>
-                <Menu VerticalAlignment="Center">
-                    <MenuItem Header="Действия">
+    <Window.Resources>
+        <!-- Панель действий одинакова для всех вкладок, DataContext — InstancesTabViewModel. -->
+        <DataTemplate x:Key="InstancesToolbarTemplate">
+            <Border Padding="8,4" BorderThickness="0,0,0,1" BorderBrush="LightGray">
+                <StackPanel Orientation="Horizontal">
+                    <CheckBox IsChecked="{Binding AllSelected}"
+                              Command="{Binding ToggleAllCommand}"
+                              Content="Выбрать всех" VerticalAlignment="Center"/>
+                    <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,0"/>
+                    <Menu VerticalAlignment="Center">
+                        <MenuItem Header="Действия">
+                            <MenuItem Header="Принудительно закрыть"
+                                      Command="{Binding ForceCloseSelectedCommand}"/>
+                            <MenuItem Header="Уведомить"
+                                      Command="{Binding NotifySelectedCommand}"/>
+                            <MenuItem Header="Уведомить об обновлении"
+                                      Command="{Binding NotifyUpdateSelectedCommand}"/>
+                        </MenuItem>
+                    </Menu>
+                    <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,0"/>
+                    <TextBlock VerticalAlignment="Center" Cursor="Hand">
+                        <TextBlock.InputBindings>
+                            <MouseBinding MouseAction="LeftDoubleClick"
+                                          Command="{Binding ShowPendingCommandsCommand}"/>
+                        </TextBlock.InputBindings>
+                        <Run Text="Команд в очереди:"/>
+                        <Run FontWeight="Bold" Text="{Binding PendingCommandCount}"/>
+                    </TextBlock>
+                    <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,0"/>
+                    <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="300"
+                               ToolTip="{Binding LastCommandResult}">
+                        <Run Text="{Binding LastCommandResult, Mode=OneWay}"/>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- Контекстное меню строки: DataContext строки — AppPresence, поэтому команды берём
+             у вкладки через Tag контейнера (см. ItemContainerStyle). -->
+        <!-- x:Shared="False": стиль несёт готовый экземпляр ContextMenu, и одна вкладка не
+             должна одалживать его другой. -->
+        <Style x:Key="InstanceItemStyle" x:Shared="False" TargetType="ListViewItem">
+            <Setter Property="Tag"
+                    Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListView}}"/>
+            <Setter Property="ContextMenu">
+                <Setter.Value>
+                    <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
                         <MenuItem Header="Принудительно закрыть"
-                                  Command="{Binding ForceCloseSelectedCommand}"/>
-                        <MenuItem Header="Уведомить"
-                                   Command="{Binding NotifySelectedCommand}"/>
+                                  Command="{Binding ForceCloseCommand}"/>
+                        <MenuItem Header="Показать уведомление"
+                                  Command="{Binding ShowNotificationCommand}"/>
                         <MenuItem Header="Уведомить об обновлении"
-                                  Command="{Binding NotifyUpdateSelectedCommand}"/>
-                    </MenuItem>
-                </Menu>
-                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,0"/>
-                <TextBlock VerticalAlignment="Center" Cursor="Hand">
-                    <TextBlock.InputBindings>
-                        <MouseBinding MouseAction="LeftDoubleClick"
-                                      Command="{Binding ShowPendingCommandsCommand}"/>
-                    </TextBlock.InputBindings>
-                    <Run Text="Команд в очереди:"/>
-                    <Run FontWeight="Bold" Text="{Binding PendingCommandCount}"/>
-                </TextBlock>
-                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,0"/>
-                <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="300"
-                           ToolTip="{Binding LastCommandResult}">
-                    <Run Text="{Binding LastCommandResult, Mode=OneWay}"/>
-                </TextBlock>
-            </StackPanel>
-        </Border>
-        <ProgressBar DockPanel.Dock="Bottom" Height="2"
-                     IsIndeterminate="True"
-                     Visibility="{Binding InProgress, Converter={StaticResource VisibilityConverter}}"/>
-        <Grid>
-            <ListView ItemsSource="{Binding Instances}"
-                      SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
-                      FontSize="14" Margin="8">
-                <ListView.ItemContainerStyle>
-                    <Style TargetType="ListViewItem">
-                        <Setter Property="Tag"
-                                Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListView}}"/>
-                        <Setter Property="ContextMenu">
-                            <Setter.Value>
-                                <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
-                                    <MenuItem Header="Принудительно закрыть"
-                                              Command="{Binding ForceCloseCommand}"/>
-                                    <MenuItem Header="Показать уведомление"
-                                               Command="{Binding ShowNotificationCommand}"/>
-                                    <MenuItem Header="Уведомить об обновлении"
-                                              Command="{Binding NotifyUpdateCommand}"/>
-                                </ContextMenu>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </ListView.ItemContainerStyle>
-                <ListView.View>
-                    <GridView>
-                        <GridViewColumn Header="" Width="30">
-                            <GridViewColumn.CellTemplate>
-                                <DataTemplate>
-                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                              IsEnabled="{Binding IsOnline}"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
-                                </DataTemplate>
-                            </GridViewColumn.CellTemplate>
-                        </GridViewColumn>
-                        <GridViewColumn Header="Пользователь" DisplayMemberBinding="{Binding UserName}" Width="100"/>
-                        <GridViewColumn Header="Компьютер" DisplayMemberBinding="{Binding MachineName}" Width="100"/>
-                        <GridViewColumn Header="IP" DisplayMemberBinding="{Binding IpAddress}" Width="120"/>
-                        <GridViewColumn Header="Версия" DisplayMemberBinding="{Binding AppVersion}" Width="140"/>
-                        <GridViewColumn Header="Фичи" DisplayMemberBinding="{Binding FeaturesText}" Width="200"/>
-                        <GridViewColumn Header="Запущено" DisplayMemberBinding="{Binding StartedLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="100"/>
-                        <GridViewColumn Header="Опрос" DisplayMemberBinding="{Binding LastSeenLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="100"/>
-                        <GridViewColumn Header="Статус" Width="80">
-                            <GridViewColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding IsOnline, Converter={StaticResource BoolToOnlineConverter}}"
-                                       Foreground="{Binding IsOnline, Converter={StaticResource BoolToOnlineBrushConverter}}"/>
-                                </DataTemplate>
-                            </GridViewColumn.CellTemplate>
-                        </GridViewColumn>
-                    </GridView>
-                </ListView.View>
-            </ListView>
-            <cnt:LoadingOverlay IsBusy="{Binding InProgress}"/>
-        </Grid>
-    </DockPanel>
+                                  Command="{Binding NotifyUpdateCommand}"/>
+                    </ContextMenu>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate x:Key="SelectionCellTemplate">
+            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                      IsEnabled="{Binding IsOnline}"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"/>
+        </DataTemplate>
+
+        <DataTemplate x:Key="StatusCellTemplate">
+            <TextBlock Text="{Binding IsOnline, Converter={StaticResource BoolToOnlineConverter}}"
+                       Foreground="{Binding IsOnline, Converter={StaticResource BoolToOnlineBrushConverter}}"/>
+        </DataTemplate>
+    </Window.Resources>
+
+    <TabControl Margin="4">
+        <!-- DataContext вкладки задаётся на корне содержимого, а не на TabItem: содержимое
+             показывает ContentPresenter из шаблона самого TabControl, и наследование от
+             TabItem до него не всегда доходит. -->
+        <TabItem Header="remeLog">
+            <DockPanel DataContext="{Binding RemeLogTab}">
+                <ContentControl DockPanel.Dock="Top" Content="{Binding}"
+                                ContentTemplate="{StaticResource InstancesToolbarTemplate}"/>
+                <ProgressBar DockPanel.Dock="Bottom" Height="2"
+                             IsIndeterminate="True"
+                             Visibility="{Binding InProgress, Converter={StaticResource VisibilityConverter}}"/>
+                <Grid>
+                    <ListView ItemsSource="{Binding Instances}"
+                              SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
+                              ItemContainerStyle="{StaticResource InstanceItemStyle}"
+                              FontSize="14" Margin="8">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="" Width="30"
+                                                CellTemplate="{StaticResource SelectionCellTemplate}"/>
+                                <GridViewColumn Header="Пользователь" DisplayMemberBinding="{Binding UserName}" Width="100"/>
+                                <GridViewColumn Header="Компьютер" DisplayMemberBinding="{Binding MachineName}" Width="100"/>
+                                <GridViewColumn Header="IP" DisplayMemberBinding="{Binding IpAddress}" Width="120"/>
+                                <GridViewColumn Header="Версия" DisplayMemberBinding="{Binding AppVersion}" Width="140"/>
+                                <GridViewColumn Header="Фичи" DisplayMemberBinding="{Binding FeaturesText}" Width="200"/>
+                                <GridViewColumn Header="Запущено" DisplayMemberBinding="{Binding StartedLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="100"/>
+                                <GridViewColumn Header="Опрос" DisplayMemberBinding="{Binding LastSeenLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="100"/>
+                                <GridViewColumn Header="Статус" Width="80"
+                                                CellTemplate="{StaticResource StatusCellTemplate}"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                    <cnt:LoadingOverlay IsBusy="{Binding InProgress}"/>
+                </Grid>
+            </DockPanel>
+        </TabItem>
+
+        <!-- У eLog маски фич нет, поэтому колонка "Фичи" здесь отсутствует. -->
+        <TabItem Header="eLog">
+            <DockPanel DataContext="{Binding ELogTab}">
+                <ContentControl DockPanel.Dock="Top" Content="{Binding}"
+                                ContentTemplate="{StaticResource InstancesToolbarTemplate}"/>
+                <ProgressBar DockPanel.Dock="Bottom" Height="2"
+                             IsIndeterminate="True"
+                             Visibility="{Binding InProgress, Converter={StaticResource VisibilityConverter}}"/>
+                <Grid>
+                    <ListView ItemsSource="{Binding Instances}"
+                              SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
+                              ItemContainerStyle="{StaticResource InstanceItemStyle}"
+                              FontSize="14" Margin="8">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="" Width="30"
+                                                CellTemplate="{StaticResource SelectionCellTemplate}"/>
+                                <GridViewColumn Header="Пользователь" DisplayMemberBinding="{Binding UserName}" Width="120"/>
+                                <GridViewColumn Header="Компьютер" DisplayMemberBinding="{Binding MachineName}" Width="140"/>
+                                <GridViewColumn Header="IP" DisplayMemberBinding="{Binding IpAddress}" Width="130"/>
+                                <GridViewColumn Header="Версия" DisplayMemberBinding="{Binding AppVersion}" Width="180"/>
+                                <GridViewColumn Header="Запущено" DisplayMemberBinding="{Binding StartedLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="120"/>
+                                <GridViewColumn Header="Опрос" DisplayMemberBinding="{Binding LastSeenLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="120"/>
+                                <GridViewColumn Header="Статус" Width="80"
+                                                CellTemplate="{StaticResource StatusCellTemplate}"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                    <cnt:LoadingOverlay IsBusy="{Binding InProgress}"/>
+                </Grid>
+            </DockPanel>
+        </TabItem>
+    </TabControl>
 </Window>

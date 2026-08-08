@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:remeLog.Views"
         xmlns:cmd="clr-namespace:remeLog.Infrastructure.Commands"
         xmlns:ext="clr-namespace:remeLog.Infrastructure.Extensions"
-        xmlns:types="clr-namespace:remeLog.Infrastructure.Types"
+        xmlns:types="clr-namespace:remeLog.Infrastructure.Types;assembly=remeLog.Core"
         xmlns:vm="clr-namespace:remeLog.ViewModels" d:DataContext="{d:DesignInstance Type=vm:SettingsWindowViewModel}"
         mc:Ignorable="d"
         Title="Параметры" Height="450" Width="800" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Icon="/Resources/Settings.png">

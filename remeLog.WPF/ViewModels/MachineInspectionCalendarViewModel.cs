@@ -9,6 +9,7 @@ using remeLog.Views;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,8 +31,10 @@ namespace remeLog.ViewModels
         private ObservableCollection<MachineInspectionCalendarDayRow> _Days = new();
         private List<string> _AllMachines = new();
         private string _Statistics = string.Empty;
+        private readonly HashSet<DateTime> _highlightedDates = new();
         private readonly PeriodicTimer _refreshTimer = new(TimeSpan.FromSeconds(10));
         private CancellationTokenSource _cts = new();
+        private int _reloadVersion;
 
         public MachineInspectionCalendarViewModel(DateTime fromDate, DateTime toDate)
         {
@@ -124,6 +127,8 @@ namespace remeLog.ViewModels
             set => Set(ref _AllMachines, value);
         }
 
+        public bool IsReloading { get; private set; }
+
         public string Statistics
         {
             get => _Statistics;
@@ -193,6 +198,7 @@ namespace remeLog.ViewModels
         private void RefreshFilter()
         {
             SaveFilter();
+            UpdateCheckedPercents();
             UpdateStatistics();
             OnPropertyChanged(nameof(FilteredMachines));
             OnPropertyChanged(nameof(Days));
@@ -246,6 +252,7 @@ namespace remeLog.ViewModels
                     mf.PropertyChanged += (_, _) =>
                     {
                         SaveFilter();
+                        UpdateCheckedPercents();
                         UpdateStatistics();
                         OnPropertyChanged(nameof(FilteredMachines));
                         OnPropertyChanged(nameof(Days));
@@ -301,6 +308,21 @@ namespace remeLog.ViewModels
             var machines = _AllMachines;
             if (machines.Count == 0) return;
 
+            var reloadToken = ++_reloadVersion;
+            IsReloading = true;
+            try
+            {
+                await ReloadShiftsCoreAsync(machines);
+            }
+            finally
+            {
+                if (reloadToken == _reloadVersion)
+                    IsReloading = false;
+            }
+        }
+
+        private async Task ReloadShiftsCoreAsync(List<string> machines)
+        {
             var shiftsResult = await Task.Run(() =>
                 Database.GetShiftsByPeriod(machines, FromDate, ToDate, new Shift(ShiftType.All)));
 
@@ -345,17 +367,44 @@ namespace remeLog.ViewModels
                     _ => ""
                 };
 
-                days.Add(new MachineInspectionCalendarDayRow
+                var row = new MachineInspectionCalendarDayRow
                 {
                     Date = current,
                     DayOfWeekShort = dow,
                     Cells = cells
-                });
+                };
+                days.Add(row);
             }
 
             _Days = days.ToObservableCollection();
+            UpdateCheckedPercents();
             OnPropertyChanged(nameof(Days));
             UpdateStatistics();
+        }
+
+        public bool IsDateHighlighted(DateTime date) => _highlightedDates.Contains(date);
+
+        public void SetDateHighlighted(DateTime date, bool highlighted)
+        {
+            if (highlighted) _highlightedDates.Add(date);
+            else _highlightedDates.Remove(date);
+        }
+
+        private void UpdateCheckedPercents()
+        {
+            var visible = FilteredMachines;
+            if (visible.Count == 0)
+            {
+                foreach (var day in Days) day.CheckedPercent = "—";
+                return;
+            }
+
+            foreach (var day in Days)
+            {
+                var checkedCount = day.Cells.Count(c => visible.Contains(c.Machine) && c.IsChecked);
+                var percent = Convert.ToDouble(checkedCount) / visible.Count;
+                day.CheckedPercent = $"{checkedCount}/{visible.Count} · {percent:0.#%}";
+            }
         }
     }
 
@@ -367,12 +416,27 @@ namespace remeLog.ViewModels
         public bool HasShift { get; set; }
     }
 
-    internal class MachineInspectionCalendarDayRow
+    internal class MachineInspectionCalendarDayRow : INotifyPropertyChanged
     {
+        private string _checkedPercent = string.Empty;
+
         public DateTime Date { get; set; }
         public string DayOfWeekShort { get; set; } = string.Empty;
         public string DateDisplay => $"{Date:dd.MM}";
         public ObservableCollection<MachineInspectionCalendarCell> Cells { get; set; } = new();
+
+        public string CheckedPercent
+        {
+            get => _checkedPercent;
+            set
+            {
+                if (_checkedPercent == value) return;
+                _checkedPercent = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CheckedPercent)));
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
     }
 
     internal record MonthItem(int Value, string Name);

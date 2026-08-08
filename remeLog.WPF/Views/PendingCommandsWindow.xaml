@@ -6,9 +6,7 @@
         xmlns:vm="clr-namespace:remeLog.ViewModels"
         mc:Ignorable="d" WindowStartupLocation="CenterOwner"
         Title="Очередь задач" Height="450" Width="800">
-    <Window.DataContext>
-        <vm:PendingCommandsViewModel/>
-    </Window.DataContext>
+    <!-- DataContext задаётся в code-behind: вьюмодели нужен фильтр по приложению. -->
     <DockPanel>
         <Border DockPanel.Dock="Top" Padding="8,4" BorderThickness="0,0,0,1" BorderBrush="LightGray">
             <StackPanel Orientation="Horizontal">
@@ -36,8 +34,9 @@
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
                     <GridViewColumn Header="Тип" DisplayMemberBinding="{Binding CommandType}" Width="120"/>
+                    <GridViewColumn Header="Приложение" DisplayMemberBinding="{Binding TargetApplication}" Width="90"/>
                     <GridViewColumn Header="Получатель" DisplayMemberBinding="{Binding RecipientDisplay}" Width="150"/>
-                    <GridViewColumn Header="Команда" DisplayMemberBinding="{Binding Payload}" Width="250"/>
+                    <GridViewColumn Header="Команда" DisplayMemberBinding="{Binding Payload}" Width="200"/>
                     <GridViewColumn Header="" Width="80">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate>

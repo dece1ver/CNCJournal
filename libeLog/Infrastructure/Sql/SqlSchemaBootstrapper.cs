@@ -1,6 +1,7 @@
 ﻿using Microsoft.Data.SqlClient;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -86,7 +87,63 @@ namespace libeLog.Infrastructure.Sql
                 }
             }
 
+            if (table.DefaultRows.Count > 0)
+            {
+                await SeedDefaultRowsIfEmptyAsync(connection, table, progress, cancellationToken);
+            }
+
             progress?.Report(($"Таблица: {table.Name}", Status.Ok));
+        }
+
+        /// <summary>
+        /// Вставляет строки справочника (заданные через <see cref="TableBuilder.AddDefaultRow"/>) в таблицу,
+        /// если она пуста (seed-if-empty). Идемпотентно: заполненные деплоером таблицы не трогает —
+        /// собственные причины не перезаписываются, свобода настройки сохраняется.
+        /// </summary>
+        private static async Task SeedDefaultRowsIfEmptyAsync(
+            SqlConnection connection,
+            TableDefinition table,
+            IProgress<(string, Status?)>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            bool wasOpen = connection.State == System.Data.ConnectionState.Open;
+            if (!wasOpen)
+                await connection.OpenAsync(cancellationToken);
+
+            try
+            {
+                using (var countCommand = connection.CreateCommand())
+                {
+                    countCommand.CommandText = $"SELECT COUNT(*) FROM {SqlValidationHelper.EscapeName(table.Name)}";
+                    var count = Convert.ToInt32(await countCommand.ExecuteScalarAsync(cancellationToken));
+                    if (count > 0)
+                        return;
+                }
+
+                foreach (var row in table.DefaultRows)
+                {
+                    var columns = row.Keys.ToList();
+                    var sql = $"INSERT INTO {SqlValidationHelper.EscapeName(table.Name)} " +
+                              $"({string.Join(", ", columns.Select(SqlValidationHelper.EscapeName))}) " +
+                              $"VALUES ({string.Join(", ", columns.Select((_, i) => $"@p{i}"))})";
+
+                    using var command = connection.CreateCommand();
+                    command.CommandText = sql;
+                    for (int i = 0; i < columns.Count; i++)
+                    {
+                        var value = row[columns[i]];
+                        command.Parameters.AddWithValue($"@p{i}", value ?? DBNull.Value);
+                    }
+                    await command.ExecuteNonQueryAsync(cancellationToken);
+                }
+
+                progress?.Report(($"    | Заполнение справочника «{table.Name}» значениями по умолчанию ({table.DefaultRows.Count} строк)", Status.Ok));
+            }
+            finally
+            {
+                if (!wasOpen)
+                    connection.Close();
+            }
         }
 
         /// <summary>
@@ -163,11 +220,37 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("Reason", -1, false)
                 .AddNCharColumn("Type", 9)
                 .AddBoolColumn("RequireComment", false)
+                // Причины из комбобоксов MasterSetupComment/MasterMachiningComment — КОНТРАКТ для
+                // валидации (remeLog.Core/Models/Part.cs), хард-правил (AiService HardRule.cs) и
+                // промптов (AiService/prompts/*). Сидятся только если таблица пуста; при
+                // переименовании причины в справочнике её нужно поправить и в этих местах.
+                .AddDefaultRow(new { Reason = "", Type = (string?)null, RequireComment = false })
+                .AddDefaultRow(new { Reason = "Другое", Type = (string?)null, RequireComment = true })
+                .AddDefaultRow(new { Reason = "Отсутствие нормативов", Type = (string?)null, RequireComment = false })
+                .AddDefaultRow(new { Reason = "Некорректные нормативы", Type = (string?)null, RequireComment = false })
+                .AddDefaultRow(new { Reason = "Неопытный оператор", Type = (string?)null, RequireComment = false })
+                .AddDefaultRow(new { Reason = "Работа ученика", Type = (string?)null, RequireComment = false })
+                .AddDefaultRow(new { Reason = "Небрежное отношение к работе", Type = (string?)null, RequireComment = true })
+                .AddDefaultRow(new { Reason = "Некорректное заполнение", Type = (string?)null, RequireComment = false })
+                .AddDefaultRow(new { Reason = "Освоение", Type = "Setup", RequireComment = false })
+                .AddDefaultRow(new { Reason = "Особенности изготовления", Type = (string?)null, RequireComment = true })
+                .AddDefaultRow(new { Reason = "Штучная/длительная работа", Type = "Machining", RequireComment = false })
+                .AddDefaultRow(new { Reason = "Изготовление не по техпроцессу", Type = (string?)null, RequireComment = true })
+                .AddDefaultRow(new { Reason = "Изготовление типовой детали", Type = "Setup", RequireComment = false })
+                .AddDefaultRow(new { Reason = "Разовое изменение времени из-за проблем с инструментом/оборудованием", Type = "Machining", RequireComment = true })
+                .AddDefaultRow(new { Reason = "Несоответствующие заготовки", Type = "Machining", RequireComment = false })
+                .AddDefaultRow(new { Reason = "Доработка", Type = (string?)null, RequireComment = true })
                 .Build(),
 
             new TableBuilder("cnc_downtime_reasons")
                 .AddIdColumn()
                 .AddStringColumn("Reason", 50, false)
+                .AddDefaultRow(new { Reason = "" })
+                .AddDefaultRow(new { Reason = "Отсутствие оператора" })
+                .AddDefaultRow(new { Reason = "Ремонт оборудования" })
+                .AddDefaultRow(new { Reason = "Отсутствие электричества" })
+                .AddDefaultRow(new { Reason = "Организационные потери" })
+                .AddDefaultRow(new { Reason = "Другое" })
                 .Build(),
 
             new TableBuilder("cnc_elog_config")
@@ -537,15 +620,18 @@ namespace libeLog.Infrastructure.Sql
                 // причина = override ?? отметка мастера, считается в C# (Part.Effective*Reason),
                 // computed-колонки намеренно не используются: persisted computed при
                 // пересоздании уезжает в конец таблицы и сдвигает ordinal'ы (см. PartsDb.cs).
-                // IsMasterFault по умолчанию true — сам факт переопределения считается ошибкой
-                // мастера; аналитик снимает флаг, когда у мастера не было данных для верного
-                // выбора. By/At — общие на запись: обе категории правятся в одну сессию разбора.
+                // IsMasterFault по умолчанию false — сам факт переопределения ещё не значит, что
+                // мастер виноват; аналитик ставит флаг, когда у мастера была возможность выбрать
+                // верно, и опционально поясняет ошибку в MasterFaultComment.
+                // By/At — общие на запись: обе категории правятся в одну сессию разбора.
                 .AddStringColumn("SetupReasonOverride", -1)
                 .AddStringColumn("SetupReasonOverrideComment", -1)
-                .AddBoolColumn("SetupReasonOverrideIsMasterFault", false, true)
+                .AddBoolColumn("SetupReasonOverrideIsMasterFault", false, false)
+                .AddStringColumn("SetupReasonOverrideMasterFaultComment", -1)
                 .AddStringColumn("MachiningReasonOverride", -1)
                 .AddStringColumn("MachiningReasonOverrideComment", -1)
-                .AddBoolColumn("MachiningReasonOverrideIsMasterFault", false, true)
+                .AddBoolColumn("MachiningReasonOverrideIsMasterFault", false, false)
+                .AddStringColumn("MachiningReasonOverrideMasterFaultComment", -1)
                 .AddStringColumn("ReasonOverrideBy", 128)
                 .AddDateTimeColumn("ReasonOverrideAt")
                 .Build(),

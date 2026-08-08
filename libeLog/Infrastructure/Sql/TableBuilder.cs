@@ -472,6 +472,34 @@ namespace libeLog.Infrastructure.Sql
         }
 
         /// <summary>
+        /// Добавляет строку справочных данных, которая будет вставлена в таблицу при
+        /// деплое схемы, если таблица пуста (seed-if-empty). Значения существующих строк
+        /// при этом не трогаются — сид применяется только к пустой таблице.
+        /// </summary>
+        /// <param name="row">Анонимный объект: имена свойств — имена столбцов, значения — литералы.
+        /// Например: <c>new { Reason = "Освоение", Type = "Setup", RequireComment = false }</c>.</param>
+        /// <returns>Текущий экземпляр <see cref="TableBuilder"/>.</returns>
+        /// <exception cref="ArgumentException">Если имя свойства не совпадает ни с одним столбцом таблицы.</exception>
+        public TableBuilder AddDefaultRow(object row)
+        {
+            if (row is null)
+                throw new ArgumentNullException(nameof(row));
+
+            var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var property in row.GetType().GetProperties())
+            {
+                var column = _table.Columns.FirstOrDefault(c => c.Name.Equals(property.Name, StringComparison.OrdinalIgnoreCase));
+                if (column == null)
+                    throw new ArgumentException($"Столбец '{property.Name}' не существует в таблице '{_table.Name}'");
+
+                values[column.Name] = property.GetValue(row);
+            }
+
+            _table.DefaultRows.Add(values);
+            return this;
+        }
+
+        /// <summary>
         /// Финализирует построение таблицы и возвращает <see cref="TableDefinition"/>.
         /// </summary>
         /// <returns>Описание таблицы.</returns>

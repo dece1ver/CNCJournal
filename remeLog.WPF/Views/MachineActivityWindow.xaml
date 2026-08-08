@@ -6,8 +6,7 @@
         xmlns:cnt="clr-namespace:remeLog.Views.Controls"
         xmlns:vm="clr-namespace:remeLog.ViewModels"
         mc:Ignorable="d" WindowStartupLocation="CenterOwner"
-        Title="Сейчас на станках" Height="450" Width="1200"
-        SizeChanged="Window_SizeChanged">
+        Title="Сейчас в работе" Height="450" Width="1300">
     <Window.DataContext>
         <vm:MachineActivityViewModel/>
     </Window.DataContext>
@@ -16,34 +15,110 @@
                      IsIndeterminate="True"
                      Visibility="{Binding InProgress, Converter={StaticResource VisibilityConverter}}"/>
         <Grid>
-            <ListView x:Name="RowsListView" ItemsSource="{Binding Rows}" FontSize="14" Margin="8">
-                <ListView.ItemContainerStyle>
-                    <Style TargetType="ListViewItem">
+            <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="True"
+                      VerticalGridLinesBrush="LightGray" HorizontalGridLinesBrush="LightGray"
+                      ColumnWidth="SizeToCells" CanUserSortColumns="False"
+                      VerticalScrollBarVisibility="Visible"
+                      SelectionUnit="CellOrRowHeader" CanUserReorderColumns="False"
+                      SelectionMode="Extended" EnableColumnVirtualization="True"
+                      EnableRowVirtualization="True"
+                      VirtualizingPanel.IsVirtualizing="True"
+                      VirtualizingPanel.VirtualizationMode="Recycling"
+                      Margin="0 -1 0 0" BorderThickness="0"
+                      AlternatingRowBackground="#01D3D3D3"
+                      FontSize="14">
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
                         <Setter Property="ToolTip"
                                 Value="{Binding Activity.UpdatedLocal, StringFormat=Обновлено: {0:dd.MM.yyyy HH:mm:ss}}"/>
                     </Style>
-                </ListView.ItemContainerStyle>
-                <ListView.View>
-                    <GridView>
-                        <GridViewColumn Header="Станок" DisplayMemberBinding="{Binding Machine}" Width="110"/>
-                        <GridViewColumn Header="Статус" Width="260">
-                            <GridViewColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Activity, Converter={StaticResource MachineActivityStatusTextConverter}}"
-                                               Foreground="{Binding Activity, Converter={StaticResource MachineActivityStatusBrushConverter}}"
-                                               FontWeight="Bold"
-                                               TextTrimming="CharacterEllipsis"/>
-                                </DataTemplate>
-                            </GridViewColumn.CellTemplate>
-                        </GridViewColumn>
-                        <GridViewColumn Header="Деталь" DisplayMemberBinding="{Binding Activity.PartName}" Width="220"/>
-                        <GridViewColumn Header="Установ" DisplayMemberBinding="{Binding Activity.Setup}" Width="70"/>
-                        <GridViewColumn Header="Заказ" DisplayMemberBinding="{Binding Activity.Order}" Width="90"/>
-                        <GridViewColumn Header="Начало фазы" DisplayMemberBinding="{Binding Activity.PhaseStartLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="130"/>
-                        <GridViewColumn x:Name="OperatorColumn" Header="Оператор" DisplayMemberBinding="{Binding Activity.Operator}" Width="150"/>
-                    </GridView>
-                </ListView.View>
-            </ListView>
+                </DataGrid.RowStyle>
+                <DataGrid.CellStyle>
+                    <Style TargetType="DataGridCell">
+                        <Style.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="LightBlue"/>
+                                <Setter Property="Foreground" Value="Black"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.CellStyle>
+                <DataGrid.Resources>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#01D3D3D3"/>
+                        <Setter Property="BorderBrush" Value="LightGray"/>
+                        <Setter Property="BorderThickness" Value="0 1 1 1"/>
+                        <Setter Property="Foreground" Value="Black"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="FontSize" Value="12"/>
+                        <Setter Property="Padding" Value="8 5"/>
+                        <Setter Property="MinHeight" Value="32"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                        <Setter Property="VerticalContentAlignment" Value="Center"/>
+                        <Setter Property="SnapsToDevicePixels" Value="True"/>
+                        <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
+                        <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+                    </Style>
+                </DataGrid.Resources>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Станок" Binding="{Binding Machine}" Width="200">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}">
+                                <Setter Property="TextAlignment" Value="Left"/>
+                                <Setter Property="Margin" Value="4 0"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+
+                    <DataGridTemplateColumn Header="Статус" Width="200">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Activity, Converter={StaticResource MachineActivityStatusTextConverter}}"
+                                           Foreground="{Binding Activity, Converter={StaticResource MachineActivityStatusBrushConverter}}"
+                                           Style="{StaticResource TableTextBlock}"
+                                           FontWeight="Bold"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTextColumn Header="Деталь" Binding="{Binding Activity.PartName}" Width="250">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}">
+                                <Setter Property="TextAlignment" Value="Left"/>
+                                <Setter Property="Margin" Value="4 0"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+
+                    <DataGridTextColumn Header="Установ" Binding="{Binding Activity.Setup}" Width="60">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+
+                    <DataGridTextColumn Header="Заказ" Binding="{Binding Activity.Order}" Width="150">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+
+                    <DataGridTextColumn Header="Начало фазы" Binding="{Binding Activity.PhaseStartLocal, StringFormat={}{0:dd.MM HH:mm:ss}}" Width="130">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+
+                    <DataGridTextColumn Header="Оператор" Binding="{Binding Activity.Operator}" Width="*">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}">
+                                <Setter Property="TextAlignment" Value="Left"/>
+                                <Setter Property="Margin" Value="4 0"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                </DataGrid.Columns>
+            </DataGrid>
             <cnt:LoadingOverlay IsBusy="{Binding InProgress}"/>
         </Grid>
     </DockPanel>

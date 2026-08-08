@@ -1944,8 +1944,8 @@
                         <MenuItem Header="Поиски инструмента" Command="{Binding ExportToolSearchCasesToExcelCommand}"
                                   Icon="{StaticResource FindPartIcon}"
                                   ToolTip="Экспорт отчёта по поискам" HorizontalAlignment="Stretch"/>
-                        <MenuItem Command="{Binding ExportShiftsInfoReportCommand}" IsEnabled="False" Icon="не"
-                                  ToolTip="Смены" HorizontalAlignment="Stretch">
+                        <MenuItem Command="{Binding ExportShiftsInfoReportCommand}" Icon="{StaticResource CalendarIcon}"
+                                  ToolTip="Отчёт по сменам: нормативы, факт, простои и проверка СГТ по каждой смене" HorizontalAlignment="Stretch">
                             <MenuItem.Header>
                                 <TextBlock Text="Отчет по сменам"/>
                             </MenuItem.Header>
@@ -1973,6 +1973,10 @@
                         <MenuItem Header="Записи без объяснения мастера" Icon="{StaticResource ColumnComponent}"
                                   Command="{Binding ExportValidationErrorsCommand}"
                                   ToolTip="Записи за период, не прошедшие валидацию мастера (пустая причина/комментарий там, где они обязательны) — то, что сейчас блокирует закрытие суточного отчёта" HorizontalAlignment="Stretch"/>
+
+                        <MenuItem Header="Некорректные заполнения" Icon="{StaticResource ColumnComponent}"
+                                  Command="{Binding ExportIncorrectFillsCommand}"
+                                  ToolTip="Записи, где СГТ переопределил причину мастера — контекст записи, указанная мастером причина и переопределённая причина" HorizontalAlignment="Stretch"/>
 
                         <MenuItem Command="{Binding ExportVerevkinReportCommand}" Icon="{StaticResource ComparePerformanceIcon}"
                                   ToolTip="Для отчёта Верёвкина" HorizontalAlignment="Stretch">

@@ -208,9 +208,11 @@ namespace remeLog.Infrastructure
                         "SetupReasonOverride = @SetupReasonOverride, " +
                         "SetupReasonOverrideComment = @SetupReasonOverrideComment, " +
                         "SetupReasonOverrideIsMasterFault = @SetupReasonOverrideIsMasterFault, " +
+                        "SetupReasonOverrideMasterFaultComment = @SetupReasonOverrideMasterFaultComment, " +
                         "MachiningReasonOverride = @MachiningReasonOverride, " +
                         "MachiningReasonOverrideComment = @MachiningReasonOverrideComment, " +
                         "MachiningReasonOverrideIsMasterFault = @MachiningReasonOverrideIsMasterFault, " +
+                        "MachiningReasonOverrideMasterFaultComment = @MachiningReasonOverrideMasterFaultComment, " +
                         "ReasonOverrideBy = @ReasonOverrideBy, " +
                         "ReasonOverrideAt = @ReasonOverrideAt, " +
                         "DefectiveCount = @DefectiveCount " +
@@ -269,9 +271,11 @@ namespace remeLog.Infrastructure
                         cmd.Parameters.AddWithValue("@SetupReasonOverride", part.SetupReasonOverride);
                         cmd.Parameters.AddWithValue("@SetupReasonOverrideComment", part.SetupReasonOverrideComment);
                         cmd.Parameters.AddWithValue("@SetupReasonOverrideIsMasterFault", part.SetupReasonOverrideIsMasterFault);
+                        cmd.Parameters.AddWithValue("@SetupReasonOverrideMasterFaultComment", part.SetupReasonOverrideMasterFaultComment);
                         cmd.Parameters.AddWithValue("@MachiningReasonOverride", part.MachiningReasonOverride);
                         cmd.Parameters.AddWithValue("@MachiningReasonOverrideComment", part.MachiningReasonOverrideComment);
                         cmd.Parameters.AddWithValue("@MachiningReasonOverrideIsMasterFault", part.MachiningReasonOverrideIsMasterFault);
+                        cmd.Parameters.AddWithValue("@MachiningReasonOverrideMasterFaultComment", part.MachiningReasonOverrideMasterFaultComment);
                         cmd.Parameters.AddWithValue("@ReasonOverrideBy", part.ReasonOverrideBy);
                         cmd.Parameters.AddWithValue("@ReasonOverrideAt", (object?)part.ReasonOverrideAt ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@DefectiveCount", part.DefectiveCount);
@@ -369,10 +373,12 @@ namespace remeLog.Infrastructure
                     var masterMachiningDetail = await reader.GetValueOrDefaultAsync("MasterMachiningDetail", "", cancellationToken);
                     var setupReasonOverride = await reader.GetValueOrDefaultAsync("SetupReasonOverride", "", cancellationToken);
                     var setupReasonOverrideComment = await reader.GetValueOrDefaultAsync("SetupReasonOverrideComment", "", cancellationToken);
-                    var setupReasonOverrideIsMasterFault = await reader.GetValueOrDefaultAsync("SetupReasonOverrideIsMasterFault", true, cancellationToken);
+                    var setupReasonOverrideIsMasterFault = await reader.GetValueOrDefaultAsync("SetupReasonOverrideIsMasterFault", false, cancellationToken);
+                    var setupReasonOverrideMasterFaultComment = await reader.GetValueOrDefaultAsync("SetupReasonOverrideMasterFaultComment", "", cancellationToken);
                     var machiningReasonOverride = await reader.GetValueOrDefaultAsync("MachiningReasonOverride", "", cancellationToken);
                     var machiningReasonOverrideComment = await reader.GetValueOrDefaultAsync("MachiningReasonOverrideComment", "", cancellationToken);
-                    var machiningReasonOverrideIsMasterFault = await reader.GetValueOrDefaultAsync("MachiningReasonOverrideIsMasterFault", true, cancellationToken);
+                    var machiningReasonOverrideIsMasterFault = await reader.GetValueOrDefaultAsync("MachiningReasonOverrideIsMasterFault", false, cancellationToken);
+                    var machiningReasonOverrideMasterFaultComment = await reader.GetValueOrDefaultAsync("MachiningReasonOverrideMasterFaultComment", "", cancellationToken);
                     var reasonOverrideBy = await reader.GetValueOrDefaultAsync("ReasonOverrideBy", "", cancellationToken);
                     var reasonOverrideAt = await reader.GetValueOrDefaultAsync<DateTime?>("ReasonOverrideAt", null, cancellationToken);
 
@@ -430,9 +436,11 @@ namespace remeLog.Infrastructure
                         setupReasonOverride,
                         setupReasonOverrideComment,
                         setupReasonOverrideIsMasterFault,
+                        setupReasonOverrideMasterFaultComment,
                         machiningReasonOverride,
                         machiningReasonOverrideComment,
                         machiningReasonOverrideIsMasterFault,
+                        machiningReasonOverrideMasterFaultComment,
                         reasonOverrideBy,
                         reasonOverrideAt);
                     parts.Add(part);

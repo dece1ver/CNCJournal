@@ -1,7 +1,7 @@
-﻿using libeLog.Infrastructure.Sql;
+using eLog.Infrastructure.Extensions;
+using libeLog.Infrastructure.Sql;
+using libeLog.Views;
 using Microsoft.Data.SqlClient;
-using remeLog.Core;
-using remeLog.Infrastructure.Types;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -11,16 +11,25 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using Windows.Data.Xml.Dom;
-using libeLog.Views;
 using Windows.UI.Notifications;
 
-namespace remeLog.Infrastructure
+namespace eLog.Infrastructure.Services
 {
     /// <summary>
     /// Сервис присутствия приложения и обмена командами между экземплярами.
+    /// Зеркало remeLog.Infrastructure.AppPresenceService: те же таблицы
+    /// (remeLog_app_presence / remeLog_app_commands) и тот же набор команд, отличается
+    /// только идентификатор приложения и способ завершения процесса.
+    /// Правки набора команд нужно вносить в обе реализации.
     /// </summary>
     public sealed class AppPresenceService : IDisposable
     {
+        /// <summary>
+        /// Значение колонок Application / TargetApplication. Должно совпадать
+        /// с remeLog.Core.AppNames.ELog — eLog на remeLog.Core не ссылается.
+        /// </summary>
+        public const string ApplicationName = "eLog";
+
         /// <summary>Таймаут подключения к SQL-серверу (секунды).</summary>
         private const int DbConnectTimeoutSeconds = 5;
 
@@ -48,7 +57,6 @@ namespace remeLog.Infrastructure
         private readonly Guid _sessionId = Guid.NewGuid();
         private readonly string _machineName = Environment.MachineName;
         private readonly string _userName = Environment.UserName;
-        private readonly string _applicationName = AppNames.RemeLog;
         private readonly string _version = App.CreateUniqueEventName();
         private readonly string _ipAddress;
 
@@ -58,7 +66,6 @@ namespace remeLog.Infrastructure
         private Task? _pollingTask;
 
         private bool _disposed;
-
 
         public AppPresenceService(string connectionString)
         {
@@ -85,7 +92,6 @@ namespace remeLog.Infrastructure
             _heartbeatTask = Task.Run(HeartbeatLoopAsync);
             _pollingTask = Task.Run(CommandPollingLoopAsync);
         }
-
 
         /// <summary>Heartbeat-цикл: обновляет присутствие и периодически чистит устаревшие записи.</summary>
         private async Task HeartbeatLoopAsync()
@@ -155,7 +161,6 @@ namespace remeLog.Infrastructure
             }
         }
 
-
         /// <summary>Обновляет (или вставляет) запись о присутствии клиента.</summary>
         private async Task UpsertPresenceAsync(CancellationToken ct)
         {
@@ -167,8 +172,7 @@ ON target.SessionId = source.SessionId
 WHEN MATCHED THEN
     UPDATE SET
         LastSeenUtc = SYSUTCDATETIME(),
-        EnabledFeatures = @EnabledFeatures,
-        IpAddress      = @IpAddress
+        IpAddress   = @IpAddress
 
 WHEN NOT MATCHED THEN
     INSERT
@@ -180,7 +184,7 @@ WHEN NOT MATCHED THEN
     VALUES
     (
         @SessionId, @Application, @MachineName, @UserName,
-        @DisplayName, 'Online', @AppVersion, @IpAddress, @EnabledFeatures,
+        @DisplayName, 'Online', @AppVersion, @IpAddress, 0,
         SYSUTCDATETIME(), SYSUTCDATETIME()
     );";
 
@@ -193,15 +197,12 @@ WHEN NOT MATCHED THEN
             };
 
             command.Parameters.AddWithValue("@SessionId", _sessionId);
-            command.Parameters.AddWithValue("@Application", _applicationName);
+            command.Parameters.AddWithValue("@Application", ApplicationName);
             command.Parameters.AddWithValue("@MachineName", _machineName);
             command.Parameters.AddWithValue("@UserName", _userName);
             command.Parameters.AddWithValue("@DisplayName", _userName);
             command.Parameters.AddWithValue("@AppVersion", _version);
             command.Parameters.AddWithValue("@IpAddress", string.IsNullOrEmpty(_ipAddress) ? DBNull.Value : _ipAddress);
-            // Именно фактическая маска, а не сырая AppSettings.EnabledFeatures: у админа она
-            // пуста, хотя доступно всё, и окно инстансов показывало бы ему «—».
-            command.Parameters.AddWithValue("@EnabledFeatures", (int)Util.EffectiveFeatures);
 
             await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -223,16 +224,14 @@ WHERE CreatedUtc < DATEADD(DAY, -7, GETUTCDATE());";
         /// <summary>Читает необработанные команды и выполняет их.</summary>
         private async Task PollCommandsAsync(CancellationToken ct)
         {
-            // Фильтр по TargetApplication обязателен: eLog опрашивает ту же очередь и на
-            // одной машине может работать одновременно с remeLog. NULL допускаем ради
-            // строк, созданных версиями до появления этой колонки — тогда отправитель
-            // всегда имел в виду remeLog.
+            // Фильтр по TargetApplication обязателен: на одной машине рядом может работать
+            // remeLog, который опрашивает ту же очередь по тому же TargetMachine.
             const string sql = @"
 SELECT Id, CommandType, Payload
 FROM remeLog_app_commands
 WHERE
-    TargetMachine  = @MachineName
-    AND (TargetApplication = @Application OR TargetApplication IS NULL)
+    TargetMachine = @MachineName
+    AND TargetApplication = @Application
     AND ProcessedUtc IS NULL
 ORDER BY CreatedUtc;";
 
@@ -244,7 +243,7 @@ ORDER BY CreatedUtc;";
                 CommandTimeout = DbCommandTimeoutSeconds
             };
             command.Parameters.AddWithValue("@MachineName", _machineName);
-            command.Parameters.AddWithValue("@Application", _applicationName);
+            command.Parameters.AddWithValue("@Application", ApplicationName);
 
             await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
 
@@ -293,11 +292,11 @@ ORDER BY CreatedUtc;";
                         break;
 
                     case "ForceClose":
-                        await Application.Current.Dispatcher
-                            .InvokeAsync(() => Application.Current.Shutdown())
-                            .Task.ConfigureAwait(false);
-                        result = "OK";
-                        break;
+                        // Результат пишем ДО выхода: процесс после ForceExit не вернётся,
+                        // и команда осталась бы висеть в очереди необработанной.
+                        await MarkCommandProcessedAsync(connection, cmd.Id, "OK", ct).ConfigureAwait(false);
+                        await ForceExitAsync().ConfigureAwait(false);
+                        return;
 
                     case "ShowNotification":
                         // Немодально: см. комментарий у MessageBoxWindow.ShowNonModalAsync —
@@ -314,8 +313,11 @@ ORDER BY CreatedUtc;";
                             MessageBoxButton.YesNo,
                             MessageBoxImage.Question).ConfigureAwait(false);
                         if (updateAnswer == MessageBoxResult.Yes)
-                            await Application.Current.Dispatcher
-                                .InvokeAsync(() => App.Current.Dispatcher.InvokeShutdown());
+                        {
+                            await MarkCommandProcessedAsync(connection, cmd.Id, "OK", ct).ConfigureAwait(false);
+                            await ForceExitAsync().ConfigureAwait(false);
+                            return;
+                        }
                         result = "OK";
                         break;
 
@@ -336,6 +338,31 @@ ORDER BY CreatedUtc;";
             }
 
             await MarkCommandProcessedAsync(connection, cmd.Id, result, ct).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Завершает приложение, минуя MainWindow.OnWindowClosing: тот при незавершённой смене
+        /// или незакрытых деталях показывает модальный вопрос и по умолчанию отменяет закрытие.
+        /// У станка отвечать на него может быть некому, и «принудительно закрыть» превратилось
+        /// бы в «повесить окно с вопросом». Настройки перед выходом сохраняем сами — этим
+        /// обычно занимается тот же обработчик.
+        /// </summary>
+        private static async Task ForceExitAsync()
+        {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                try
+                {
+                    AppSettings.Save();
+                }
+                catch (Exception ex)
+                {
+                    Util.WriteLog(ex, "Ошибка сохранения настроек перед принудительным закрытием");
+                }
+
+                Util.WriteLog("Приложение закрывается по команде из окна экземпляров");
+                Environment.Exit(0);
+            }).Task.ConfigureAwait(false);
         }
 
         /// <summary>Копирует файл ярлыка на рабочий стол текущего пользователя.</summary>
@@ -406,7 +433,7 @@ WHERE Id = @Id;";
         /// <summary>Показывает системное уведомление Windows.</summary>
         private static void ShowToast(string text)
         {
-            const string AppId = "remeLog";
+            const string AppId = "eLog";
 
             try
             {
@@ -414,7 +441,7 @@ WHERE Id = @Id;";
                 xml.LoadXml(
                     "<toast>" +
                     "<visual><binding template=\"ToastGeneric\">" +
-                    "<text>remeLog</text>" +
+                    "<text>eLog</text>" +
                     "<text>" + System.Security.SecurityElement.Escape(text) + "</text>" +
                     "</binding></visual>" +
                     "</toast>");

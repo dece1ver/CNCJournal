@@ -134,6 +134,16 @@ namespace remeLog.Infrastructure
         public const string ProductionsCount = "productions";
 
         /// <summary>
+        /// Всего наладок (включая не учтённые в КПД — без норматива, б/н и т.д.)
+        /// </summary>
+        public const string TotalSetupsCount = "totalSetups";
+
+        /// <summary>
+        /// Всего изготовлений (включая не учтённые в КПД — без норматива, б/и и т.д.)
+        /// </summary>
+        public const string TotalProductionsCount = "totalProductions";
+
+        /// <summary>
         /// Начало наладки
         /// </summary>
         public const string StartSetupTime = "startSetupTime";
@@ -309,6 +319,49 @@ namespace remeLog.Infrastructure
         /// не было, — иначе неправленые записи давали бы FALSE и портили счёт.
         /// </summary>
         public const string MasterFault = "masterFault";
+
+        /// <summary>
+        /// Причина отклонения наладки одной ячейкой: «что выбрал мастер → на что исправил СГТ»
+        /// (Part.MasterSetupComment / Part.SetupReasonOverride).
+        /// </summary>
+        public const string SetupReasonSummary = "setupReasonSummary";
+
+        /// <summary>
+        /// Комментарий по наладке одной ячейкой: детализация мастера → обоснование СГТ
+        /// (Part.MasterSetupDetail / Part.SetupReasonOverrideComment).
+        /// </summary>
+        public const string SetupDetailSummary = "setupDetailSummary";
+
+        /// <summary>
+        /// Пояснение СГТ, в чём именно ошибка мастера в наладке (Part.SetupReasonOverrideMasterFaultComment).
+        /// Пусто, если переопределение не отмечено как ошибка мастера.
+        /// </summary>
+        public const string SetupFaultComment = "setupFaultComment";
+
+        /// <summary>
+        /// Причина отклонения изготовления одной ячейкой. См. <see cref="SetupReasonSummary"/>.
+        /// </summary>
+        public const string MachiningReasonSummary = "machiningReasonSummary";
+
+        /// <summary>
+        /// Комментарий по изготовлению одной ячейкой. См. <see cref="SetupDetailSummary"/>.
+        /// </summary>
+        public const string MachiningDetailSummary = "machiningDetailSummary";
+
+        /// <summary>
+        /// Пояснение СГТ, в чём именно ошибка мастера в изготовлении (Part.MachiningReasonOverrideMasterFaultComment).
+        /// </summary>
+        public const string MachiningFaultComment = "machiningFaultComment";
+
+        /// <summary>
+        /// Кто переопределил причину (Part.ReasonOverrideBy).
+        /// </summary>
+        public const string ReasonOverrideBy = "reasonOverrideBy";
+
+        /// <summary>
+        /// Когда переопределена причина (Part.ReasonOverrideAt).
+        /// </summary>
+        public const string ReasonOverrideAt = "reasonOverrideAt";
 
         /// <summary>
         /// Запись исключена из расчётов отчётов (Part.ExcludeFromReports)
@@ -764,6 +817,8 @@ namespace remeLog.Infrastructure
             { Setup, "Установка" },
             { SetupsCount, $"Количество{Environment.NewLine}наладок" },
             { ProductionsCount, $"Количество{Environment.NewLine}изготовлений" },
+            { TotalSetupsCount, $"Наладок{Environment.NewLine}всего" },
+            { TotalProductionsCount, $"Изготовлений{Environment.NewLine}всего" },
             { StartSetupTime, "Начало наладки" },
             { StartMachiningTime, $"Начало{Environment.NewLine}изготовления" },
             { EndMachiningTime, $"Конец{Environment.NewLine}изготовления" },
@@ -799,6 +854,14 @@ namespace remeLog.Infrastructure
             { MasterSetupReasonOriginal, $"Отметка мастера{Environment.NewLine}(наладка)" },
             { MasterMachiningReasonOriginal, $"Отметка мастера{Environment.NewLine}(изготовление)" },
             { MasterFault, $"Ошибка{Environment.NewLine}мастера" },
+            { SetupReasonSummary, $"Причина отклонения{Environment.NewLine}наладки" },
+            { SetupDetailSummary, $"Комментарий{Environment.NewLine}(наладка)" },
+            { SetupFaultComment, $"В чём ошибка{Environment.NewLine}(наладка)" },
+            { MachiningReasonSummary, $"Причина отклонения{Environment.NewLine}изготовления" },
+            { MachiningDetailSummary, $"Комментарий{Environment.NewLine}(изготовление)" },
+            { MachiningFaultComment, $"В чём ошибка{Environment.NewLine}(изготовление)" },
+            { ReasonOverrideBy, $"Кто{Environment.NewLine}переопределил" },
+            { ReasonOverrideAt, $"Когда{Environment.NewLine}переопределено" },
             { ExcludedFromReports, "Исключено" },
             { ValidationErrors, $"Не заполнено{Environment.NewLine}(требует мастера)" },
             { MasterComment, "Комментарий мастера" },
