@@ -76,8 +76,8 @@ namespace remeLog.Core.Services
             var tasks = machines.Select(async machine =>
             {
                 var parts = await Database.ReadPartsByShiftDateAndMachine(date, date, machine, cancellationToken);
-                var workedDay = parts.Any(p => p.ShiftDate == date && p.Shift == "День");
-                var workedNight = parts.Any(p => p.ShiftDate == date && p.Shift == "Ночь");
+                var workedDay = parts.Any(p => p.ShiftDate == date && p.Shift == Shifts.Day);
+                var workedNight = parts.Any(p => p.ShiftDate == date && p.Shift == Shifts.Night);
                 return new MachineWorkStatus(machine, workedDay, workedNight);
             });
 

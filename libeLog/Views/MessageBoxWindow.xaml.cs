@@ -108,16 +108,15 @@ public partial class MessageBoxWindow : Window
     }
 
     /// <summary>
-    /// Немодальный показ для уведомлений, инициируемых фоновым кодом (например, командой из
-    /// AppPresenceService). Обычный <see cref="Show(string,string,MessageBoxButton,MessageBoxImage)"/>
-    /// вызывает ShowDialog — если на момент показа ни одно окно приложения не активно,
-    /// CurrentOwner() вернёт null, а WPF в этом случае блокирует ВСЕ окна приложения на всё
-    /// время показа. Если к тому же оператор не видит окно (оно открылось не в фокусе, а
-    /// ShowInTaskbar по умолчанию выключен), ответить на диалог некому — получается
-    /// неснимаемый "подвес", закрываемый только через диспетчер задач. Здесь окно показывается
-    /// как обычное (Show, не ShowDialog), поэтому наличие/отсутствие ответа никак не блокирует
-    /// остальные окна; в таскбаре оно при этом видно, чтобы его можно было найти и открыть.
+    /// Показывает окно немодально (Show вместо ShowDialog) и возвращает ответ пользователя
+    /// задачей. Предназначен для уведомлений из фонового кода — например, для команд
+    /// AppPresenceService.
     /// </summary>
+    /// <remarks>
+    /// ShowDialog без видимого owner блокирует все окна приложения на время показа, поэтому
+    /// для диалога, который может открыться вне фокуса оператора, он не годится: ответить
+    /// на него будет некому. Окно показывается с ShowInTaskbar, чтобы его можно было найти.
+    /// </remarks>
     public static Task<MessageBoxResult> ShowNonModalAsync(string text, string caption, MessageBoxButton buttons,
         MessageBoxImage icon, YesNoButtonOrder yesNoOrder = YesNoButtonOrder.YesFirst) =>
         ShowNonModalCore(text, caption, buttons, icon, MapDefaultButton(buttons), null, yesNoOrder);

@@ -393,8 +393,8 @@ namespace remeLog.ViewModels
         }
 
         /// <summary>
-        /// Owner для модальных диалогов. Свойство <see cref="Application"/> здесь перекрывает
-        /// тип <see cref="System.Windows.Application"/>, поэтому окно берётся через хелпер.
+        /// Owner для модальных диалогов вкладки. Вынесено в метод, потому что свойство
+        /// <see cref="Application"/> перекрывает имя типа <see cref="System.Windows.Application"/>.
         /// </summary>
         private static Window? OwnerWindow() => System.Windows.Application.Current.MainWindow;
     }

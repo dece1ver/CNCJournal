@@ -16,11 +16,11 @@ namespace remeLog.Models
 
         public Shift(string name)
         {
-            Type = name.ToLower() switch
+            Type = name switch
             {
-                "день" => ShiftType.Day,
-                "ночь" => ShiftType.Night,
-                "все смены" => ShiftType.All,
+                _ when name.Equals(Shifts.Day, StringComparison.OrdinalIgnoreCase) => ShiftType.Day,
+                _ when name.Equals(Shifts.Night, StringComparison.OrdinalIgnoreCase) => ShiftType.Night,
+                _ when name.Equals(Shifts.All, StringComparison.OrdinalIgnoreCase) => ShiftType.All,
                 _ => throw new ArgumentException("Некорректный тип смены."),
             };
         }
@@ -29,25 +29,25 @@ namespace remeLog.Models
 
         public readonly string Name => Type switch
         {
-            ShiftType.All => "Все смены",
-            ShiftType.Day => "День",
-            ShiftType.Night => "Ночь",
+            ShiftType.All => Shifts.All,
+            ShiftType.Day => Shifts.Day,
+            ShiftType.Night => Shifts.Night,
             _ => throw new ArgumentException("Некорректный тип смены."),
         };
 
         public readonly string FilterText => Type switch
         {
             ShiftType.All => "",
-            ShiftType.Day => "День",
-            ShiftType.Night => "Ночь",
+            ShiftType.Day => Shifts.Day,
+            ShiftType.Night => Shifts.Night,
             _ => throw new ArgumentException("Некорректный тип смены."),
         };
 
         public readonly int Minutes => Type switch
         {
-            ShiftType.All => 1290,
-            ShiftType.Day => 660,
-            ShiftType.Night => 630,
+            ShiftType.All => Shifts.AllMinutes,
+            ShiftType.Day => Shifts.DayMinutes,
+            ShiftType.Night => Shifts.NightMinutes,
             _ => throw new ArgumentException("Некорректный тип смены."),
         };
 

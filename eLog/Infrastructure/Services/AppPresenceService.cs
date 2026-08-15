@@ -16,11 +16,11 @@ using Windows.UI.Notifications;
 namespace eLog.Infrastructure.Services
 {
     /// <summary>
-    /// Сервис присутствия приложения и обмена командами между экземплярами.
-    /// Зеркало remeLog.Infrastructure.AppPresenceService: те же таблицы
-    /// (remeLog_app_presence / remeLog_app_commands) и тот же набор команд, отличается
-    /// только идентификатор приложения и способ завершения процесса.
-    /// Правки набора команд нужно вносить в обе реализации.
+    /// Публикует присутствие экземпляра и выполняет команды, приходящие из окна экземпляров
+    /// remeLog. Работает с теми же таблицами (remeLog_app_presence, remeLog_app_commands) и
+    /// поддерживает тот же набор команд, что и remeLog.Infrastructure.AppPresenceService;
+    /// отличаются идентификатор приложения и способ завершения процесса. Набор команд нужно
+    /// править в обеих реализациях синхронно.
     /// </summary>
     public sealed class AppPresenceService : IDisposable
     {
@@ -224,8 +224,8 @@ WHERE CreatedUtc < DATEADD(DAY, -7, GETUTCDATE());";
         /// <summary>Читает необработанные команды и выполняет их.</summary>
         private async Task PollCommandsAsync(CancellationToken ct)
         {
-            // Фильтр по TargetApplication обязателен: на одной машине рядом может работать
-            // remeLog, который опрашивает ту же очередь по тому же TargetMachine.
+            // Фильтр по TargetApplication обязателен: на той же машине очередь по тому же
+            // TargetMachine опрашивает и remeLog.
             const string sql = @"
 SELECT Id, CommandType, Payload
 FROM remeLog_app_commands
@@ -292,8 +292,8 @@ ORDER BY CreatedUtc;";
                         break;
 
                     case "ForceClose":
-                        // Результат пишем ДО выхода: процесс после ForceExit не вернётся,
-                        // и команда осталась бы висеть в очереди необработанной.
+                        // Результат пишется до выхода — после ForceExitAsync управление не вернётся,
+                        // и команда осталась бы в очереди необработанной.
                         await MarkCommandProcessedAsync(connection, cmd.Id, "OK", ct).ConfigureAwait(false);
                         await ForceExitAsync().ConfigureAwait(false);
                         return;
@@ -341,12 +341,14 @@ ORDER BY CreatedUtc;";
         }
 
         /// <summary>
-        /// Завершает приложение, минуя MainWindow.OnWindowClosing: тот при незавершённой смене
-        /// или незакрытых деталях показывает модальный вопрос и по умолчанию отменяет закрытие.
-        /// У станка отвечать на него может быть некому, и «принудительно закрыть» превратилось
-        /// бы в «повесить окно с вопросом». Настройки перед выходом сохраняем сами — этим
-        /// обычно занимается тот же обработчик.
+        /// Завершает приложение в обход MainWindow.OnWindowClosing, сохранив настройки
+        /// (обычно их сохраняет тот же обработчик).
         /// </summary>
+        /// <remarks>
+        /// Штатное закрытие при незавершённой смене или незакрытых деталях показывает модальный
+        /// вопрос и по умолчанию отменяет выход. У станка отвечать на него некому, поэтому для
+        /// команды принудительного закрытия этот путь не годится.
+        /// </remarks>
         private static async Task ForceExitAsync()
         {
             await Application.Current.Dispatcher.InvokeAsync(() =>

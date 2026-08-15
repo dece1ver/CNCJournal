@@ -83,7 +83,8 @@ app.MapPost("/account/login", async (HttpContext context, LoginAttemptLimiter li
     var password = form["password"].ToString();
     var returnUrl = IsLocalUrl(form["returnUrl"].ToString()) ? form["returnUrl"].ToString() : "/";
 
-    var key = $"{context.Connection.RemoteIpAddress}:{username.ToLowerInvariant()}";
+    var clientIp = ClientIp.Resolve(context, tunnelPort);
+    var key = $"{clientIp}:{username.ToLowerInvariant()}";
     if (limiter.IsLockedOut(key))
     {
         context.Response.Redirect($"/login?error=lockout&returnUrl={Uri.EscapeDataString(returnUrl)}");
@@ -96,7 +97,7 @@ app.MapPost("/account/login", async (HttpContext context, LoginAttemptLimiter li
     if (!OperatingSystem.IsWindows() || !AdAuthenticator.TryAuthenticate(domain, allowedGroup, username, password, out var displayName))
     {
         limiter.RegisterFailure(key);
-        Log.Write($"remeLog.Web: неудачная попытка входа \"{username}\" с {context.Connection.RemoteIpAddress}");
+        Log.Write($"remeLog.Web: неудачная попытка входа \"{username}\" с {clientIp}");
         context.Response.Redirect($"/login?error=1&returnUrl={Uri.EscapeDataString(returnUrl)}");
         return;
     }
@@ -109,7 +110,7 @@ app.MapPost("/account/login", async (HttpContext context, LoginAttemptLimiter li
     await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity),
         new AuthenticationProperties { IsPersistent = true, ExpiresUtc = DateTimeOffset.UtcNow.AddHours(12) });
 
-    Log.Write($"remeLog.Web: вход \"{username}\" с {context.Connection.RemoteIpAddress}");
+    Log.Write($"remeLog.Web: вход \"{username}\" с {clientIp}");
     context.Response.Redirect(returnUrl);
 });
 

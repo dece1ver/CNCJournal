@@ -275,7 +275,7 @@ dotnet run --project AiService
 - Pass: пароль
 - LocalType: не используется (см. ниже) — оставлено в схеме, ничего не сломает, если пусто
 
-Поиск (`remeLog/Models/WindchillClient.cs`) ходит в **Windchill REST Services (WRS)** — официальный
+Поиск (`remeLog.Core/Models/WindchillClient.cs`) ходит в **Windchill REST Services (WRS)** — официальный
 OData-эндпоинт Windchill, один запрос возвращает готовый JSON.
 
 В окне результатов (`WncObjectsWindow`) три поля поиска и переключатель:
@@ -296,6 +296,33 @@ OData-эндпоинт Windchill, один запрос возвращает г�
 сервисов на одном сервере не совпадают и могут меняться при апгрейде. Сначала проверяем актуальный
 путь — `{Server}/Windchill/servlet/odata/PTC/GetCSRFToken()` (должен вернуть 200) и метаданные
 `.../CADDocumentMgmt/$metadata` (с `Accept: application/xml`).
+
+**Лог обращений — `remeLog_wnc_requests`.** Каждый поиск и каждое скачивание PDF пишется в эту
+таблицу: кто (Windows-логин и машина — в самом Windchill все ходят под одним сервисным логином из
+`cnc_wnc_cfg`, там пользователей не различить), когда (`CreatedUtc`, **в UTC**), что искали
+(`Params`), сколько нашлось (`ResultCount`, `Truncated`), сколько заняло (`ElapsedMs`), успех или
+ошибка (`Success`, `ErrorMessage`). В `RequestUrls` — фактические HTTP-запросы к серверу, по строке
+на запрос в формате `[статус] длительность URL`; одно действие пользователя не всегда равно одному
+обращению (поиск без флажка «Только CAD документы» опрашивает два entity set, скачивание PDF — сначала
+метаданные, потом файл). URL самодостаточен: вставив его под сервисным логином, получите ровно тот
+сырой ответ, который разбирал remeLog — удобно приложить к обращению в техподдержку. Учётных данных
+в URL нет, Basic-auth уходит заголовком.
+
+```sql
+SELECT CreatedUtc, UserName, MachineName, RequestType, Params, ElapsedMs, Success, ErrorMessage, RequestUrls
+FROM remeLog_wnc_requests
+WHERE CreatedUtc BETWEEN @from AND @to   -- время в UTC
+ORDER BY CreatedUtc;
+```
+
+Официальная документация (портал техподдержки PTC, `support.ptc.com`, требует логин в PTC):
+- [Windchill REST Services — общий обзор](https://support.ptc.com/help/windchill_rest_services/r2.0/en/windchill_rest_services/WCCG_RESTAPIsWRS.html)
+- [PTC CAD Document Management Domain](https://support.ptc.com/help/windchill_rest_services/r2.2/en/windchill_rest_services/CADdocumentmgmtdomain.html) — сущность `CADDocuments`
+- [Retrieving a Specific CAD Document](https://support.ptc.com/help/windchill_rest_services/r1.6/en/windchill_rest_services/wccg_restapiaccessexamples_CADDocumentMgmt_getaspecificCADdocument.html) — пример запроса по ID, как в `DownloadPdfAsync`
+- [PTC Document Management Domain](https://support.ptc.com/help/windchill_rest_services/r2.6/en/windchill_rest_services/docmgmtdomain.html) — сущность `Documents`
+- [Support for $filter on Navigation Properties](https://support.ptc.com/help/windchill_rest_services/r1.6/en/windchill_rest_services/filteringoptions.html) — синтаксис `contains`/`startswith`/`endswith`
+- [PTC Visualization Domain](https://support.ptc.com/help/windchill_rest_services/r1.7/en/windchill_rest_services/visualizationdomain.html) — `Representations`/`AdditionalFiles`, откуда качается PDF
+- [Fetching a NONCE Token from a Service](https://support.ptc.com/help/windchill_rest_services/r2.4/en/windchill_rest_services/WCCG_RESTAccessExamplesFetchNONCE.html) — `GetCSRFToken()`
 
 #### <ins>masters</ins> (мастера)
 - FullName: Фамилия Имя Отчество

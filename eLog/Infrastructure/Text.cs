@@ -7,6 +7,12 @@ namespace eLog.Infrastructure
         public const string DayShift = "День";
         public const string NightShift = "Ночь";
 
+        /// <summary>Длительность дневной смены в минутах.</summary>
+        public const int DayShiftMinutes = 660;
+
+        /// <summary>Длительность ночной смены в минутах.</summary>
+        public const int NightShiftMinutes = 630;
+
         public static readonly string[] Shifts = { DayShift, NightShift };
 
         public static class DownTimes

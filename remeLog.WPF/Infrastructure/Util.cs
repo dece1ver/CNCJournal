@@ -258,7 +258,7 @@ namespace remeLog.Infrastructure
                     return new Part(
                         Guid.NewGuid(),
                         $"Machine_{random.Next(1, 5)}",
-                        random.Next(0, 2) == 0 ? "День" : "Ночь",
+                        random.Next(0, 2) == 0 ? Shifts.Day : Shifts.Night,
                         shiftDate,
                         $"Operator_{random.Next(1, 10)}",
                         $"Part_{random.Next(1, 20)}",
@@ -412,6 +412,10 @@ namespace remeLog.Infrastructure
         /// <see cref="WindchillClient.MaxResults"/> и реальных совпадений может быть больше.
         /// Точное общее число совпадений не возвращается — сервер считает его ненадёжно
         /// (см. <see cref="WindchillClient.MaxResults"/>).
+        ///
+        /// Каждый вызов пишется в <c>remeLog_wnc_requests</c> (см. <see cref="Database.LogWncRequestAsync"/>)
+        /// — кто/когда/с какими параметрами обращался и сколько это заняло, для диагностики
+        /// нагрузки на сервере Windchill. Сбой самой записи лога не мешает поиску.
         /// </summary>
         public static async Task<(List<WncObject> Objects, bool Truncated)> SearchInWindchill(
             string? keyword, string? name, string? number, bool cadDocumentsOnly, CancellationToken cancellationToken)
@@ -424,15 +428,37 @@ namespace remeLog.Infrastructure
                 throw new Exception("Не удалось получить конфигурацию Windchill");
             }
 
-            var service = new WindchillService(wncConfig.Server, wncConfig.User, wncConfig.Password);
-            cancellationToken.ThrowIfCancellationRequested();
-            return await service.SearchDocumentsAsync(keyword, name, number, cadDocumentsOnly, cancellationToken);
+            var paramsSummary = $"keyword='{keyword}' name='{name}' number='{number}' cadOnly={cadDocumentsOnly}";
+            // Собирается из клиента по мере запросов, поэтому в логе оказывается и то, что успело
+            // уйти на сервер до ошибки/таймаута — см. WindchillClient.ReportRequest.
+            var requests = new List<string>();
+            var stopwatch = Stopwatch.StartNew();
+            try
+            {
+                var service = new WindchillService(wncConfig.Server, wncConfig.User, wncConfig.Password);
+                cancellationToken.ThrowIfCancellationRequested();
+                var result = await service.SearchDocumentsAsync(keyword, name, number, cadDocumentsOnly,
+                    cancellationToken, requests.Add);
+                await Database.LogWncRequestAsync("Search", paramsSummary, requests, result.Objects.Count, result.Truncated,
+                    success: true, errorMessage: null, stopwatch.ElapsedMilliseconds);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                await Database.LogWncRequestAsync("Search", paramsSummary, requests, null, null,
+                    success: false, errorMessage: ex is OperationCanceledException ? "Отменено" : ex.Message,
+                    stopwatch.ElapsedMilliseconds);
+                throw;
+            }
         }
 
         /// <summary>
         /// Скачивает PDF-представление найденного объекта Windchill во временную папку. См.
         /// <see cref="WindchillClient.DownloadPdfAsync"/> за подробностями (не у всех объектов
         /// есть PDF-представление — тогда возвращается null).
+        ///
+        /// Логируется так же, как <see cref="SearchInWindchill(string?,string?,string?,bool,CancellationToken)"/>
+        /// — см. <see cref="Database.LogWncRequestAsync"/>.
         /// </summary>
         public static async Task<string?> DownloadWndcPdf(WncObject obj, CancellationToken cancellationToken)
         {
@@ -443,9 +469,25 @@ namespace remeLog.Infrastructure
                 throw new Exception("Не удалось получить конфигурацию Windchill");
             }
 
-            var service = new WindchillService(wncConfig.Server, wncConfig.User, wncConfig.Password);
-            cancellationToken.ThrowIfCancellationRequested();
-            return await service.DownloadPdfAsync(obj, cancellationToken);
+            var paramsSummary = $"name='{obj.Name}' id='{obj.Id}' objectId='{obj.ObjectId}'";
+            var requests = new List<string>();
+            var stopwatch = Stopwatch.StartNew();
+            try
+            {
+                var service = new WindchillService(wncConfig.Server, wncConfig.User, wncConfig.Password);
+                cancellationToken.ThrowIfCancellationRequested();
+                var path = await service.DownloadPdfAsync(obj, cancellationToken, requests.Add);
+                await Database.LogWncRequestAsync("DownloadPdf", paramsSummary, requests, path != null ? 1 : 0, null,
+                    success: true, errorMessage: null, stopwatch.ElapsedMilliseconds);
+                return path;
+            }
+            catch (Exception ex)
+            {
+                await Database.LogWncRequestAsync("DownloadPdf", paramsSummary, requests, null, null,
+                    success: false, errorMessage: ex is OperationCanceledException ? "Отменено" : ex.Message,
+                    stopwatch.ElapsedMilliseconds);
+                throw;
+            }
         }
 
         /// <summary>
@@ -598,11 +640,11 @@ namespace remeLog.Infrastructure
         }
 
         /// <summary>
-        /// Фактическая маска фич текущего экземпляра: у администратора (если фичи не заданы
-        /// явно через --features=) доступно всё, поэтому сырая AppSettings.EnabledFeatures у
-        /// него может быть пустой и о реальных правах не говорит. Единственный источник правды
-        /// для «что доступно этому экземпляру» — используется и проверками HasFeature, и
-        /// записью присутствия (AppPresenceService), чтобы окно инстансов не врало про админов.
+        /// Фактическая маска фич текущего экземпляра: у администратора доступны все фичи,
+        /// если маска не задана явно аргументом --features=. Сырая
+        /// <see cref="AppSettings.EnabledFeatures"/> о реальных правах администратора не говорит —
+        /// она у него может быть пустой, поэтому «что доступно этому экземпляру» определяется
+        /// здесь и только здесь: и для <see cref="HasFeature"/>, и для записи присутствия.
         /// </summary>
         public static RemeLogFeature EffectiveFeatures =>
             !AppSettings.FeaturesExplicitlySet && IsAppAdmin()

@@ -236,8 +236,8 @@ namespace remeLog.ViewModels
         public bool SpecifiedDayDowntimesNeedAttention => SpecifiedDayDowntimesRatio is > 0.1 or < -0.1;
         public bool SpecifiedNightDowntimesNeedAttention => SpecifiedNightDowntimesRatio is > 0.1 or < -0.1;
         
-        public List<Part> DayParts => Parts.Where(p => p.Shift == "День").ToList();
-        public List<Part> NightParts => Parts.Where(p => p.Shift == "Ночь").ToList();
+        public List<Part> DayParts => Parts.Where(p => p.Shift == Shifts.Day).ToList();
+        public List<Part> NightParts => Parts.Where(p => p.Shift == Shifts.Night).ToList();
         public int DayOrders => Parts.Where(p => p.Shift == new Shift(ShiftType.Day).Name).GroupBy(p => p.Order).Count();
         public int NightOrders => Parts.Where(p => p.Shift == new Shift(ShiftType.Night).Name).GroupBy(p => p.Order).Count();
         public double DayFinishedCount => Parts.Where(p => p.Shift == new Shift(ShiftType.Day).Name).Sum(p => p.FinishedCount);

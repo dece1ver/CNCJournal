@@ -50,8 +50,7 @@
 
         <!-- Контекстное меню строки: DataContext строки — AppPresence, поэтому команды берём
              у вкладки через Tag контейнера (см. ItemContainerStyle). -->
-        <!-- x:Shared="False": стиль несёт готовый экземпляр ContextMenu, и одна вкладка не
-             должна одалживать его другой. -->
+        <!-- x:Shared="False": стиль несёт готовый экземпляр ContextMenu, каждой вкладке нужен свой. -->
         <Style x:Key="InstanceItemStyle" x:Shared="False" TargetType="ListViewItem">
             <Setter Property="Tag"
                     Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListView}}"/>
@@ -84,8 +83,8 @@
 
     <TabControl Margin="4">
         <!-- DataContext вкладки задаётся на корне содержимого, а не на TabItem: содержимое
-             показывает ContentPresenter из шаблона самого TabControl, и наследование от
-             TabItem до него не всегда доходит. -->
+             размещает ContentPresenter из шаблона TabControl, и наследование от TabItem
+             до него не доходит. -->
         <TabItem Header="remeLog">
             <DockPanel DataContext="{Binding RemeLogTab}">
                 <ContentControl DockPanel.Dock="Top" Content="{Binding}"

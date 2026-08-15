@@ -1,4 +1,5 @@
 using remeLog.Models;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,17 +26,21 @@ namespace remeLog.Infrastructure.Services
         }
 
         /// <summary> Ищет объекты по ключевому слову/наименованию/обозначению. См. <see cref="WindchillClient.SearchAsync"/>. </summary>
+        /// <param name="onRequestIssued"> Приёмник лога фактических HTTP-запросов, см. <see cref="WindchillClient"/>. </param>
         public async Task<(List<WncObject> Objects, bool Truncated)> SearchDocumentsAsync(
-            string? keyword, string? name, string? number, bool cadDocumentsOnly, CancellationToken cancellationToken)
+            string? keyword, string? name, string? number, bool cadDocumentsOnly, CancellationToken cancellationToken,
+            Action<string>? onRequestIssued = null)
         {
-            using var client = new WindchillClient(_serverUrl, _username, _password);
+            using var client = new WindchillClient(_serverUrl, _username, _password, onRequestIssued);
             return await client.SearchAsync(keyword, name, number, cadDocumentsOnly, cancellationToken);
         }
 
         /// <summary> Скачивает PDF-представление объекта во временную папку. См. <see cref="WindchillClient.DownloadPdfAsync"/>. </summary>
-        public async Task<string?> DownloadPdfAsync(WncObject obj, CancellationToken cancellationToken)
+        /// <param name="onRequestIssued"> Приёмник лога фактических HTTP-запросов, см. <see cref="WindchillClient"/>. </param>
+        public async Task<string?> DownloadPdfAsync(WncObject obj, CancellationToken cancellationToken,
+            Action<string>? onRequestIssued = null)
         {
-            using var client = new WindchillClient(_serverUrl, _username, _password);
+            using var client = new WindchillClient(_serverUrl, _username, _password, onRequestIssued);
             return await client.DownloadPdfAsync(obj, cancellationToken);
         }
     }

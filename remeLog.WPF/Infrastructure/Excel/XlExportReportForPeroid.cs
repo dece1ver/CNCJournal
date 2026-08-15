@@ -136,12 +136,18 @@ namespace remeLog.Infrastructure
                 parts = partGroup.OrderBy(p => p.StartSetupTime).ToList();
                 totalWorkedMinutes = parts.FullWorkedTime().TotalMinutes;
                 ws.Cell(row, ci[CM.Machine]).Value = partGroup.Key;
-                ws.Cell(row, ci[CM.WorkedShifts]).Value = shifts.Count(s => s.Machine == partGroup.Key && s is not ({ Shift: "День", UnspecifiedDowntimes: 660 } or { Shift: "Ночь", UnspecifiedDowntimes: 630 }));
-                ws.Cell(row, ci[CM.NoOperatorShifts]).Value = shifts.Count(s => s.Machine == partGroup.Key && s.DowntimesComment == "Отсутствие оператора" && !AppSettings.Holidays.Contains(s.ShiftDate) && s is { Shift: "День", UnspecifiedDowntimes: 660 } or { Shift: "Ночь", UnspecifiedDowntimes: 630 });
-                ws.Cell(row, ci[CM.HardwareRepairShifts]).Value = shifts.Count(s => s.Machine == partGroup.Key && s.DowntimesComment == "Ремонт оборудования" && !AppSettings.Holidays.Contains(s.ShiftDate) && s is { Shift: "День", UnspecifiedDowntimes: 660 } or { Shift: "Ночь", UnspecifiedDowntimes: 630 });
-                ws.Cell(row, ci[CM.NoPowerShifts]).Value = shifts.Count(s => s.Machine == partGroup.Key && s.DowntimesComment == "Отсутствие электричества" && !AppSettings.Holidays.Contains(s.ShiftDate) && s is { Shift: "День", UnspecifiedDowntimes: 660 } or { Shift: "Ночь", UnspecifiedDowntimes: 630 });
-                ws.Cell(row, ci[CM.ProcessRelatedLossShifts]).Value = shifts.Count(s => s.Machine == partGroup.Key && s.DowntimesComment == "Организационные потери" && !AppSettings.Holidays.Contains(s.ShiftDate) && s is { Shift: "День", UnspecifiedDowntimes: 660 } or { Shift: "Ночь", UnspecifiedDowntimes: 630 });
-                ws.Cell(row, ci[CM.UnspecifiedOtherShifts]).Value = shifts.Count(s => s.Machine == partGroup.Key && s.DowntimesComment == "Другое" && !AppSettings.Holidays.Contains(s.ShiftDate) && s is ({ Shift: "День", UnspecifiedDowntimes: 660 } or { Shift: "Ночь", UnspecifiedDowntimes: 630 }));
+                int IdleShiftsByReason(string reason) => shifts.Count(s =>
+                    s.Machine == partGroup.Key
+                    && s.DowntimesComment == reason
+                    && !AppSettings.Holidays.Contains(s.ShiftDate)
+                    && s.IsIdleWholeShift);
+
+                ws.Cell(row, ci[CM.WorkedShifts]).Value = shifts.Count(s => s.Machine == partGroup.Key && !s.IsIdleWholeShift);
+                ws.Cell(row, ci[CM.NoOperatorShifts]).Value = IdleShiftsByReason(DowntimeReasons.NoOperator);
+                ws.Cell(row, ci[CM.HardwareRepairShifts]).Value = IdleShiftsByReason(DowntimeReasons.HardwareRepair);
+                ws.Cell(row, ci[CM.NoPowerShifts]).Value = IdleShiftsByReason(DowntimeReasons.NoPower);
+                ws.Cell(row, ci[CM.ProcessRelatedLossShifts]).Value = IdleShiftsByReason(DowntimeReasons.ProcessRelatedLoss);
+                ws.Cell(row, ci[CM.UnspecifiedOtherShifts]).Value = IdleShiftsByReason(DowntimeReasons.Other);
                 ws.Cell(row, ci[CM.SetupRatio]).Value = parts.AverageSetupRatio();
                 ws.Cell(row, ci[CM.SetupRatioIncludeDowntimes]).Value = parts.AverageSetupRatioIncludeDowntimes();
                 ws.Cell(row, ci[CM.ProductionRatio]).Value = parts.ProductionRatio();

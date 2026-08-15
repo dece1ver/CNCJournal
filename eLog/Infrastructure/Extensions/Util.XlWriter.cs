@@ -108,7 +108,7 @@ namespace eLog.Infrastructure.Extensions
                             xlRow.Cell(i).FormulaR1C1 = prevRow.Cell(i).FormulaR1C1;
                         }
 
-                        var shiftTime = part.Shift == Text.DayShift ? 660 : 630;
+                        var shiftTime = part.Shift == Text.DayShift ? Text.DayShiftMinutes : Text.NightShiftMinutes;
                         xlRow.Cell(34).Value = Math.Round(part.DownTimes.Where(x => x is { Relation: DownTime.Relations.Setup, Type: not DownTime.Types.PartialSetup }).TotalMinutes(), 0);
                         xlRow.Cell(35).Value = Math.Round(part.DownTimes.Where(x => x is { Relation: DownTime.Relations.Machining }).TotalMinutes(), 0);
                         xlRow.Cell(36).Value = part.Guid.ToString();
@@ -260,7 +260,7 @@ namespace eLog.Infrastructure.Extensions
                         xlRow.Cell(22).Value = part.ProductionTimeFact.ToString(@"hh\:mm");
                         xlRow.Cell(23).Value = part.SingleProductionTimePlan;
                         xlRow.Cell(24).Value = Math.Round(part.MachineTime.TotalMinutes, 2);
-                        var shiftTime = part.Shift == Text.DayShift ? 660 : 630;
+                        var shiftTime = part.Shift == Text.DayShift ? Text.DayShiftMinutes : Text.NightShiftMinutes;
                         xlRow.Cell(34).Value = Math.Round(part.DownTimes.Where(x => x is { Relation: DownTime.Relations.Setup, Type: not DownTime.Types.PartialSetup }).TotalMinutes(), 0);
                         xlRow.Cell(35).Value = Math.Round(part.DownTimes.Where(x => x is { Relation: DownTime.Relations.Machining }).TotalMinutes(), 0);
                         xlRow.Cell(36).Value = part.Guid.ToString();

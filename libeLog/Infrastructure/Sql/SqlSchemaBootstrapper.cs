@@ -245,12 +245,14 @@ namespace libeLog.Infrastructure.Sql
             new TableBuilder("cnc_downtime_reasons")
                 .AddIdColumn()
                 .AddStringColumn("Reason", 50, false)
-                .AddDefaultRow(new { Reason = "" })
-                .AddDefaultRow(new { Reason = "Отсутствие оператора" })
-                .AddDefaultRow(new { Reason = "Ремонт оборудования" })
-                .AddDefaultRow(new { Reason = "Отсутствие электричества" })
-                .AddDefaultRow(new { Reason = "Организационные потери" })
-                .AddDefaultRow(new { Reason = "Другое" })
+                // Набор фиксирован: по этим причинам сводные отчёты считают отдельные
+                // колонки (см. DowntimeReasons).
+                .AddDefaultRow(new { Reason = DowntimeReasons.None })
+                .AddDefaultRow(new { Reason = DowntimeReasons.NoOperator })
+                .AddDefaultRow(new { Reason = DowntimeReasons.HardwareRepair })
+                .AddDefaultRow(new { Reason = DowntimeReasons.NoPower })
+                .AddDefaultRow(new { Reason = DowntimeReasons.ProcessRelatedLoss })
+                .AddDefaultRow(new { Reason = DowntimeReasons.Other })
                 .Build(),
 
             new TableBuilder("cnc_elog_config")
@@ -684,6 +686,37 @@ namespace libeLog.Infrastructure.Sql
                     name: "IX_app_commands_cleanup"
                 )
                 .Build(),
+
+            // Лог каждого обращения к Windchill REST API (см. remeLog.Core/Models/WindchillClient.cs).
+            // Windchill видит только один общий сервисный логин (cnc_wnc_cfg.User) для всех
+            // пользователей remeLog, поэтому "кто именно" фиксируется здесь, на стороне remeLog —
+            // по Windows-логину/машине инициатора, а не по учётке Windchill. Нужен для
+            // диагностики нагрузки/троттлинга на сервере Windchill: сопоставить время жалоб
+            // пользователей с фактическими запросами (см. Database.LogWncRequestAsync).
+            new TableBuilder("remeLog_wnc_requests")
+                .AddIdColumn()
+                .AddStringColumn("MachineName", 128, false)
+                .AddStringColumn("UserName", 128, false)
+                .AddStringColumn("RequestType", 20, false)
+                .AddStringColumn("Params", -1)
+                // Фактические HTTP-запросы к Windchill за одно действие пользователя, по строке
+                // на запрос: "[статус] длительность URL". Одно действие — не всегда один запрос
+                // (поиск с cadOnly=false опрашивает два entity set, скачивание PDF — сначала
+                // метаданные, потом файл), и по этой колонке видно реальное число обращений.
+                // URL самодостаточен: вставив его в браузер/Postman под сервисным логином из
+                // cnc_wnc_cfg, получаем ровно тот сырой ответ, который разбирал remeLog — это же
+                // можно отдать техподдержке как воспроизводимый пример. Учётных данных в URL нет
+                // (Basic-auth уходит заголовком).
+                .AddStringColumn("RequestUrls", -1)
+                .AddIntColumn("ResultCount")
+                .AddBoolColumn("Truncated")
+                .AddBoolColumn("Success", false)
+                .AddStringColumn("ErrorMessage", -1)
+                .AddIntColumn("ElapsedMs", false)
+                .AddDateTimeColumn("CreatedUtc", false)
+                .AddIndex(new[] { "CreatedUtc" }, name: "IX_wnc_requests_time")
+                .Build(),
+
             // Живой статус станка (наладка/изготовление/простой), который тихо пишет eLog,
             // пока строка ещё не закрыта (SyncParts синхронизирует в parts только завершённые
             // строки). MERGE по Machine — одна строка на станок. UpdatedUtc — heartbeat: если

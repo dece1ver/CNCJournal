@@ -223,10 +223,9 @@ WHERE CreatedUtc < DATEADD(DAY, -7, GETUTCDATE());";
         /// <summary>Читает необработанные команды и выполняет их.</summary>
         private async Task PollCommandsAsync(CancellationToken ct)
         {
-            // Фильтр по TargetApplication обязателен: eLog опрашивает ту же очередь и на
-            // одной машине может работать одновременно с remeLog. NULL допускаем ради
-            // строк, созданных версиями до появления этой колонки — тогда отправитель
-            // всегда имел в виду remeLog.
+            // Фильтр по TargetApplication обязателен: на той же машине очередь по тому же
+            // TargetMachine опрашивает и eLog. NULL считается адресованным remeLog — так
+            // выглядят строки, созданные до появления колонки.
             const string sql = @"
 SELECT Id, CommandType, Payload
 FROM remeLog_app_commands

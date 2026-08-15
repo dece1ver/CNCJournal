@@ -2,6 +2,7 @@ using Newtonsoft.Json.Linq;
 using remeLog.Core;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -32,6 +33,14 @@ namespace remeLog.Models
     /// <see cref="WncConfig.LocalType"/> здесь не используется: сущность <c>CADDocuments</c>
     /// (см. <see cref="SearchAsync"/>) сама по себе ограничивает выборку CAD-документами, без
     /// отдельного фильтра по типу. Поле в БД/конфиге оставлено на случай другой фильтрации.
+    ///
+    /// Документация (портал техподдержки PTC, требует логин):
+    /// <see href="https://support.ptc.com/help/windchill_rest_services/r2.0/en/windchill_rest_services/WCCG_RESTAPIsWRS.html">
+    /// Windchill REST Services — общий обзор</see>,
+    /// <see href="https://support.ptc.com/help/windchill_rest_services/r2.4/en/windchill_rest_services/WCCG_RESTAccessExamplesFetchNONCE.html">
+    /// Fetching a NONCE Token from a Service</see> (CSRF-токен через <c>GetCSRFToken()</c> — нужен
+    /// только для create/update/delete, здесь не используется, т.к. клиент только читает; см. также
+    /// диагностику в README при поиске, сломавшемся после обновления Windchill).
     /// </summary>
     public class WindchillClient : IDisposable
     {
@@ -51,16 +60,33 @@ namespace remeLog.Models
         private readonly HttpClient _client;
         private readonly string _serverUrl;
 
+        /// <summary>
+        /// Вызывается после каждого HTTP-запроса к Windchill (в т.ч. неудачного) — ровно один раз
+        /// на запрос, со строкой вида "[статус] длительность URL". Нужен для диагностики нагрузки:
+        /// сюда подписывается запись в <c>remeLog_wnc_requests</c> (см. <c>Util.SearchInWindchill</c>),
+        /// чтобы в логе был воспроизводимый URL, а не только факт обращения.
+        ///
+        /// Одно действие пользователя — не обязательно один запрос: поиск с
+        /// <c>cadDocumentsOnly=false</c> опрашивает два entity set, скачивание PDF делает запрос
+        /// метаданных и отдельный запрос за файлом.
+        /// </summary>
+        private readonly Action<string>? _onRequestIssued;
+
         // Версия в пути — часть URL конкретного OData-сервиса Windchill, а не общая версия
         // REST API целиком: у разных сервисов на одном сервере версии в URL не совпадают
-        // (проверено на боевом сервере — CADDocumentMgmt на v1, DocMgmt на v3).
+        // (проверено на боевом сервере — CADDocumentMgmt на v1, DocMgmt на v3). По документации
+        // EDM (метаданные) домена всегда доступны по Windchill/servlet/odata/<Domain>/$metadata —
+        // см. https://support.ptc.com/help/windchill_rest_services/r2.0/en/windchill_rest_services/WCCG_RESTAPIsWRS.html
+        // (после апгрейда Windchill сверяться по этому эндпоинту, если поиск сломался).
         private const string CadDocumentMgmtBasePath = "/Windchill/servlet/odata/v1/CADDocumentMgmt";
         private const string DocMgmtBasePath = "/Windchill/servlet/odata/v3/DocMgmt";
 
-        public WindchillClient(string serverUrl, string username, string password)
+        /// <param name="onRequestIssued"> Необязательный приёмник лога запросов, см. <see cref="_onRequestIssued"/>. </param>
+        public WindchillClient(string serverUrl, string username, string password, Action<string>? onRequestIssued = null)
         {
             _client = new HttpClient();
             _serverUrl = serverUrl.TrimEnd('/');
+            _onRequestIssued = onRequestIssued;
 
             var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
             _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authString);
@@ -96,6 +122,18 @@ namespace remeLog.Models
         /// Ко всем критериям добавляется условие <c>Latest eq true</c>: оба entity set хранят
         /// каждую версию/ревизию документа отдельной строкой, а показывать нужно только
         /// актуальную — так же, как это по умолчанию делает поиск в самом Windchill.
+        ///
+        /// Документация по доменам и синтаксису фильтров (портал техподдержки PTC, требует логин):
+        /// <see href="https://support.ptc.com/help/windchill_rest_services/r2.2/en/windchill_rest_services/CADdocumentmgmtdomain.html">
+        /// PTC CAD Document Management Domain</see>,
+        /// <see href="https://support.ptc.com/help/windchill_rest_services/r1.6/en/windchill_rest_services/wccg_restapiaccessexamples_CADDocumentMgmt_getaspecificCADdocument.html">
+        /// Retrieving a Specific CAD Document</see> (пример <c>GET .../CADDocuments('OR:wt.epm.EPMDocument:...')</c>
+        /// — тот же паттерн ID, что в <see cref="DownloadPdfAsync"/>),
+        /// <see href="https://support.ptc.com/help/windchill_rest_services/r2.6/en/windchill_rest_services/docmgmtdomain.html">
+        /// PTC Document Management Domain</see> (сущность <c>Documents</c>),
+        /// <see href="https://support.ptc.com/help/windchill_rest_services/r1.6/en/windchill_rest_services/filteringoptions.html">
+        /// Support for $filter on Navigation Properties</see> (синтаксис <c>contains</c>/<c>startswith</c>/<c>endswith</c>,
+        /// использованный в <see cref="BuildFieldCondition"/> и <see cref="BuildKeywordCondition"/>).
         /// </summary>
         /// <returns>
         /// Список найденных объектов (не больше <see cref="MaxResults"/> суммарно) и
@@ -138,6 +176,12 @@ namespace remeLog.Models
         /// "Открыть в Creo View" в веб-интерфейсе Windchill). Не у каждого объекта есть такое
         /// представление — например, у 3D-модели без опубликованного чертежа его может не
         /// быть; тогда возвращается null.
+        ///
+        /// Документация (портал техподдержки PTC, требует логин):
+        /// <see href="https://support.ptc.com/help/windchill_rest_services/r1.7/en/windchill_rest_services/visualizationdomain.html">
+        /// PTC Visualization Domain</see> — описывает сущность <c>Representations</c> и вложенную
+        /// <c>AdditionalFiles</c> (URL/MimeType/FileName для скачивания не-CreoView файлов,
+        /// включая PDF), на которую опирается разбор ответа ниже.
         /// </summary>
         /// <returns> Путь к скачанному файлу во временной папке, либо null, если PDF-представление не найдено. </returns>
         public async Task<string?> DownloadPdfAsync(WncObject obj, CancellationToken cancellationToken)
@@ -161,7 +205,11 @@ namespace remeLog.Models
                     var fileName = file["FileName"]?.ToString();
                     if (string.IsNullOrEmpty(fileName)) fileName = $"{obj.Id}.pdf";
 
+                    // Второе обращение к серверу в рамках одного скачивания (после запроса
+                    // метаданных выше) — логируется отдельной строкой, см. ReportRequest.
+                    var stopwatch = Stopwatch.StartNew();
                     using var response = await _client.GetAsync(fileUrl, cancellationToken).ConfigureAwait(false);
+                    ReportRequest(fileUrl, response.StatusCode, stopwatch.ElapsedMilliseconds);
                     if (!response.IsSuccessStatusCode) continue;
 
                     var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
@@ -238,20 +286,36 @@ namespace remeLog.Models
 
         private async Task<string> GetJsonAsync(string url, CancellationToken cancellationToken)
         {
-            using var response = await _client.GetAsync(url, cancellationToken).ConfigureAwait(false);
-
-            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                throw new UnauthorizedAccessException("Не удалось авторизоваться в Windchill (проверьте логин/пароль в cnc_wnc_cfg)");
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
+            var stopwatch = Stopwatch.StartNew();
+            System.Net.HttpStatusCode? status = null;
+            try
             {
-                Log.Write($"Ошибка поиска в Windchill: {response.StatusCode}\n{json}");
-                throw new HttpRequestException($"Ошибка поиска в Windchill: {response.StatusCode}");
-            }
+                using var response = await _client.GetAsync(url, cancellationToken).ConfigureAwait(false);
+                status = response.StatusCode;
 
-            return json;
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    throw new UnauthorizedAccessException("Не удалось авторизоваться в Windchill (проверьте логин/пароль в cnc_wnc_cfg)");
+
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Log.Write($"Ошибка поиска в Windchill: {response.StatusCode}\n{json}");
+                    throw new HttpRequestException($"Ошибка поиска в Windchill: {response.StatusCode}");
+                }
+
+                return json;
+            }
+            finally
+            {
+                // В finally, а не после запроса: запрос, оборвавшийся по таймауту или ошибке сети,
+                // для диагностики нагрузки важнее удачного — сервер его всё равно отработал.
+                ReportRequest(url, status, stopwatch.ElapsedMilliseconds);
+            }
         }
+
+        /// <summary> Формат строки лога см. <see cref="_onRequestIssued"/>; URL идёт последним, чтобы его удобно было скопировать целиком. </summary>
+        private void ReportRequest(string url, System.Net.HttpStatusCode? status, long elapsedMs) =>
+            _onRequestIssued?.Invoke($"[{(status is null ? "нет ответа" : ((int)status).ToString())}] {elapsedMs} мс {url}");
 
         private List<WncObject> ParseSearchResponse(string json, bool hasTypeIcon)
         {

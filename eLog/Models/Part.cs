@@ -611,7 +611,8 @@ namespace eLog.Models
         [JsonIgnore] public DownTime? LastDownTime => DownTimes.LastOrDefault();
 
         /// <summary>
-        /// Имя последнего простоя в кавычках, потому что XAML почему-то не жрет &quot;
+        /// Имя последнего простоя, обёрнутое в кавычки. Готовая строка для привязки:
+        /// в XAML кавычки вокруг значения не подставить.
         /// </summary>
         [JsonIgnore] public string LastDownTimeName => LastDownTime is null ? string.Empty : $"\"{LastDownTime.Name}\"";
 

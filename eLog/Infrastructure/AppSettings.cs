@@ -379,7 +379,7 @@ namespace eLog.Infrastructure
                 };
 
                 Operators ??= new() { CurrentOperator };
-                CurrentShift ??= "День";
+                CurrentShift ??= Text.DayShift;
                 Parts ??= new();
                 ConnectionString ??= "";
                 SmtpAddress ??= "";

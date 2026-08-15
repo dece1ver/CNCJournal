@@ -25,7 +25,7 @@ namespace remeLog.Core.Services
         (string Op, int Value)? FinishedCountFilter,
         (string Op, int Value)? TotalCountFilter,
         int? SetupFilter,
-        bool OnlySerialPartsFilter,
+        PartsFilterType SerialPartsFilter,
         IReadOnlyCollection<string> SerialPartNormalizedNames,
         IReadOnlyCollection<string> SelectedMachines,
         IReadOnlyCollection<FilterChip> ChipFilters);
@@ -62,10 +62,20 @@ namespace remeLog.Core.Services
             if (c.SetupFilter != null)
                 sb.AppendFormat("AND Setup = {0} ", c.SetupFilter);
 
-            if (c.OnlySerialPartsFilter)
+            if (c.SerialPartsFilter != PartsFilterType.All)
             {
-                var serialNames = string.Join(", ", c.SerialPartNormalizedNames.Select(n => $"'{n}'"));
-                sb.AppendFormat("AND NormalizedPartName IN ({0}) ", serialNames);
+                if (c.SerialPartNormalizedNames.Count > 0)
+                {
+                    var serialNames = string.Join(", ", c.SerialPartNormalizedNames.Select(n => $"'{n}'"));
+                    var op = c.SerialPartsFilter == PartsFilterType.Serial ? "IN" : "NOT IN";
+                    sb.AppendFormat("AND NormalizedPartName {0} ({1}) ", op, serialNames);
+                }
+                else if (c.SerialPartsFilter == PartsFilterType.Serial)
+                {
+                    // Серийных деталей нет вовсе: пустой IN () — невалидный SQL, а по смыслу
+                    // фильтра выборка должна быть пустой. Для "Не серийные" условие не нужно.
+                    sb.Append("AND 1 = 0 ");
+                }
             }
 
             var machines = string.Join(", ", c.SelectedMachines.Distinct().Select(m => $"'{m}'"));

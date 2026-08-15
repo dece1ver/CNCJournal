@@ -47,7 +47,7 @@ namespace remeLog.Infrastructure
         }
 
         [JsonIgnore]
-        public static readonly string[] ShiftTypes = new string[] { "День", "Ночь" };
+        public static readonly string[] ShiftTypes = new string[] { Shifts.Day, Shifts.Night };
 
         [JsonIgnore]
         public List<(string Reason, bool RequireComment)> SetupReasons
@@ -174,8 +174,8 @@ namespace remeLog.Infrastructure
         /// значения, работа с данными блокируется (см. MainWindowViewModel.LoadPartsAsync).
         /// </summary>
         // 2 — переопределение причин отклонений аналитиком: 8 столбцов в parts
-        //     (SetupReasonOverride и т.д.). Старая сборка не знает про этот слой и при
-        //     сохранении затрёт отметку мастера напрямую, как раньше.
+        //     (SetupReasonOverride и т.д.). Сборка, не знающая про этот слой, при сохранении
+        //     пишет причину прямо в отметку мастера и затирает её.
         public const int RequiredSchemaVersion = 2;
         [JsonIgnore]
         public static int PartsHistoryMaxRecords { get; set; } = 5;

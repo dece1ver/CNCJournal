@@ -339,9 +339,9 @@ namespace remeLog.ViewModels
                 foreach (var machine in machines)
                 {
                     var dayShift = shiftLookup[(machine, current)]
-                        .FirstOrDefault(s => s.Shift == "День");
+                        .FirstOrDefault(s => s.Shift == Shifts.Day);
                     var nightShift = shiftLookup[(machine, current)]
-                        .FirstOrDefault(s => s.Shift == "Ночь");
+                        .FirstOrDefault(s => s.Shift == Shifts.Night);
 
                     bool hasShift = dayShift != null || nightShift != null;
                     bool isChecked = (dayShift?.IsChecked == true) && (nightShift?.IsChecked == true);

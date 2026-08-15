@@ -2,7 +2,9 @@ using libeLog;
 using libeLog.Base;
 using libeLog.Views;
 using remeLog.Infrastructure;
+using remeLog.Infrastructure.Types;
 using remeLog.Views;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -16,6 +18,7 @@ namespace remeLog.ViewModels
     {
         public string Id { get; }
         public string DisplayName { get; }
+        public int DefaultWidth { get; }
 
         private bool _IsChecked;
         public bool IsChecked
@@ -24,11 +27,21 @@ namespace remeLog.ViewModels
             set => Set(ref _IsChecked, value);
         }
 
-        public ColumnProfileEditorItem(string id, string displayName, bool isChecked)
+        private int _Width;
+        /// <summary> Ширина столбца, px. Равна DefaultWidth, если в профиле нет переопределения. </summary>
+        public int Width
+        {
+            get => _Width;
+            set => Set(ref _Width, value);
+        }
+
+        public ColumnProfileEditorItem(string id, string displayName, bool isChecked, int defaultWidth, int width)
         {
             Id = id;
             DisplayName = displayName;
             _IsChecked = isChecked;
+            DefaultWidth = defaultWidth;
+            _Width = width;
         }
     }
 
@@ -37,11 +50,19 @@ namespace remeLog.ViewModels
         public ColumnProfilesWindowViewModel()
         {
             Profiles = new ObservableCollection<ColumnProfile>(
-                AppSettings.Instance.ColumnProfiles.Select(p => new ColumnProfile { Name = p.Name, ColumnIds = new List<string>(p.ColumnIds) }));
+                AppSettings.Instance.ColumnProfiles.Select(p => new ColumnProfile
+                {
+                    Name = p.Name,
+                    ColumnIds = new List<string>(p.ColumnIds),
+                    ColumnWidths = new Dictionary<string, double>(p.ColumnWidths),
+                }));
 
             AddProfileCommand = new LambdaCommand(OnAddProfileCommandExecuted, CanAddProfileCommandExecute);
             RenameProfileCommand = new LambdaCommand(OnRenameProfileCommandExecuted, CanRenameProfileCommandExecute);
             DeleteProfileCommand = new LambdaCommand(OnDeleteProfileCommandExecuted, CanDeleteProfileCommandExecute);
+            SelectAllColumnsCommand = new LambdaCommand(OnSelectAllColumnsCommandExecuted, CanEditColumnsCommandExecute);
+            DeselectAllColumnsCommand = new LambdaCommand(OnDeselectAllColumnsCommandExecuted, CanEditColumnsCommandExecute);
+            ApplyRolePresetCommand = new LambdaCommand(OnApplyRolePresetCommandExecuted, CanEditColumnsCommandExecute);
 
             SelectedProfile = Profiles.FirstOrDefault();
         }
@@ -68,23 +89,64 @@ namespace remeLog.ViewModels
             foreach (var id in PartColumnMeta.ColumnOrder.Where(id => id != "Problems"))
             {
                 var meta = PartColumnMeta.Map[id];
-                var item = new ColumnProfileEditorItem(id, meta.DisplayName, SelectedProfile.ColumnIds.Contains(id));
+                var defaultWidth = (int)Math.Round(ColumnWidthDefaults.GetDefault(id));
+                var width = SelectedProfile.ColumnWidths.TryGetValue(id, out var overrideWidth)
+                    ? (int)Math.Round(overrideWidth)
+                    : defaultWidth;
+                var item = new ColumnProfileEditorItem(id, meta.DisplayName, SelectedProfile.ColumnIds.Contains(id), defaultWidth, width);
                 item.PropertyChanged += (s, e) =>
                 {
-                    if (e.PropertyName != nameof(ColumnProfileEditorItem.IsChecked) || SelectedProfile == null) return;
-                    if (item.IsChecked)
+                    if (SelectedProfile == null) return;
+                    switch (e.PropertyName)
                     {
-                        if (!SelectedProfile.ColumnIds.Contains(item.Id))
-                            SelectedProfile.ColumnIds.Add(item.Id);
-                    }
-                    else
-                    {
-                        SelectedProfile.ColumnIds.Remove(item.Id);
+                        case nameof(ColumnProfileEditorItem.IsChecked):
+                            if (item.IsChecked)
+                            {
+                                if (!SelectedProfile.ColumnIds.Contains(item.Id))
+                                    SelectedProfile.ColumnIds.Add(item.Id);
+                            }
+                            else
+                            {
+                                SelectedProfile.ColumnIds.Remove(item.Id);
+                            }
+                            break;
+                        case nameof(ColumnProfileEditorItem.Width):
+                            if (item.Width > 0 && item.Width != item.DefaultWidth)
+                                SelectedProfile.ColumnWidths[item.Id] = item.Width;
+                            else
+                                SelectedProfile.ColumnWidths.Remove(item.Id);
+                            break;
                     }
                 };
                 Columns.Add(item);
             }
         }
+
+        #region EditColumns
+        /// <summary> Массово отметить/снять все колонки либо применить набор встроенной роли как отправную точку </summary>
+        public ICommand SelectAllColumnsCommand { get; }
+        private void OnSelectAllColumnsCommandExecuted(object p)
+        {
+            foreach (var item in Columns) item.IsChecked = true;
+        }
+
+        public ICommand DeselectAllColumnsCommand { get; }
+        private void OnDeselectAllColumnsCommandExecuted(object p)
+        {
+            foreach (var item in Columns) item.IsChecked = false;
+        }
+
+        /// <summary> Параметр — имя значения enum User ("Master"/"Engineer") </summary>
+        public ICommand ApplyRolePresetCommand { get; }
+        private void OnApplyRolePresetCommandExecuted(object p)
+        {
+            if (p is not string str || !Enum.TryParse(str, out User role)) return;
+            var roleColumnIds = PartColumnMeta.GetColumnIdsForRole(role);
+            foreach (var item in Columns) item.IsChecked = roleColumnIds.Contains(item.Id);
+        }
+
+        private bool CanEditColumnsCommandExecute(object p) => SelectedProfile != null;
+        #endregion
 
         #region AddProfile
         public ICommand AddProfileCommand { get; }
@@ -97,7 +159,7 @@ namespace remeLog.ViewModels
                 MessageBoxWindow.Show("Профиль с таким названием уже существует", "Профили столбцов", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-            var profile = new ColumnProfile { Name = dlg.UserInput.Trim(), ColumnIds = new List<string>() };
+            var profile = new ColumnProfile { Name = dlg.UserInput.Trim(), ColumnIds = new List<string>(), ColumnWidths = new Dictionary<string, double>() };
             Profiles.Add(profile);
             SelectedProfile = profile;
         }

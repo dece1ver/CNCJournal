@@ -11,5 +11,12 @@ namespace remeLog.Infrastructure
     {
         public string Name { get; set; } = "";
         public List<string> ColumnIds { get; set; } = new();
+
+        /// <summary>
+        /// Переопределения ширины столбцов (ColumnId → px). Содержит только те
+        /// колонки, для которых пользователь задал ширину, отличную от дефолтной
+        /// из разметки (см. ColumnWidthDefaults) — остальные наследуют дефолт.
+        /// </summary>
+        public Dictionary<string, double> ColumnWidths { get; set; } = new();
     }
 }

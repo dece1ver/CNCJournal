@@ -1621,8 +1621,10 @@
                             <controls:IncDecControl Grid.Row="0" Grid.Column="5" Grid.RowSpan="2" Value="{Binding SetupFilter, Delay=500, Mode=TwoWay}" Width="22" Margin="-2 -1 0 0"/>
                         </Grid>
 
-                        <CheckBox Grid.Row="0" Grid.Column="5" Margin="25 0 0 0" VerticalAlignment="Center" Content="Только серийные"
-                                  IsChecked="{Binding OnlySerialPartsFilter}"/>
+                        <ComboBox Grid.Row="0" Grid.Column="5" Margin="25 0 0 0" VerticalAlignment="Center" Width="120"
+                                  ToolTip="Фильтр по серийности деталей"
+                                  ItemsSource="{Binding SerialPartsFilterItems}" DisplayMemberPath="Name"
+                                  SelectedItem="{Binding SerialPartsFilter}"/>
 
                         <ComboBox Grid.Column="6" Grid.Row="0" Text="Фильтр по станку" IsEditable="True" IsReadOnly="True" Focusable="False"
                                   ItemsSource="{Binding MachineFilters}" Margin="25 0 0 0" Width="180"

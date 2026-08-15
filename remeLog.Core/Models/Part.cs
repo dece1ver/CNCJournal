@@ -1716,7 +1716,7 @@ namespace remeLog.Models
             var minute = dateTime.Minute;
             var fixedDateTime = new DateTime(year, month, day, hour, minute, 0);
             var diff = (fixedDateTime - ShiftDate.AddHours(8)).TotalMinutes;
-            if (diff <= 0 && Shift == "Ночь") fixedDateTime = fixedDateTime.AddDays(1);
+            if (diff <= 0 && Shift == Shifts.Night) fixedDateTime = fixedDateTime.AddDays(1);
             return fixedDateTime;
         }
 

@@ -144,6 +144,9 @@ namespace remeLog.ViewModels
             PartsInfo = parts;
             ShiftFilterItems = new Shift[3] { new(ShiftType.All), new(ShiftType.Day), new(ShiftType.Night) };
             _ShiftFilter = ShiftFilterItems.FirstOrDefault();
+            SerialPartsFilterItems = new PartsFilter[3]
+                { new(PartsFilterType.All), new(PartsFilterType.Serial), new(PartsFilterType.NonSerial) };
+            _SerialPartsFilter = SerialPartsFilterItems.First();
             _OperatorFilter = "";
             _FinishedCountFilter = "";
             _Parts = new();
@@ -624,6 +627,8 @@ namespace remeLog.ViewModels
 
         public Shift[] ShiftFilterItems { get; set; }
 
+        public PartsFilter[] SerialPartsFilterItems { get; set; }
+
         private ObservableCollection<Part> _Parts;
         /// <summary> Описание </summary>
         public ObservableCollection<Part> Parts
@@ -827,20 +832,20 @@ namespace remeLog.ViewModels
             }
         }
 
-        private bool _OnlySerialPartsFilter;
-        /// <summary> Фильтр только по серийным деталям </summary>
-        public bool OnlySerialPartsFilter
+        private PartsFilter _SerialPartsFilter;
+        /// <summary> Фильтр по серийности деталей </summary>
+        public PartsFilter SerialPartsFilter
         {
-            get => _OnlySerialPartsFilter;
+            get => _SerialPartsFilter;
 
-            set 
+            set
             {
                 if (!CanBeChanged()) return;
-                if (Set(ref _OnlySerialPartsFilter, value))
+                if (Set(ref _SerialPartsFilter, value))
                 {
                     _ = LoadPartsAsync();
                 }
-            } 
+            }
         }
 
 
@@ -2109,10 +2114,11 @@ namespace remeLog.ViewModels
         private static bool CanExportShiftsInfoReportCommandExecute(object p) => true;
         #endregion
 
-        /// <summary>
-        /// todo
-        /// </summary>
         #region ExportVerevkinReportReport
+        /// <summary>
+        /// Выгружает в xlsx сводку по детали и заказу: изготовленное количество и машинное
+        /// время, разложенное по установкам 1–5.
+        /// </summary>
         public ICommand ExportVerevkinReportCommand { get; }
         private async void OnExportVerevkinReportCommandExecuted(object p)
         {
@@ -2203,6 +2209,7 @@ namespace remeLog.ViewModels
         {
             LockUpdate();
             ShiftFilter = new(ShiftType.All);
+            SerialPartsFilter = new(PartsFilterType.All);
             OperatorFilter = string.Empty;
             PartNameFilter = string.Empty;
             OrderFilter = string.Empty;
@@ -2531,6 +2538,8 @@ namespace remeLog.ViewModels
                 OnPropertyChanged(nameof(AvailableColumnProfiles));
                 OnPropertyChanged(nameof(HasColumnProfiles));
                 OnPropertyChanged(nameof(VisibleColumnIds));
+                // Ширины могли измениться в редакторе — переприменяем их к активному профилю (code-behind).
+                OnPropertyChanged(nameof(ActiveColumnProfileName));
             }
         }
         private static bool CanManageColumnProfilesCommandExecute(object p) => true;
@@ -3147,7 +3156,7 @@ namespace remeLog.ViewModels
                 OperatorFilter, PartNameFilter, OrderFilter,
                 EngineerConclusionFilter, EngineerCommentFilter,
                 finishedCountFilter, totalCountFilter, SetupFilter,
-                OnlySerialPartsFilter,
+                SerialPartsFilter.Type,
                 SerialParts.Select(sp => sp.PartName.NormalizedPartNameWithoutComments()).ToList(),
                 MachineFilters.Where(mf => mf.Filter).Select(m => m.Machine).ToList(),
                 ChipFilters.ToList());

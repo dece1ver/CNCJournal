@@ -6,8 +6,11 @@ using System.Threading.Tasks;
 
 namespace remeLog.Infrastructure.Types
 {
+    /// <summary>Смена. Значения совпадают с длительностью смены в минутах.</summary>
     public enum ShiftType
     {
-        All = 1290, Day = 660, Night = 630
+        All = Shifts.AllMinutes,
+        Day = Shifts.DayMinutes,
+        Night = Shifts.NightMinutes
     }
 }

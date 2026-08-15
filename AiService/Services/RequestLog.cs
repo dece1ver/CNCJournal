@@ -28,12 +28,11 @@ public class RequestLog(IConfiguration configuration, ILogger<RequestLog> logger
             "verify-part", filePrefix: "verify_");
 
     /// <summary>
-    /// Записывает сбой ДО получения ответа модели (Ollama вернула ошибку/упала,
-    /// таймаут и т.п.) — эти запросы раньше вообще не попадали в request_logs, потому
-    /// что WriteAsync/WriteVerifyAsync вызываются только при успехе (см. инцидент с
-    /// 500 от Ollama 24.07.2026 — единственным источником был лог самой Ollama).
-    /// Полный запрос не пишем (не нужен для этой цели, лишний объём) — только то,
-    /// что нужно сопоставить с логом Ollama по времени.
+    /// Записывает сбой, случившийся до получения ответа модели: ошибку Ollama, таймаут,
+    /// исключение. <see cref="WriteAsync"/> и <see cref="WriteVerifyAsync"/> вызываются
+    /// только при успехе, поэтому без этого метода такие запросы в request_logs не попадают.
+    /// Пишутся только поля, по которым запись сопоставляется с логом Ollama по времени;
+    /// полный запрос для этой цели не нужен.
     /// </summary>
     public async Task WriteFailureAsync(
         string machine, string shiftDate, string endpoint, string? model, bool think,

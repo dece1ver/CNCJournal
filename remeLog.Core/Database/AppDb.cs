@@ -17,8 +17,8 @@ namespace remeLog.Infrastructure
         /// </param>
         public static async Task<List<AppPresence>> ReadActiveInstancesAsync(string? application = null)
         {
-            // Партиционирование включает Application: на одной машине под одним пользователем
-            // могут одновременно жить и eLog, и remeLog — это разные экземпляры, не дубликаты.
+            // Application входит в партиционирование: на одной машине под одним пользователем
+            // могут работать и eLog, и remeLog — это разные экземпляры, а не дубликаты.
             const string sql = @"
     SELECT
         SessionId,
@@ -84,9 +84,8 @@ namespace remeLog.Infrastructure
         /// Ставит команду в очередь конкретному экземпляру.
         /// </summary>
         /// <param name="targetApplication">
-        /// Приложение-получатель (<see cref="AppNames"/>). Обязательно: на одной машине могут
-        /// одновременно опрашивать очередь и eLog, и remeLog, и без этого поля команда
-        /// достанется не тому.
+        /// Приложение-получатель (<see cref="AppNames"/>). Задавать обязательно: очередь на одной
+        /// машине опрашивают и eLog, и remeLog, и без этого поля команда достанется не тому.
         /// </param>
         public static async Task<Guid> SendAppCommandAsync(
             Guid? targetSessionId, string targetApplication, string targetMachine, string? targetUser,
@@ -262,6 +261,61 @@ WHERE Id = @Id AND ProcessedUtc IS NULL;";
             await using var command = new SqlCommand(sql, connection);
             command.Parameters.AddWithValue("@Id", commandId);
             return await command.ExecuteNonQueryAsync() > 0;
+        }
+
+        /// <summary>
+        /// Пишет одно обращение к Windchill REST API в <c>remeLog_wnc_requests</c> — для
+        /// диагностики нагрузки на сервере Windchill (сопоставить время жалоб пользователей на
+        /// торможение/ошибки с фактическими запросами, см. <see cref="Models.WindchillClient"/>).
+        /// "Кто" — Windows-логин/машина инициатора (<see cref="Environment.UserName"/>/
+        /// <see cref="Environment.MachineName"/>), а не учётка Windchill: в Windchill все ходят
+        /// под одним общим сервисным логином из <c>cnc_wnc_cfg</c>, там отдельных пользователей
+        /// не различить.
+        ///
+        /// Ошибка записи лога не должна ронять сам поиск/скачивание — исключение гасится и
+        /// уходит только в <see cref="Log.WriteError"/>.
+        /// </summary>
+        /// <param name="requests">
+        /// Фактические HTTP-запросы к Windchill за это действие (по строке на запрос, см.
+        /// <see cref="Models.WindchillClient"/>): одно действие пользователя — не всегда одно
+        /// обращение к серверу. URL в них самодостаточны — вставив такой в браузер/Postman под
+        /// сервисным логином из <c>cnc_wnc_cfg</c>, получаем ровно тот сырой ответ, который
+        /// разбирал remeLog; это же можно передать техподдержке как воспроизводимый пример.
+        /// </param>
+        public static async Task LogWncRequestAsync(
+            string requestType, string? paramsSummary, IEnumerable<string>? requests,
+            int? resultCount, bool? truncated,
+            bool success, string? errorMessage, long elapsedMs)
+        {
+            const string sql = @"
+INSERT INTO remeLog_wnc_requests
+    (MachineName, UserName, RequestType, Params, RequestUrls, ResultCount, Truncated, Success, ErrorMessage, ElapsedMs, CreatedUtc)
+VALUES
+    (@MachineName, @UserName, @RequestType, @Params, @RequestUrls, @ResultCount, @Truncated, @Success, @ErrorMessage, @ElapsedMs, SYSUTCDATETIME());";
+
+            try
+            {
+                await using var connection = new SqlConnection(DomainSettings.ConnectionString);
+                await connection.OpenAsync();
+                await using var command = new SqlCommand(sql, connection);
+                command.Parameters.AddWithValue("@MachineName", Environment.MachineName);
+                command.Parameters.AddWithValue("@UserName", Environment.UserName);
+                command.Parameters.AddWithValue("@RequestType", requestType);
+                command.Parameters.AddWithValue("@Params", (object?)paramsSummary ?? DBNull.Value);
+                var requestUrls = requests is null ? null : string.Join(Environment.NewLine, requests);
+                command.Parameters.AddWithValue("@RequestUrls",
+                    string.IsNullOrEmpty(requestUrls) ? DBNull.Value : requestUrls);
+                command.Parameters.AddWithValue("@ResultCount", (object?)resultCount ?? DBNull.Value);
+                command.Parameters.AddWithValue("@Truncated", (object?)truncated ?? DBNull.Value);
+                command.Parameters.AddWithValue("@Success", success);
+                command.Parameters.AddWithValue("@ErrorMessage", (object?)errorMessage ?? DBNull.Value);
+                command.Parameters.AddWithValue("@ElapsedMs", elapsedMs);
+                await command.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.WriteError(ex, "Не удалось записать лог обращения к Windchill");
+            }
         }
     }
 }

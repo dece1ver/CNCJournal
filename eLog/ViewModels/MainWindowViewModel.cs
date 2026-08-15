@@ -296,7 +296,7 @@ namespace eLog.ViewModels
             if (AppSettings.Instance.EnableWriteShiftHandover)
             {
                 DateTime dateTime = DateTime.Today;
-                if (DateTime.Now.Hour < 8 && AppSettings.Instance.CurrentShift == "Ночь") dateTime.AddDays(-1);
+                if (DateTime.Now.Hour < 8 && AppSettings.Instance.CurrentShift == Text.NightShift) dateTime.AddDays(-1);
                 ShiftHandoverWindow shiftHandoverWindow = new($"Приём смены {dateTime:dd.MM.yy}") { Owner = App.Current.MainWindow };
                 if (shiftHandoverWindow.ShowDialog() == false) return;
                 Task.Run(async () =>
@@ -336,7 +336,7 @@ namespace eLog.ViewModels
             if (AppSettings.Instance.EnableWriteShiftHandover)
             {
                 DateTime dateTime = DateTime.Today;
-                if (DateTime.Now.Hour < 8 && AppSettings.Instance.CurrentShift == "Ночь") dateTime.AddDays(-1);
+                if (DateTime.Now.Hour < 8 && AppSettings.Instance.CurrentShift == Text.NightShift) dateTime.AddDays(-1);
                 ShiftHandoverWindow shiftHandoverWindow = new($"Сдача смены {dateTime:dd.MM.yy}") { Owner = App.Current.MainWindow };
                 if (shiftHandoverWindow.ShowDialog() == false) return;
                 Task.Run(async () =>

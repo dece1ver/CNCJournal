@@ -362,12 +362,10 @@ namespace remeLog.Infrastructure
 
                     var defectiveCount = await reader.GetValueOrDefaultAsync(46, 0, cancellationToken);
                     var specialDowntime = await reader.GetValueOrDefaultAsync(47, 0.0, cancellationToken);
-                    // Новые колонки, добавленные ALTER ADD после первого релиза, читаем ПО ИМЕНИ, не по
-                    // ordinal: обнаружено на практике, что NormalizedPartName (вычисляемая колонка) при
-                    // очередном "Обновлении БД" физически пересоздаётся и уезжает в конец таблицы, сдвигая
-                    // ordinal всех колонок, добавленных ПОСЛЕ неё в предыдущих раундах, — жёстко зашитый
-                    // номер тогда указывает не туда (ловили баг: EngineerComment показывал текст из
-                    // NormalizedPartName). Имя колонки от такого сдвига не зависит.
+                    // Колонки, добавленные через ALTER ADD после первого релиза, читаются по имени.
+                    // Физический порядок колонок в конце таблицы не фиксирован: вычисляемая
+                    // NormalizedPartName при обновлении схемы пересоздаётся и переезжает в конец,
+                    // сдвигая ordinal всего, что было добавлено после неё.
                     var engineerComment = await reader.GetValueOrDefaultAsync("EngineerComment", "", cancellationToken);
                     var masterSetupDetail = await reader.GetValueOrDefaultAsync("MasterSetupDetail", "", cancellationToken);
                     var masterMachiningDetail = await reader.GetValueOrDefaultAsync("MasterMachiningDetail", "", cancellationToken);
@@ -455,11 +453,10 @@ namespace remeLog.Infrastructure
             using var connection = new SqlConnection(DomainSettings.ConnectionString);
             await connection.OpenAsync(cancellationToken);
 
-            // Заказ ИСКЛЮЧАЕТСЯ (не совпадает), а не совпадает: цель истории — проверить
-            // заявление "деталь делается впервые" (Освоение и т.п.), для чего нужны записи
-            // ДРУГИХ заказов той же детали/установки. Смены текущего заказа — это просто
-            // предыдущие дни той же самой партии, они не подтверждают и не опровергают
-            // "первый раз ли это" и раньше давали историю, бесполезную для этой проверки.
+            // Текущий заказ из выборки исключается. История нужна, чтобы проверить заявление
+            // «деталь делается впервые» (Освоение и т.п.), а для этого годятся только записи
+            // других заказов той же детали и установки: смены текущего заказа — это предыдущие
+            // дни той же партии, они на «первый раз ли это» не отвечают.
             var partsSql =
                 "SELECT TOP (@MaxRecords) * " +
                 "FROM Parts " +

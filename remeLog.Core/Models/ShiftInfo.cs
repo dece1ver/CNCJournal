@@ -84,5 +84,14 @@ namespace remeLog.Models
         public bool? RecieverLiquidLeaks { get; set; }
         public bool? RecieverToolBreakage { get; set; }
         public double? RecieverСoolantСoncentration { get; set; }
+
+        /// <summary>
+        /// Смена простояла целиком: неуказанные простои равны её полной длительности.
+        /// Такие смены не считаются отработанными, а <see cref="DowntimesComment"/>
+        /// раскладывает их по причинам в сводных отчётах.
+        /// </summary>
+        public bool IsIdleWholeShift =>
+            (Shift == Shifts.Day && UnspecifiedDowntimes == Shifts.DayMinutes)
+            || (Shift == Shifts.Night && UnspecifiedDowntimes == Shifts.NightMinutes);
     }
 }

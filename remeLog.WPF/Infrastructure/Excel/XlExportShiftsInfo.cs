@@ -63,10 +63,10 @@ namespace remeLog.Infrastructure
             {
                 foreach (var machine in machines)
                 {
-                    var dayShiftInfo = shifts.Find(s => s.ShiftDate == dt && s.Machine == machine && s.Shift == "День");
-                    var dayParts = parts.Where(p => !p.ExcludeFromReports && p.ShiftDate == dt && p.Machine == machine && p.Shift == "День").ToList();
-                    var nightShiftInfo = shifts.Find(s => s.ShiftDate == dt && s.Machine == machine && s.Shift == "Ночь");
-                    var nightParts = parts.Where(p => !p.ExcludeFromReports && p.ShiftDate == dt && p.Machine == machine && p.Shift == "Ночь").ToList();
+                    var dayShiftInfo = shifts.Find(s => s.ShiftDate == dt && s.Machine == machine && s.Shift == Shifts.Day);
+                    var dayParts = parts.Where(p => !p.ExcludeFromReports && p.ShiftDate == dt && p.Machine == machine && p.Shift == Shifts.Day).ToList();
+                    var nightShiftInfo = shifts.Find(s => s.ShiftDate == dt && s.Machine == machine && s.Shift == Shifts.Night);
+                    var nightParts = parts.Where(p => !p.ExcludeFromReports && p.ShiftDate == dt && p.Machine == machine && p.Shift == Shifts.Night).ToList();
 
                     FillShiftRow(wsTotal, columns, row, dt, ShiftType.Day, machine, dayShiftInfo, dayParts);
                     FillShiftRow(wsTotal, columns, row + 1, dt, ShiftType.Night, machine, nightShiftInfo, nightParts);

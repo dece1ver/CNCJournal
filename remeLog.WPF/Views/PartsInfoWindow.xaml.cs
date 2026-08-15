@@ -6,6 +6,7 @@ using remeLog.Models;
 using remeLog.ViewModels;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Data;
 using System.Linq;
 using System.Windows;
@@ -31,12 +32,19 @@ namespace remeLog.Views
         }
 
         private readonly List<MenuItem> _columnProfileMenuItems = new();
+        private bool _suppressColumnWidthCapture;
 
         public PartsInfoWindow(CombinedParts parts)
         {
             InitializeComponent();
             foreach (var id in PartColumnMeta.ColumnOrder)
-                partsGrid.Columns.Add((DataGridColumn)FindResource($"{id}Column"));
+            {
+                var column = (DataGridColumn)FindResource($"{id}Column");
+                partsGrid.Columns.Add(column);
+                DependencyPropertyDescriptor.FromProperty(DataGridColumn.WidthProperty, typeof(DataGridColumn))
+                    ?.AddValueChanged(column, (_, _) => OnColumnWidthChanged(id, column));
+            }
+            ColumnWidthDefaults.CaptureOnce(PartColumnMeta.ColumnOrder, partsGrid.Columns);
             DataContext = new PartsInfoWindowViewModel(parts);
             Closing += (_, _) => (DataContext as PartsInfoWindowViewModel)?.CancelAllAiChecks();
             var vm = (PartsInfoWindowViewModel)DataContext;
@@ -45,8 +53,11 @@ namespace remeLog.Views
                 if (e.PropertyName is nameof(PartsInfoWindowViewModel.AvailableColumnProfiles)
                                     or nameof(PartsInfoWindowViewModel.ActiveColumnProfileName))
                     RebuildColumnProfileMenu();
+                if (e.PropertyName == nameof(PartsInfoWindowViewModel.ActiveColumnProfileName))
+                    ApplyColumnWidthsForActiveProfile();
             };
             RebuildColumnProfileMenu();
+            ApplyColumnWidthsForActiveProfile();
             var groupNames = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase)
             {
                 "Ожидание"
@@ -115,6 +126,49 @@ namespace remeLog.Views
                 viewMenu.Items.Insert(insertAt++, item);
                 _columnProfileMenuItems.Add(item);
             }
+        }
+
+        /// <summary> Ширины столбцов активного профиля (или дефолт из разметки для встроенных ролей) </summary>
+        private void ApplyColumnWidthsForActiveProfile()
+        {
+            if (DataContext is not PartsInfoWindowViewModel vm) return;
+            var profile = vm.ActiveColumnProfileName is string name
+                ? AppSettings.Instance.ColumnProfiles.FirstOrDefault(p => p.Name == name)
+                : null;
+
+            _suppressColumnWidthCapture = true;
+            try
+            {
+                foreach (var id in PartColumnMeta.ColumnOrder)
+                {
+                    var column = (DataGridColumn)FindResource($"{id}Column");
+                    var width = profile != null && profile.ColumnWidths.TryGetValue(id, out var overrideWidth)
+                        ? overrideWidth
+                        : ColumnWidthDefaults.GetDefault(id);
+                    column.Width = new DataGridLength(width);
+                }
+            }
+            finally
+            {
+                _suppressColumnWidthCapture = false;
+            }
+        }
+
+        /// <summary>
+        /// Ручной resize столбца мышью — сохраняется в активный пользовательский
+        /// профиль (для встроенных ролей ширина не персистится, см. согласованный подход).
+        /// </summary>
+        private void OnColumnWidthChanged(string id, DataGridColumn column)
+        {
+            if (_suppressColumnWidthCapture) return;
+            if (DataContext is not PartsInfoWindowViewModel vm || vm.ActiveColumnProfileName is not string name) return;
+            var profile = AppSettings.Instance.ColumnProfiles.FirstOrDefault(p => p.Name == name);
+            if (profile == null) return;
+
+            var width = column.Width.Value;
+            if (double.IsNaN(width) || width <= 0) return;
+            profile.ColumnWidths[id] = width;
+            AppSettings.Save();
         }
 
         private void ComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -255,10 +309,9 @@ namespace remeLog.Views
                             break;
 
                         // Причины отклонений — переопределение аналитиком (СГТ 1). Меню
-                        // переопределения дополняется пунктами фильтра той же ячейки — иначе
-                        // фича ReasonOverride перекрывала бы аналитику доступ к фильтру по
-                        // этой колонке (раньше это меню всегда ставило e.Handled = true и
-                        // блокировало TryShowFilterContextMenu ниже).
+                        // переопределения дополняется пунктами фильтра той же ячейки: иначе оно
+                        // перехватывало бы событие целиком и закрывало аналитику доступ
+                        // к фильтру по этой колонке.
                         case "MasterSetupComment" or "MasterMachiningComment":
                             var isSetup = ColumnId.GetId(column) == "MasterSetupComment";
                             var overrideMenu = BuildReasonOverrideContextMenu(d, p, isSetup) ?? new ContextMenu();
@@ -287,12 +340,12 @@ namespace remeLog.Views
         }
 
         /// <summary>
-        /// Поля мастера, закрытые аналитику (Engineer) от прямого редактирования: его правка
-        /// затирала бы позицию мастера — ту самую проблему, ради которой сделан слой
-        /// переопределений. Причины он меняет через «Переопределить причину…», обоснование
-        /// пишет там же; для собственных заметок у него есть «Заключение техотдела» и
-        /// «Комментарий техотдела». Мастер и разработчик редактируют как раньше.
-        /// «Комментарий к простоям» в списке не нужен — его колонка и так скрыта от Engineer.
+        /// Поля мастера, недоступные аналитику (Engineer) для прямого редактирования: правка
+        /// затёрла бы позицию мастера, ради сохранения которой и сделан слой переопределений.
+        /// Причину аналитик меняет через «Переопределить причину…» и там же пишет обоснование,
+        /// а для собственных заметок у него есть «Заключение техотдела» и «Комментарий
+        /// техотдела». На мастера и разработчика ограничение не распространяется.
+        /// «Комментарий к простоям» в список не входит: эта колонка от Engineer и так скрыта.
         /// </summary>
         private static readonly HashSet<string> MasterOwnedColumns = new()
         {

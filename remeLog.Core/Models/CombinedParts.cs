@@ -142,8 +142,8 @@ namespace remeLog.Models
         public string ShiftsInfo { get
             {
                 if (!IsSingleShift) return "";
-                var d = Parts.Any(p => p.ShiftDate == ToDate && p.Shift == "День");
-                var n = Parts.Any(p => p.ShiftDate == ToDate && p.Shift == "Ночь");
+                var d = Parts.Any(p => p.ShiftDate == ToDate && p.Shift == Shifts.Day);
+                var n = Parts.Any(p => p.ShiftDate == ToDate && p.Shift == Shifts.Night);
                 switch ((d, n))
                 {
                     case (true, true):

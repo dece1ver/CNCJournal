@@ -28,6 +28,18 @@ public static class ExternalAccessGate
         });
     }
 
+    /// <summary>
+    /// Расширения файлов, которые отдаются без сессии: без них не отрисовать саму форму входа.
+    /// Список закрытый — проверять «в пути есть точка» нельзя, иначе любой маршрут с точкой
+    /// в параметре (например, дата 08.08.2026) молча оказался бы вне авторизации.
+    /// </summary>
+    private static readonly HashSet<string> PublicFileExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".css", ".js", ".mjs", ".map", ".json", ".webmanifest",
+        ".ico", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
+        ".woff", ".woff2", ".ttf", ".otf", ".eot"
+    };
+
     // Логин-страница и статика должны быть доступны без сессии, иначе форму логина
     // будет некому показать. Всё остальное (сами страницы приложения и SignalR-хаб Blazor)
     // требует авторизации на внешнем порту.
@@ -40,8 +52,8 @@ public static class ExternalAccessGate
             || path.StartsWithSegments("/Error") || path.StartsWithSegments("/not-found"))
             return false;
 
-        // css/js/ico/картинки и т.п., которые отдаёт статика
-        if (path.Value is { } value && value.Contains('.'))
+        var extension = Path.GetExtension(path.Value);
+        if (!string.IsNullOrEmpty(extension) && PublicFileExtensions.Contains(extension))
             return false;
 
         return true;
