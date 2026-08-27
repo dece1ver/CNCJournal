@@ -74,7 +74,8 @@ app.UseAntiforgery();
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+    .AddInteractiveServerRenderMode(o =>
+        o.ContentSecurityFrameAncestorsPolicy = "'self' http://winnum http://192.168.102.13");
 
 app.MapPost("/account/login", async (HttpContext context, LoginAttemptLimiter limiter) =>
 {

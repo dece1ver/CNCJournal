@@ -77,6 +77,13 @@
             <button type="button" class="day-nav-btn" disabled="@_loading" @onclick="() => ShiftDaysAsync(1)" title="Плюс сутки">+</button>
         </div>
     </div>
+    <div class="filter-field">
+        <span class="field-label">Строки</span>
+        <button type="button" @onclick="ToggleShowOnlyWorked" disabled="@_loading"
+                title="Показывать только станки, работавшие за период, или все">
+            @(_showOnlyWorked ? "Только работавшие" : "Все станки")
+        </button>
+    </div>
     <button @onclick="LoadAsync" disabled="@_loading">Обновить</button>
 </div>
 
@@ -112,7 +119,10 @@ else
 
     @if (_rows is not null)
     {
-        @if (_rows.Count == 0)
+        var visibleRows = _showOnlyWorked
+            ? _rows.Where(r => _workedMachines.Contains(r.Machine)).ToList()
+            : _rows;
+        @if (visibleRows.Count == 0)
         {
             <p class="state-line">Нет станков.</p>
         }
@@ -141,7 +151,7 @@ else
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var row in _rows)
+                        @foreach (var row in visibleRows)
                         {
                             <tr>
                                 <td>@row.Machine</td>
@@ -186,6 +196,10 @@ else
     private int _periodTotalSlots;
     private int _periodWorkDays;
     private Dictionary<string, (int Reports, int Checked)> _periodByMachine = new();
+    private HashSet<string> _workedMachines = new();
+    private bool _showOnlyWorked = true;
+
+    private void ToggleShowOnlyWorked() => _showOnlyWorked = !_showOnlyWorked;
 
     // "Сейчас в работе" — независимая от FromDate/ToDate живая панель (heartbeat из eLog).
     private List<string> _activityMachines = new();
@@ -302,6 +316,10 @@ else
                     .ThenBy(w => w.Machine)
                     .ToList();
                 _idleCount = _workStatus.Count(w => !w.WorkedDay && !w.WorkedNight);
+                _workedMachines = _workStatus
+                    .Where(w => w.WorkedDay || w.WorkedNight)
+                    .Select(w => w.Machine)
+                    .ToHashSet(StringComparer.Ordinal);
             }
             else
             {
@@ -319,6 +337,8 @@ else
                     var shifts = shiftsByMachine.GetValueOrDefault(m) ?? new List<ShiftInfo>();
                     return (shifts.Count / 2, shifts.Count(s => s.IsChecked) / 2);
                 });
+
+                _workedMachines = await MainDashboardService.LoadWorkedMachinesAsync(machines, FromDate, ToDate, CancellationToken.None);
             }
         }
         catch (Exception ex)

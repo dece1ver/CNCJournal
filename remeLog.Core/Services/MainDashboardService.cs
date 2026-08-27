@@ -85,6 +85,18 @@ namespace remeLog.Core.Services
         }
 
         /// <summary>
+        /// Станки, работавшие за период — по наличию деталей (Part) в диапазоне дат,
+        /// а не по поданным отчётам (один запрос на все станки сразу).
+        /// </summary>
+        public static async Task<HashSet<string>> LoadWorkedMachinesAsync(
+            List<string> machines, DateTime fromDate, DateTime toDate, CancellationToken cancellationToken)
+        {
+            var parts = await Task.Run(() => Database.ReadPartsByShiftDate(fromDate, toDate, cancellationToken), cancellationToken);
+            var machinesWithParts = parts.Select(p => p.Machine).ToHashSet(StringComparer.Ordinal);
+            return machines.Where(machinesWithParts.Contains).ToHashSet(StringComparer.Ordinal);
+        }
+
+        /// <summary>
         /// Текущий статус станков (наладка/изготовление/простой) по heartbeat из eLog.
         /// Станки без записи в cnc_machine_activity получают null — вызывающая сторона
         /// должна показать это как "нет данных" (как и запись с истёкшим <see cref="MachineActivity.IsStale"/>).
