@@ -204,8 +204,11 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
             var promptBuild = promptBuilder.BuildMasterCheck(request);
 
+            // Температура 0.05: подсказка мастеру обязана быть детерминированной —
+            // одинаковый вход даёт одинаковый вердикт (дневной анализ остаётся на 0.1).
             var (raw, _) = await ollama.GenerateAsync(
-                promptBuild.Prompt, think: false, thinkingProgress: null, ct: ct, model: request.Model);
+                promptBuild.Prompt, think: false, thinkingProgress: null, ct: ct, model: request.Model,
+                temperature: 0.05);
 
             var result = ParseVerifyResponse(raw);
             result.PromptVersion = promptBuild.Version;

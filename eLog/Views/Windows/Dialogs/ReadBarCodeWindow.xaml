@@ -8,22 +8,24 @@
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
         mc:Ignorable="d" WindowStyle="None"
-        Title="Штрихкод" Height="240" Width="320" WindowStartupLocation="CenterOwner">
-    <Border BorderBrush="LightGray" BorderThickness="1">
+        Title="Штрихкод" Height="240" Width="320" WindowStartupLocation="CenterOwner"
+        FontFamily="{StaticResource Areopag.FontUI}"
+        Background="{StaticResource Areopag.Bg0}">
+    <Border BorderBrush="{StaticResource Areopag.Line}" BorderThickness="1">
         <DockPanel Margin="5">
-            <Button DockPanel.Dock="Bottom" Margin="5" Content="Ok" FontSize="24" Padding="30 5" IsDefault="True" 
+            <Button DockPanel.Dock="Bottom" Margin="5" Content="Ok" FontSize="24" Padding="30 5" IsDefault="True" Style="{StaticResource Areopag.PrimaryButton}"
                     CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=l:ReadBarCodeWindow}}">
                 <Button.Command>
                     <cmd:CloseDialogCommand DialogResult="True"/>
                 </Button.Command>
             </Button>
-            <TextBox CaretBrush="Transparent" x:Name="BarCodeTextBox" DockPanel.Dock="Bottom" Margin="5" Text="{Binding BarCode}" TextAlignment="Center" VerticalContentAlignment="Center" FontSize="24">
+            <TextBox CaretBrush="Transparent" x:Name="BarCodeTextBox" DockPanel.Dock="Bottom" Margin="5" Text="{Binding BarCode}" TextAlignment="Center" VerticalContentAlignment="Center" FontSize="24" FontFamily="{StaticResource Areopag.FontMono}">
                 <TextBox.Style>
                     <Style TargetType="TextBox">
                         <Style.Resources>
                             <VisualBrush x:Key="CueBannerBrush" AlignmentX="Center" AlignmentY="Center" Stretch="None">
                                 <VisualBrush.Visual>
-                                    <Label Content="Штрихкод операции" Foreground="LightGray" FontSize="24" />
+                                    <Label Content="Штрихкод операции" Foreground="{StaticResource Areopag.Text3}" FontSize="24" />
                                 </VisualBrush.Visual>
                             </VisualBrush>
                         </Style.Resources>

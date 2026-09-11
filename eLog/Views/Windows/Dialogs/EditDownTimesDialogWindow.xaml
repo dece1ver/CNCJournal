@@ -9,6 +9,8 @@
         xmlns:cnv="clr-namespace:eLog.Infrastructure.Converters"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         mc:Ignorable="d" FontSize="16" WindowStyle="None"
+        FontFamily="{StaticResource Areopag.FontUI}"
+        Background="{StaticResource Areopag.Bg0}"
         Title="Редактирование простоев" d:DesignHeight="477" d:DesignWidth="1100"
         WindowStartupLocation="CenterOwner" Topmost="False" ResizeMode="NoResize" Loaded="Window_Loaded">
     <Window.Resources>
@@ -20,14 +22,18 @@
         <Style TargetType="TextBox">
             <Setter Property="Padding" Value="3"/>
             <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontFamily" Value="{StaticResource Areopag.FontMono}"/>
+            <Setter Property="Foreground" Value="{StaticResource Areopag.Text}"/>
+            <Setter Property="Background" Value="{StaticResource Areopag.Input}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Areopag.Line}"/>
             <Setter Property="Width" Value="145"/>
         </Style>
         <ControlTemplate x:Key="ValidationFailed">
             <Grid>
                 <StackPanel Orientation="Horizontal">
                     <AdornedElementPlaceholder />
-                    <Border Padding="10 0" Background="Transparent" BorderBrush="Red" BorderThickness="1" Width="24" Margin="5 0" CornerRadius="12" MouseLeftButtonUp="Border_MouseLeftButtonUp">
-                        <TextBlock Text="!" Foreground="Red" VerticalAlignment="Center" Margin="-4 -6 -5 -4" HorizontalAlignment="Center" FontSize="20"/>
+                    <Border Padding="10 0" Background="Transparent" BorderBrush="{StaticResource Areopag.Alert}" BorderThickness="1" Width="24" Margin="5 0" CornerRadius="0" MouseLeftButtonUp="Border_MouseLeftButtonUp">
+                        <TextBlock Text="!" Foreground="{StaticResource Areopag.Alert}" VerticalAlignment="Center" Margin="-4 -6 -5 -4" HorizontalAlignment="Center" FontSize="20"/>
                     </Border>
                 </StackPanel>
                 
@@ -35,7 +41,7 @@
         </ControlTemplate>
     </Window.Resources>
     <Grid>
-        <Border BorderThickness="1" BorderBrush="Gray">
+        <Border BorderThickness="1" BorderBrush="{StaticResource Areopag.Line}">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Top" Text="{Binding Part.FullName, StringFormat={}Простои: {0}}" FontSize="18" TextAlignment="Center" Margin="10 0 0 10" FontWeight="DemiBold"
 />
@@ -54,8 +60,8 @@
                         </Button.Command>
                     </Button>
                     <Button x:Name="OkButton" DockPanel.Dock="Right" Width="260" HorizontalAlignment="Right"
-                            Margin="10" Height="60" Style="{StaticResource GeneralButton}"
-                            VerticalAlignment="Bottom" Content="{StaticResource ConfirmIcon}"
+                            Margin="10" Height="60" Style="{StaticResource Areopag.PrimaryButton}"
+                            VerticalAlignment="Bottom" Content="{StaticResource ConfirmIconWhite}"
                             IsEnabled="{Binding CanBeClosed}" Click="OkButton_Click">
                     </Button>
                 </DockPanel>
@@ -70,7 +76,7 @@
                               ItemContainerStyle="{StaticResource ListViewItemsStyle}" Margin="3 -14 -12 -2">
                         <ListView.ItemTemplate>
                             <DataTemplate>
-                                <GroupBox DockPanel.Dock="Top" BorderBrush="DarkGray" Margin="0 -1 0 0" Tag="{Binding}">
+                                <GroupBox DockPanel.Dock="Top" BorderBrush="{StaticResource Areopag.Line}" Margin="0 -1 0 0" Tag="{Binding}">
                                     <GroupBox.Header>
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock>
@@ -108,12 +114,12 @@
                                                      Margin="0 -1 0 0" KeyUp="TimeTextBox_KeyUp"/>
                                         </Grid>
                                         <DockPanel Width="150" DockPanel.Dock="Right" HorizontalAlignment="Right">
-                                            <Button x:Name="DeleteDownTimeButton" Style="{StaticResource LvButton}" DockPanel.Dock="Right" 
+                                            <Button x:Name="DeleteDownTimeButton" Style="{StaticResource Areopag.DangerButton}" Width="125" DockPanel.Dock="Right" 
                                                 Tag="{Binding}"
                                                 Content="Удалить" Margin="0 -5 -25 0" Click="DeleteDownTimeButton_Click">
                                                 <Button.Resources>
                                                     <Style TargetType="Border">
-                                                        <Setter Property="CornerRadius" Value="2"/>
+                                                        <Setter Property="CornerRadius" Value="0"/>
                                                     </Style>
                                                 </Button.Resources>
                                             </Button>
@@ -123,7 +129,7 @@
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
-                    <Border Grid.Column="0" Margin="10 0 -5 2" BorderBrush="LightGray" BorderThickness="1" CornerRadius="2">
+                    <Border Grid.Column="0" Margin="10 0 -5 2" BorderBrush="{StaticResource Areopag.Line}" BorderThickness="1" CornerRadius="0">
                         <Border.Style>
                             <Style TargetType="{x:Type Border}">
                                 <Setter Property="Visibility" Value="Collapsed" />
@@ -134,10 +140,10 @@
                                 </Style.Triggers>
                             </Style>
                         </Border.Style>
-                        <TextBlock Text="Здесь могли быть ваши простои." HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="Gray" FontSize="20"/>
+                        <TextBlock Text="Здесь могли быть ваши простои." HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource Areopag.Text2}" FontSize="20"/>
                     </Border>
                     <Border Grid.Column="1"
-                        BorderBrush="LightGray" BorderThickness="1" 
+                        BorderBrush="{StaticResource Areopag.Line}" BorderThickness="1" 
                         Margin="10 15 5 15"/>
                     <DockPanel Grid.Column="2" LastChildFill="True" Margin="0 0 10 0">
                         <Button x:Name="AddDownTimeButton" Style="{StaticResource KeyboardButton}" 

@@ -46,17 +46,21 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
     }
 
     /// <summary>Встать в очередь, выполнить запрос к LLM, покинуть очередь.</summary>
+    /// <param name="temperature">Температура сэмплирования. null — дефолт 0.1.
+    /// verify-part использует 0.05: одинаковый вход обязан давать одинаковый
+    /// вердикт (флипы на том же входе недопустимы для подсказки мастеру).</param>
     public async Task<(string Response, string? Thinking)> GenerateAsync(
     string prompt,
     bool think = false,
     IProgress<string>? thinkingProgress = null,
     CancellationToken ct = default,
-    string? model = null)
+    string? model = null,
+    double? temperature = null)
     {
         await EnterQueueAsync(ct);
         try
         {
-            return await GenerateCoreAsync(prompt, think, thinkingProgress, ct, model);
+            return await GenerateCoreAsync(prompt, think, thinkingProgress, ct, model, temperature);
         }
         finally
         {
@@ -70,7 +74,8 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
     bool think = false,
     IProgress<string>? thinkingProgress = null,
     CancellationToken ct = default,
-    string? model = null)
+    string? model = null,
+    double? temperature = null)
     {
         var effectiveModel = string.IsNullOrWhiteSpace(model) ? _model : model;
 
@@ -83,7 +88,7 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
             Format = think ? null : "json",
             Options = new()
             {
-                Temperature = 0.1,
+                Temperature = temperature ?? 0.1,
                 // Промпт (~2.3k токенов) + данные насыщенного дня (~2-3k) + think-генерация
                 // должны помещаться целиком: при переполнении Ollama молча вытесняет
                 // НАЧАЛО промпта (ROLE/DEFINITIONS). 8192 не хватало в think-режиме.

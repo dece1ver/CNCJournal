@@ -9,7 +9,9 @@
         xmlns:settings="clr-namespace:eLog.Views.Windows.Settings"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         Height="600" Width="800" ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
-        FontSize="16" WindowStartupLocation="CenterOwner">
+        FontSize="16" WindowStartupLocation="CenterOwner"
+        FontFamily="{StaticResource Areopag.FontUI}"
+        Background="{StaticResource Areopag.Bg0}">
 
     <DockPanel>
         <StatusBar DockPanel.Dock="Bottom">
@@ -21,13 +23,13 @@
             </StatusBarItem>
         </StatusBar>
         <UniformGrid DockPanel.Dock="Bottom" Rows="1" HorizontalAlignment="Right" Margin="0 10" Height="30">
-            <Button Content="Отмена" Margin="0 0 5 0" Width="92" IsCancel="True"
+            <Button Content="Отмена" Margin="0 0 5 0" Width="92" IsCancel="True" Style="{StaticResource GeneralButton}"
                     CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=settings:OperatorsEditWindow}}">
                 <Button.Command>
                     <cmd:CloseDialogCommand DialogResult="False"/>
                 </Button.Command>
             </Button>
-            <Button Content="ОК" Margin="5 0 10 0" Width="92" VerticalContentAlignment="Center" IsDefault="True"
+            <Button Content="ОК" Margin="5 0 10 0" Width="92" VerticalContentAlignment="Center" IsDefault="True" Style="{StaticResource Areopag.PrimaryButton}"
                     CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=settings:OperatorsEditWindow}}">
                 <Button.Command>
                     <cmd:CloseDialogCommand DialogResult="True"/>

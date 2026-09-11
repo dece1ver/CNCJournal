@@ -8,7 +8,9 @@
         xmlns:cnv="clr-namespace:eLog.Infrastructure.Converters"
         xmlns:md="clr-namespace:eLog.Models"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
-        xmlns:local="clr-namespace:eLog" FontSize="24"
+         xmlns:local="clr-namespace:eLog" FontSize="24"
+         FontFamily="{StaticResource Areopag.FontUI}"
+         Background="{StaticResource Areopag.Bg0}"
         Icon="/Views/Windows/elog.ico"
         mc:Ignorable="d" xmlns:vm="clr-namespace:eLog.ViewModels" d:DataContext="{d:DesignInstance Type=vm:MainWindowViewModel}"
         Title="Электронный журнал" MinWidth="930" MinHeight="480" Width="1300" Height="710" WindowState="Maximized" Loaded="Window_Loaded">
@@ -88,7 +90,7 @@
                                 <DataTrigger Binding="{Binding AssignedPartsIsLoading}" Value="True">
                                     <Setter Property="Content">
                                         <Setter.Value>
-                                            <Label Content="{StaticResource SyncIcon}">
+                                            <Label Content="{StaticResource SyncIcon}" Padding="5" Margin="0" VerticalAlignment="Center" HorizontalAlignment="Center">
                                                 <Label.RenderTransform>
                                                     <RotateTransform CenterX="13" CenterY="13"/>
                                                 </Label.RenderTransform>
@@ -117,7 +119,11 @@
                                     </Setter>
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding AssignedPartsIsLoading}" Value="False">
-                                    <Setter Property="Content" Value="{StaticResource LookupListIcon}" />
+                                    <Setter Property="Content">
+                                        <Setter.Value>
+                                            <Label Content="{StaticResource LookupListIcon}" Padding="5" Margin="0" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                        </Setter.Value>
+                                    </Setter>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -140,7 +146,7 @@
                                 <DataTrigger Binding="{Binding ProductionTasksIsLoading}" Value="True">
                                     <Setter Property="Content">
                                         <Setter.Value>
-                                            <Label Content="{StaticResource SyncIcon}">
+                                            <Label Content="{StaticResource SyncIcon}" Padding="5" Margin="0" VerticalAlignment="Center" HorizontalAlignment="Center">
                                                 <Label.RenderTransform>
                                                     <RotateTransform CenterX="13" CenterY="13"/>
                                                 </Label.RenderTransform>
@@ -169,7 +175,11 @@
                                     </Setter>
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding ProductionTasksIsLoading}" Value="False">
-                                    <Setter Property="Content" Value="{StaticResource OrderedListIcon}" />
+                                    <Setter Property="Content">
+                                        <Setter.Value>
+                                            <Label Content="{StaticResource OrderedListIcon}" Padding="5" Margin="0" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                        </Setter.Value>
+                                    </Setter>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -188,19 +198,19 @@
                           Style="{StaticResource ComboBoxStyle}"
                           SelectedItem="{Binding CurrentShift}" 
                           IsEnabled="{Binding CanEditShiftAndParams}"
-                          Width="150" Margin="4 0 0 0"/>
-                    <Button Content="Начать смену" DockPanel.Dock="Left" Margin="4 0 0 0"
-                            Visibility="{Binding ShiftStarted, Converter={StaticResource InvertedVisibilityConverter}}"
-                            IsEnabled="{Binding CanStartShift}"
-                            Command="{Binding StartShiftCommand}" Style="{StaticResource GeneralButton}" Width="250"/>
-                <Button Content="Завершить смену" DockPanel.Dock="Left" Margin="4 0 0 0"
+                            Width="150" Margin="4 0 0 0"/>
+                <Button Content="Начать смену" DockPanel.Dock="Left" Margin="4 0 0 0"
+                        Visibility="{Binding ShiftStarted, Converter={StaticResource InvertedVisibilityConverter}}"
+                        IsEnabled="{Binding CanStartShift}" FontWeight="Normal"
+                        Command="{Binding StartShiftCommand}" Style="{StaticResource Areopag.PrimaryButton}" Width="250"/>
+                <Button Content="Завершить смену" DockPanel.Dock="Left" Margin="4 0 0 0" FontWeight="Normal"
                         Visibility="{Binding ShiftStarted, Converter={StaticResource VisibilityConverter}}"
                         IsEnabled="{Binding CanEndShift, UpdateSourceTrigger=PropertyChanged}"
-                        Command="{Binding EndShiftCommand}" Style="{StaticResource GeneralButton}" Width="250"/>
+                        Command="{Binding EndShiftCommand}" Style="{StaticResource Areopag.OkButton}" Width="250"/>
                 <Button DockPanel.Dock="Right" Content="-TEST-" Style="{StaticResource GeneralButton}"
                         Visibility="Collapsed" Command="{Binding TestCommand}"/>
-                <Button DockPanel.Dock="Top" Content="Запустить деталь" Margin="4 0" Style="{StaticResource GeneralButton}"
-                        Command="{Binding StartDetailCommand}" IsEnabled="{Binding CanAddPart}"/>
+                <Button DockPanel.Dock="Top" Content="Запустить деталь" Margin="4 0" Style="{StaticResource Areopag.PrimaryButton}"
+                        Command="{Binding StartDetailCommand}" IsEnabled="{Binding CanAddPart}" FontWeight="Regular"/>
                 
             </DockPanel>
             <StatusBar DockPanel.Dock="Bottom">
@@ -210,7 +220,7 @@
                 <StatusBarItem HorizontalAlignment="Right" VerticalContentAlignment="Stretch">
                     <ProgressBar Value="{Binding Progress}" Maximum="{Binding ProgressMaxValue}" IsIndeterminate="True"
                              Visibility="{Binding ProgressBarVisibility}" Width="200" Margin="0"/>
-                </StatusBarItem>
+                </StatusBarItem>и 
             </StatusBar>
             <DockPanel LastChildFill="True">
                 <ListView ItemsSource="{Binding Parts, UpdateSourceTrigger=PropertyChanged}" IsManipulationEnabled="True" FontSize="16" DockPanel.Dock="Top" Focusable="False" 
@@ -293,7 +303,7 @@
                                                 </ContentControl>
                                             </Grid>
                                             <TextBlock FontSize="18" Text="{Binding Title}" FontWeight="DemiBold"/>
-                                            <TextBlock Text="серийная продукция" Foreground="Gray" FontSize="9" Margin="3 0 -100 0" Visibility="Collapsed"/>
+                                            <TextBlock Text="серийная продукция" Foreground="{StaticResource Areopag.Text3}" FontSize="9" Margin="3 0 -100 0" Visibility="Collapsed"/>
                                         </StackPanel>
 
                                     </GroupBox.Header>
@@ -304,7 +314,7 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="1">
                                             <Border Height="30" Width="150" VerticalAlignment="Top"
-                                                    BorderBrush="LightGray" Margin="0 0 0 0" BorderThickness="1" Visibility="{Binding TaskInfo, Converter={StaticResource TaskInfoVisibilityConverter}}">
+                                                    Background="{StaticResource Areopag.AccentSoft}" BorderBrush="{StaticResource Areopag.Accent}" Margin="0 0 0 0" BorderThickness="1" Visibility="{Binding TaskInfo, Converter={StaticResource TaskInfoVisibilityConverter}}">
                                                 <Grid>
                                                     <ContentControl Content="{StaticResource SyncIcon}" Visibility="{Binding NeedToSyncTask, Converter={StaticResource VisibilityConverter}}"
                                                                      RenderTransformOrigin="0.5 0.5" HorizontalAlignment="Left" Margin="6"
@@ -325,12 +335,12 @@
                                                             </EventTrigger>
                                                         </ContentControl.Triggers>
                                                     </ContentControl>
-                                                    <TextBlock Text="{Binding TaskInfo, Converter={StaticResource TaskInfoTextConverter}}" FontSize="12" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding TaskInfo, Converter={StaticResource TaskInfoTextConverter}}" FontSize="12" Foreground="{StaticResource Areopag.Accent}" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center"/>
                                                 </Grid>
                                             </Border>
                                             <Border Height="30" Width="150" VerticalAlignment="Top"
-                                                    BorderBrush="LightGray" Margin="0 -1 0 0" BorderThickness="1" Visibility="{Binding IsSerial, Converter={StaticResource VisibilityConverter}}">
-                                                <TextBlock Text="Серийная продукция" FontSize="12" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                                    Background="{StaticResource Areopag.AccentSoft}" BorderBrush="{StaticResource Areopag.Line}" Margin="0 -1 0 0" BorderThickness="1" Visibility="{Binding IsSerial, Converter={StaticResource VisibilityConverter}}">
+                                                <TextBlock Text="Серийная продукция" FontSize="12" Foreground="{StaticResource Areopag.Accent}" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center"/>
                                             </Border>
                                         </StackPanel>
                                         <Grid Grid.Column="0">
@@ -390,40 +400,40 @@
                                                         Command="{Binding RelativeSource={RelativeSource AncestorType=ItemsControl}, Path=DataContext.SetDownTimeCommand}"
                                                         CommandParameter="{Binding}">
                                                     <Button.Content>
-                                                        <TextBlock Text="Начать простой" TextWrapping="WrapWithOverflow" TextAlignment="Center" Padding="4"/>
+                                                        <TextBlock Text="Начать простой" TextWrapping="WrapWithOverflow" TextAlignment="Center" Padding="4" FontWeight="Normal"/>
                                                     </Button.Content>
                                                 </Button>
-                                                <Button Style="{StaticResource LvButton}" 
+                                                <Button Style="{StaticResource Areopag.OkButton}" Width="125" Margin="4 0 0 0"
                                                         Visibility="{Binding DownTimesIsClosed, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource InvertedVisibilityConverter}}"
                                                         Command="{Binding RelativeSource={RelativeSource AncestorType=ItemsControl}, Path=DataContext.EndDownTimeCommand}"
                                                         CommandParameter="{Binding}">
                                                     <Button.Content>
                                                         <StackPanel>
-                                                            <TextBlock Text="Завершить" TextWrapping="WrapWithOverflow" TextAlignment="Center"/>
-                                                            <TextBlock TextWrapping="WrapWithOverflow" TextAlignment="Center" Padding="3" FontSize="14"
+                                                            <TextBlock Text="Завершить" TextWrapping="WrapWithOverflow" TextAlignment="Center" FontWeight="Normal"/>
+                                                            <TextBlock TextWrapping="WrapWithOverflow" TextAlignment="Center" Padding="3" FontSize="14" FontWeight="Normal"
                                                                        Text="{Binding LastDownTimeName, Mode=OneWay}"/>
                                                         </StackPanel>
                                                     </Button.Content>
                                                 </Button>
-                                                <Button Style="{StaticResource LvButton}"
+                                                <Button Style="{StaticResource Areopag.OkButton}" Width="125" Margin="4 0 0 0"
                                                     Visibility="{Binding SetupCanBeClosed, Converter={StaticResource VisibilityConverter}}" 
                                                     Command="{Binding RelativeSource={RelativeSource AncestorType=ItemsControl}, Path=DataContext.EndSetupCommand}" 
                                                     CommandParameter="{Binding}">
                                                     <Button.Content>
-                                                        <TextBlock Text="Завершить наладку" TextWrapping="WrapWithOverflow" TextAlignment="Center"/>
+                                                        <TextBlock Text="Завершить наладку" TextWrapping="WrapWithOverflow" TextAlignment="Center" FontWeight="Normal"/>
                                                     </Button.Content>
                                                 </Button>
-                                                <Button Style="{StaticResource LvButton}"
+                                                <Button Style="{StaticResource Areopag.OkButton}" Width="125" Margin="4 0 0 0"
                                                     Visibility="{Binding CanBeFinished, Converter={StaticResource VisibilityConverter}}"
                                                     Command="{Binding RelativeSource={RelativeSource AncestorType=ItemsControl}, Path=DataContext.EndDetailCommand}"
                                                     CommandParameter="{Binding}">
                                                     <Button.Content>
-                                                        <TextBlock Text="Завершить изготовление" TextWrapping="WrapWithOverflow" TextAlignment="Center"/>
+                                                        <TextBlock Text="Завершить изготовление" TextWrapping="WrapWithOverflow" TextAlignment="Center" FontWeight="Normal"/>
                                                     </Button.Content>
                                                 </Button>
                                             </StackPanel>
-                                            <Button Margin="4 0 0 0" 
-                                                CommandParameter="{Binding}" BorderBrush="SlateGray"
+                                            <Button Margin="4 0 0 0" Style="{StaticResource GeneralButton}"
+                                                CommandParameter="{Binding}"
                                                 Command="{Binding RelativeSource={RelativeSource AncestorType=ItemsControl}, Path=DataContext.EditDetailCommand}">
                                                 <Button.Content>
                                                     <StackPanel Orientation="Vertical" Margin="0 -10 0 0">
@@ -434,7 +444,7 @@
                                                 </Button.Content>
                                                 <Button.Resources>
                                                     <Style TargetType="Border">
-                                                        <Setter Property="CornerRadius" Value="2"/>
+                                                        <Setter Property="CornerRadius" Value="0"/>
                                                     </Style>
                                                 </Button.Resources>
                                             </Button>
@@ -459,8 +469,8 @@
                                     </Grid>
                                 </GroupBox>
                                 <Grid Visibility="{Binding Converter={StaticResource PreviousShiftsLineConverter}}" Margin="5 15 5 -5" >
-                                    <Border Grid.Row="0" BorderBrush="Gray" BorderThickness="1" Height="1"/>
-                                    <TextBlock Grid.Row="0" Text="Прошлые смены" FontSize="14" Background="White" TextAlignment="Center" HorizontalAlignment="Center" Width="150"/>
+                                    <Border Grid.Row="0" BorderBrush="{StaticResource Areopag.Line}" BorderThickness="1" Height="1"/>
+                                    <TextBlock Grid.Row="0" Text="Прошлые смены" FontSize="14" Foreground="{StaticResource Areopag.Text2}" Background="{StaticResource Areopag.Input}" TextAlignment="Center" HorizontalAlignment="Center" Width="150"/>
                                 </Grid>
                             </StackPanel>
                         </DataTemplate>

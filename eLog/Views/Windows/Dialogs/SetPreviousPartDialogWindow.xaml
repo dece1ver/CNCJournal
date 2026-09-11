@@ -10,13 +10,15 @@
         xmlns:dialogs="clr-namespace:eLog.Views.Windows.Dialogs"
         WindowStartupLocation="CenterOwner" WindowStyle="None"
         ResizeMode="NoResize" FontSize="22"
+        FontFamily="{StaticResource Areopag.FontUI}"
+        Background="{StaticResource Areopag.Bg0}"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         mc:Ignorable="d"
         Title="Выбор предыдущей детали" Height="385" Width="700">
-    <Border BorderBrush="Gray" BorderThickness="1">
+    <Border BorderBrush="{StaticResource Areopag.Line}" BorderThickness="1">
         <DockPanel>
             <UniformGrid DockPanel.Dock="Bottom" Columns="2">
-                <Button Margin="20" Width="120" Height="42"
+                <Button Margin="20" Width="120" Height="42" Style="{StaticResource GeneralButton}"
                         VerticalAlignment="Bottom" HorizontalAlignment="Left" Content="{StaticResource CloseIcon}" Padding="0 3 0 0"
                         CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=dialogs:SetPreviousPartDialogWindow}}">
                     <Button.Command>
@@ -24,8 +26,8 @@
                     </Button.Command>
                 </Button>
 
-                <Button Margin="20" Width="120" x:Name="OkButton" Height="42"
-                        VerticalAlignment="Bottom" HorizontalAlignment="Right" Content="{StaticResource ConfirmIcon}" 
+                <Button Margin="20" Width="120" x:Name="OkButton" Height="42" Style="{StaticResource Areopag.PrimaryButton}"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right" Content="{StaticResource ConfirmIconWhite}" 
                         CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=dialogs:SetPreviousPartDialogWindow}}">
                     <Button.Command>
                         <commands:CloseDialogCommand DialogResult="True"/>
@@ -38,7 +40,7 @@
                           SelectedItem="{Binding Part}">
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <GroupBox>
+                        <GroupBox Style="{StaticResource PulseGroupBoxStyle}">
                             <GroupBox.Header>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="{Binding FullName}"/>
@@ -65,7 +67,7 @@
                     </DataTemplate>
                 </ListView.ItemTemplate>
                 <ListView.ItemContainerStyle>
-                    <Style TargetType="ListViewItem">
+                    <Style TargetType="ListViewItem" BasedOn="{StaticResource ListViewItemSelectableStyle}">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                     </Style>
                 </ListView.ItemContainerStyle>

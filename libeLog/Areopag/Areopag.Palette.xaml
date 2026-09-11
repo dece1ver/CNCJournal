@@ -1,0 +1,48 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- ============================================================
+         Areopag — корпоративная палитра, только белая тема.
+         Канон: libeLog Constants.Colors + remeLog.Web wwwroot/app.css.
+         Акцент = AreopagBlue90 #303C60 (как PrimaryButton в QCTasks),
+         подтверждение = Green #00AD68, отклонение = Red #E63C2F.
+         Никаких скруглений/теней здесь нет — только цвет и шрифт.
+         ============================================================ -->
+
+    <!-- Фон и поверхности -->
+    <SolidColorBrush x:Key="Areopag.Bg0" Color="#EEF1F5"/>
+    <SolidColorBrush x:Key="Areopag.Bg1" Color="#F8F9FB"/>
+    <SolidColorBrush x:Key="Areopag.Input" Color="#FFFFFF"/>
+    <!-- Границы -->
+    <SolidColorBrush x:Key="Areopag.Line" Color="#BABECA"/>
+    <SolidColorBrush x:Key="Areopag.LineSoft" Color="#D1D4DC"/>
+    <!-- Текст -->
+    <SolidColorBrush x:Key="Areopag.Text" Color="#00243D"/>
+    <SolidColorBrush x:Key="Areopag.Text2" Color="#5E6784"/>
+    <SolidColorBrush x:Key="Areopag.Text3" Color="#757C95"/>
+    <!-- Нейтральная кнопка: серая (темнее фона Bg0, чтобы не сливалась), hover белый -->
+    <SolidColorBrush x:Key="Areopag.BtnBg" Color="#D8DCE1"/>
+    <!-- Акцент: выбранное / ссылка / фокус -->
+    <SolidColorBrush x:Key="Areopag.Accent" Color="#303C60"/>
+    <SolidColorBrush x:Key="Areopag.AccentHover" Color="#475172"/>
+    <SolidColorBrush x:Key="Areopag.AccentSoft" Color="#E4E6EC"/>
+    <SolidColorBrush x:Key="Areopag.OnAccent" Color="#FFFFFF"/>
+    <!-- Подтверждение -->
+    <SolidColorBrush x:Key="Areopag.Ok" Color="#00AD68"/>
+    <SolidColorBrush x:Key="Areopag.OkHover" Color="#1AB577"/>
+    <SolidColorBrush x:Key="Areopag.OkSoft" Color="#CDEEE1"/>
+    <!-- Отклонение / внимание -->
+    <SolidColorBrush x:Key="Areopag.Alert" Color="#E63C2F"/>
+    <SolidColorBrush x:Key="Areopag.AlertHover" Color="#E84F44"/>
+    <SolidColorBrush x:Key="Areopag.AlertSoft" Color="#FAD8D6"/>
+    <!-- Предупреждение (источник: remeLog.Web app.css, в Constants.Colors нет) -->
+    <SolidColorBrush x:Key="Areopag.Warn" Color="#B8862E"/>
+    <SolidColorBrush x:Key="Areopag.WarnSoft" Color="#F3E7D2"/>
+    <!-- Disabled (источник: QCTasks DialogStyles) -->
+    <SolidColorBrush x:Key="Areopag.Disabled" Color="#BDBDBD"/>
+    <SolidColorBrush x:Key="Areopag.DisabledBg" Color="#F5F5F5"/>
+    <SolidColorBrush x:Key="Areopag.DisabledFg" Color="#9E9E9E"/>
+
+    <!-- Корпоративные шрифты (ресурсы libeLog/Resources/Fonts) -->
+    <FontFamily x:Key="Areopag.FontUI">pack://application:,,,/libeLog;component/Resources/Fonts/#IBM Plex Sans, Segoe UI</FontFamily>
+    <FontFamily x:Key="Areopag.FontMono">pack://application:,,,/libeLog;component/Resources/Fonts/#IBM Plex Mono, Consolas</FontFamily>
+</ResourceDictionary>

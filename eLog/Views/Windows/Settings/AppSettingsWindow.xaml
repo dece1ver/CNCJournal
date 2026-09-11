@@ -9,7 +9,9 @@
         xmlns:cnv="clr-namespace:eLog.Infrastructure.Converters"
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         
-        Title="Параметры" Height="600" Width="800" WindowStartupLocation="CenterOwner">
+        Title="Параметры" Height="600" Width="800" WindowStartupLocation="CenterOwner"
+        FontFamily="{StaticResource Areopag.FontUI}"
+        Background="{StaticResource Areopag.Bg0}">
     <Window.Resources>
         <cnv:ArrayConverter x:Key="ArrayConverter"/>
         <Style TargetType="TextBlock">
@@ -18,16 +20,16 @@
     </Window.Resources>
     <DockPanel>
         <DockPanel DockPanel.Dock="Bottom">
-            <Button DockPanel.Dock="Left" Margin="10 10 5 10" Content="{StaticResource ExportSettingsIcon}" Padding="8" Height="38" Width="38" Click="ExportSettingsButton_Click"/>
-            <Button DockPanel.Dock="Left" Margin="5 10 10 10" Content="{StaticResource ImportSettingsIcon}" Padding="8" Height="38" Width="38" Click="ImportSettingsButton_Click"/>
+            <Button DockPanel.Dock="Left" Margin="10 10 5 10" Content="{StaticResource ExportSettingsIcon}" Padding="8" Height="38" Width="38" Style="{StaticResource GeneralButton}" Click="ExportSettingsButton_Click"/>
+            <Button DockPanel.Dock="Left" Margin="5 10 10 10" Content="{StaticResource ImportSettingsIcon}" Padding="8" Height="38" Width="38" Style="{StaticResource GeneralButton}" Click="ImportSettingsButton_Click"/>
             <UniformGrid DockPanel.Dock="Right" Rows="1" HorizontalAlignment="Right" Margin="10">
-                <Button Content="Отмена" Margin="0 0 5 0" IsCancel="True" Padding="20 5" FontSize="14"
+                <Button Content="Отмена" Margin="0 0 5 0" IsCancel="True" Padding="20 5" FontSize="14" Style="{StaticResource GeneralButton}"
                     CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=settings:AppSettingsWindow}}">
                     <Button.Command>
                         <cmd:CloseDialogCommand DialogResult="False"/>
                     </Button.Command>
                 </Button>
-                <Button Content="OК" Margin="5 0 0 0" Padding="0 5" IsDefault="True" FontSize="14"
+                <Button Content="OК" Margin="5 0 0 0" Padding="0 5" IsDefault="True" FontSize="14" Style="{StaticResource Areopag.PrimaryButton}"
                     CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=settings:AppSettingsWindow}}">
                     <Button.Command>
                         <cmd:CloseDialogCommand DialogResult="True"/>
@@ -56,26 +58,26 @@
                 <RowDefinition Height="24"/>
             </Grid.RowDefinitions>
             <TextBlock Grid.Row="0" Grid.Column="0" Text="Станок:" Margin="5 0" VerticalAlignment="Center"/>
-            <ComboBox Grid.Row="0"  Grid.Column="1" DockPanel.Dock="Top" Margin="0 1"
+            <ComboBox Grid.Row="0"  Grid.Column="1" DockPanel.Dock="Top" Margin="0 1" Style="{StaticResource ComboBoxStyle}"
                       ItemsSource="{Binding Machines}" 
                       SelectedItem="{Binding Machine}" 
                       DisplayMemberPath="Name"
                       IsEnabled="{Binding Machines, Converter={StaticResource CollectionNotEmptyConverter}}"/>
             <TextBlock Grid.Row="1" Grid.Column="0" Text="Метод хранения:" VerticalAlignment="Center" Margin="5 0" />
-            <ComboBox Grid.Row="1" Grid.Column="1"
+            <ComboBox Grid.Row="1" Grid.Column="1" Style="{StaticResource ComboBoxStyle}"
                       ItemsSource="{Binding StorageTypes}" SelectedItem="{Binding StorageType}" DisplayMemberPath="Name"/>
 
             <TextBlock Grid.Row="2" Grid.Column="0" Text="Заказы:" VerticalAlignment="Center" Margin="5 0" />
             <DockPanel Grid.Row="2" Grid.Column="1" Margin="0" 
                        VerticalAlignment="Stretch" LastChildFill="True">
-                <Button x:Name="SetOrdersSourceButton" DockPanel.Dock="Right" Content="Обзор" Margin="2 1 0 1" Width="80" Click="SetOrdersSourceButton_Click"/>
+                <Button x:Name="SetOrdersSourceButton" DockPanel.Dock="Right" Content="Обзор" Margin="2 1 0 1" Width="80" FontSize="10" Style="{StaticResource GeneralButton}" Click="SetOrdersSourceButton_Click"/>
                 <TextBox x:Name="OrdersSourcePathTextBox" VerticalContentAlignment="Center" VerticalAlignment="Stretch" Margin="0 1"
                          Text="{Binding OrdersSourcePath}"/>
             </DockPanel>
             <TextBlock Grid.Row="3" Grid.Column="0" Text="Обновление:" VerticalAlignment="Center" Margin="5 0" />
             <DockPanel Grid.Row="3" Grid.Column="1" Margin="0" 
                        VerticalAlignment="Stretch" LastChildFill="True">
-                <Button x:Name="SetUpdatePathButton" DockPanel.Dock="Right" Content="Обзор" Margin="2 1 0 1" Width="80" Click="SetUpdatePathButton_Click"/>
+                <Button x:Name="SetUpdatePathButton" DockPanel.Dock="Right" Content="Обзор" Margin="2 1 0 1" Width="80" FontSize="10" Style="{StaticResource GeneralButton}" Click="SetUpdatePathButton_Click"/>
                 <TextBox x:Name="XlPathTextBox" VerticalContentAlignment="Center" VerticalAlignment="Stretch" Margin="0 1"
                          Text="{Binding UpdatePath}"/>
             </DockPanel>
@@ -91,14 +93,14 @@
             <TextBlock Grid.Row="5" Grid.Column="0" Text="Google Credentials:" VerticalAlignment="Center" Margin="5 0" />
             <DockPanel Grid.Row="5" Grid.Column="1" Margin="0" 
                         VerticalAlignment="Stretch" LastChildFill="True">
-                <Button x:Name="SetGoogleCredentialsButton" DockPanel.Dock="Right" Content="Обзор" Margin="2 1 0 1" Width="80" Click="SetGoogleCredentialsButton_Click"/>
+                <Button x:Name="SetGoogleCredentialsButton" DockPanel.Dock="Right" Content="Обзор" Margin="2 1 0 1" Width="80" FontSize="10" Style="{StaticResource GeneralButton}" Click="SetGoogleCredentialsButton_Click"/>
                 <TextBox x:Name="GoogleCredentials" VerticalContentAlignment="Center" VerticalAlignment="Stretch" Margin="0 1"
                          Text="{Binding GoogleCredentialsPath}"/>
             </DockPanel>
 
             <TextBlock Grid.Row="6" Grid.Column="0" Text="Строка подключения:" VerticalAlignment="Center" Margin="5 0" PreviewMouseLeftButtonUp="TextBlock_PreviewMouseLeftButtonUp" />
             <DockPanel Grid.Row="6" Grid.Column="1" >
-                <Button x:Name="CheckDbConnectionButton" DockPanel.Dock="Right" Content="Проверить" Margin="2 1 0 1" Width="80" Click="CheckDbConnectionButton_Click" />
+                <Button x:Name="CheckDbConnectionButton" DockPanel.Dock="Right" Content="Проверить" Margin="2 1 0 1" Width="80" FontSize="10" Style="{StaticResource GeneralButton}" Click="CheckDbConnectionButton_Click" />
                 <TextBox x:Name="ConnectionStringTextBox" VerticalContentAlignment="Center" VerticalAlignment="Stretch" Margin="0 1" 
                          Text="{Binding ConnectionString}" IsEnabled="False"/>
             </DockPanel>
@@ -126,7 +128,7 @@
             <TextBlock Grid.Row="9" Grid.Column="0" Text="Получатели:" VerticalAlignment="Center" Margin="5 0" />
             <DockPanel Grid.Row="9" Grid.Column="1" Margin="0" 
                        VerticalAlignment="Stretch" LastChildFill="True">
-                <Button x:Name="SetPathToRecieversButton" DockPanel.Dock="Right" Content="Обзор" Margin="2 1 0 1" Width="80" Click="SetPathToRecieversButton_Click"/>
+                <Button x:Name="SetPathToRecieversButton" DockPanel.Dock="Right" Content="Обзор" Margin="2 1 0 1" Width="80" FontSize="10" Style="{StaticResource GeneralButton}" Click="SetPathToRecieversButton_Click"/>
                 <TextBox VerticalContentAlignment="Center" VerticalAlignment="Stretch" Margin="0 1"
                          Text="{Binding PathToRecievers}"/>
             </DockPanel>

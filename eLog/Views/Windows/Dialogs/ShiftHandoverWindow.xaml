@@ -6,6 +6,8 @@
         xmlns:local="clr-namespace:eLog.Views.Windows.Dialogs"
         xmlns:cmd="clr-namespace:eLog.Infrastructure.Commands"
         mc:Ignorable="d" DataContext="{Binding RelativeSource={RelativeSource Self}}"
+        FontFamily="{StaticResource Areopag.FontUI}"
+        Background="{StaticResource Areopag.Bg0}"
         Title="Передача смены" Height="350" Width="600" WindowStyle="None" WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
     <Window.Resources>
         <Style TargetType="TextBlock">
@@ -23,17 +25,17 @@
         </Style>
     </Window.Resources>
     <Grid>
-        <Border BorderBrush="DarkGray" BorderThickness="1">
+        <Border BorderBrush="{StaticResource Areopag.Line}" BorderThickness="1">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Top" Text="{Binding TypeTitle}" d:Text="Сдача смены" TextAlignment="Center" FontSize="24"/>
                 <UniformGrid DockPanel.Dock="Bottom" Columns="2">
-                    <Button Content="{StaticResource CloseIcon}" Margin="10" IsCancel="True" Padding="0 6 0 4" FontSize="14"
+                    <Button Content="{StaticResource CloseIcon}" Margin="10" IsCancel="True" Padding="0 6 0 4" FontSize="14" Style="{StaticResource GeneralButton}"
                             CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:ShiftHandoverWindow}}">
                         <Button.Command>
                             <cmd:CloseDialogCommand DialogResult="False"/>
                         </Button.Command>
                     </Button>
-                    <Button Content="{StaticResource ConfirmIcon}" Margin="10" IsDefault="True" Padding="0 6 0 4" FontSize="14"
+                    <Button Content="{StaticResource ConfirmIconWhite}" Margin="10" IsDefault="True" Padding="0 6 0 4" FontSize="14" Style="{StaticResource Areopag.PrimaryButton}"
                             CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:ShiftHandoverWindow}}">
                         <Button.Command>
                             <cmd:CloseDialogCommand DialogResult="True"/>
@@ -50,42 +52,42 @@
                         <RowDefinition/>
                     </Grid.RowDefinitions>
 
-                    <Border Grid.Row="0" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="0" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding WorkplaceCleaned}" d:IsChecked="True" DockPanel.Dock="Right"/>
                             <TextBlock Text="Рабочее место убрано"/>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Row="1" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="1" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding Failures}" DockPanel.Dock="Right"/>
                             <TextBlock Text="Аварии"/>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Row="2" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="2" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding ExtraneousNoises}" DockPanel.Dock="Right"/>
                             <TextBlock Text="Посторонние шумы"/>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Row="3" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="3" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding LiquidLeaks}" DockPanel.Dock="Right"/>
                             <TextBlock Text="Утечки жидкостей"/>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Row="4" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="4" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding ToolBreakage}" DockPanel.Dock="Right"/>
                             <TextBlock Text="Поломки инструмента"/>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Row="5" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="5" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <TextBox Text="{Binding СoolantСoncentration, UpdateSourceTrigger=PropertyChanged, StringFormat=0.#}" DockPanel.Dock="Right" VerticalAlignment="Center" Width="100" FontSize="24" />
                             <Slider Value="{Binding СoolantСoncentration, UpdateSourceTrigger=PropertyChanged}" DockPanel.Dock="Right" VerticalAlignment="Center" Width="100" Minimum="0" Maximum="10" TickFrequency="0.1"/>

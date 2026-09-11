@@ -68,9 +68,22 @@ namespace eLog.ViewModels
                 if (Set(ref _MetricIsInternal, value))
                 {
                     OnPropertyChanged(nameof(MetricPositions));
+                    OnPropertyChanged(nameof(SelectedThreadKind));
                     MetricPosition = value ? "H" : "g";
                     RefreshMetricResults();
                 }
+            }
+        }
+
+        public string[] ThreadKinds { get; } = new[] { "Наружная", "Внутренняя" };
+
+        public string SelectedThreadKind
+        {
+            get => MetricIsInternal ? "Внутренняя" : "Наружная";
+            set
+            {
+                if (value is not null)
+                    MetricIsInternal = value == "Внутренняя";
             }
         }
 

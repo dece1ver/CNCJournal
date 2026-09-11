@@ -6,10 +6,12 @@
         xmlns:local="clr-namespace:eLog.Views.Windows.Dialogs"
         xmlns:cmd="clr-namespace:eLog.Infrastructure.Commands"
         xmlns:inf="clr-namespace:eLog.Infrastructure" FontSize="14"
+        FontFamily="{StaticResource Areopag.FontUI}"
+        Background="{StaticResource Areopag.Bg0}"
         WindowStartupLocation="CenterOwner" WindowStyle="None"
         mc:Ignorable="d" d:DataContext="{Binding RelativeSource={RelativeSource AncestorType=local:TasksForProductionWindow}}"
         Title="Задания на производство" Height="600" Width="1080">
-    <Border BorderBrush="Gray" BorderThickness="0">
+    <Border BorderBrush="{StaticResource Areopag.Line}" BorderThickness="0">
         <DockPanel>
             <StatusBar DockPanel.Dock="Bottom">
                 <StatusBarItem>
@@ -17,8 +19,8 @@
                 </StatusBarItem>
             </StatusBar>
             <TextBlock DockPanel.Dock="Top" Text="Задания на производство" TextAlignment="Center" HorizontalAlignment="Right" FontWeight="SemiBold" Margin="0 -3 10 2" MouseLeftButtonDown="TextBlock_MouseLeftButtonDown"/>
-            <Button DockPanel.Dock="Bottom" Margin="10" Width="120" x:Name="OkButton" Height="42"
-                    VerticalAlignment="Bottom" HorizontalAlignment="Right" Content="{StaticResource ConfirmIcon}" 
+            <Button DockPanel.Dock="Bottom" Margin="10" Width="120" x:Name="OkButton" Height="42" Style="{StaticResource Areopag.PrimaryButton}"
+                    VerticalAlignment="Bottom" HorizontalAlignment="Right" Content="{StaticResource ConfirmIconWhite}" 
                     CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:TasksForProductionWindow}}">
                 <Button.Command>
                     <cmd:CloseDialogCommand DialogResult="True"/>
@@ -83,7 +85,7 @@
                                     Visibility="{Binding NcProgramButtonEnabled, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource VisibilityConverter}}" Click="Button_Click_1">
                                 
                             </Button>
-                            <GroupBox BorderBrush="DarkGray">
+                            <GroupBox Style="{StaticResource PulseGroupBoxStyle}">
                                 <GroupBox.Header>
                                     <TextBlock Text="{Binding PartName}" FontWeight="SemiBold"/>
                                 </GroupBox.Header>

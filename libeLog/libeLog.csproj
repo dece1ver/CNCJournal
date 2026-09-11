@@ -12,6 +12,22 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="Resources\Fonts\IBMPlexMono-Bold.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexMono-Medium.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexMono-Regular.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexMono-SemiBold.ttf" />
+    <None Remove="Resources\Fonts\IBMPlexSans-VariableFont_wdth,wght.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\Fonts\IBMPlexMono-Bold.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexMono-Medium.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexMono-Regular.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexMono-SemiBold.ttf" />
+    <Resource Include="Resources\Fonts\IBMPlexSans-VariableFont_wdth,wght.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.102.3" />
     <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="Google.Apis.Sheets.v4" Version="1.68.0.3658" />
