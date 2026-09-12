@@ -1,4 +1,6 @@
+using eLog.Infrastructure;
 using eLog.Infrastructure.Extensions;
+using libeLog;
 using libeLog.Infrastructure.Sql;
 using libeLog.Views;
 using Microsoft.Data.SqlClient;
@@ -7,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -325,6 +328,10 @@ ORDER BY CreatedUtc;";
                         result = await CopyShortcutAsync(cmd.Payload, ct).ConfigureAwait(false);
                         break;
 
+                    case "RequestState":
+                        result = await BuildStateSnapshotAsync().ConfigureAwait(false);
+                        break;
+
                     default:
                         Util.WriteLog($"AppPresenceService: неизвестный тип команды '{cmd.Type}'");
                         result = $"Неизвестная команда: {cmd.Type}";
@@ -365,6 +372,108 @@ ORDER BY CreatedUtc;";
                 Util.WriteLog("Приложение закрывается по команде из окна экземпляров");
                 Environment.Exit(0);
             }).Task.ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Собирает человекочитаемый снимок текущего состояния для команды RequestState
+        /// из окна экземпляров remeLog: ПК, станок, оператор/смена, деталь в работе
+        /// (общие данные, этап, простои). Чтение AppSettings/Parts — только в UI-потоке,
+        /// т.к. коллекции наблюдаемые.
+        /// </summary>
+        private async Task<string> BuildStateSnapshotAsync()
+        {
+            try
+            {
+                var machineName = _machineName;
+                var userName = _userName;
+                var ip = _ipAddress;
+                var version = _version;
+
+                var snapshot = await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    var sb = new StringBuilder();
+                    var now = DateTime.Now;
+                    var nowText = now.ToString("dd.MM HH:mm:ss");
+
+                    var machine = AppSettings.Instance.Machine?.Name ?? "—";
+                    var shift = string.IsNullOrWhiteSpace(AppSettings.Instance.CurrentShift)
+                        ? "—"
+                        : AppSettings.Instance.CurrentShift;
+                    var shiftState = AppSettings.Instance.IsShiftStarted ? "запущена" : "не запущена";
+
+                    var op = AppSettings.Instance.CurrentOperator;
+                    var opText = op is null ? "не выбран" : $"{op.DisplayName} ({op.FullName})";
+
+                    var ipText = string.IsNullOrWhiteSpace(ip) ? "—" : ip;
+                    sb.AppendLine($"ПК: {machineName} / {userName} ({ipText}), eLog {version}, актуально на {nowText}");
+                    sb.AppendLine($"Станок: {machine}, смена: {shift} ({shiftState})");
+                    sb.AppendLine($"Оператор: {opText}");
+
+                    var parts = AppSettings.Instance.Parts;
+                    var part = parts?.FirstOrDefault(p => p.InProgress);
+
+                    if (part is null)
+                    {
+                        var total = parts?.Count ?? 0;
+                        sb.Append($"Деталь в работе: нет (всего в смене: {total})");
+                        return sb.ToString();
+                    }
+
+                    var order = string.IsNullOrWhiteSpace(part.Order) ? "—" : part.Order;
+                    var name = string.IsNullOrWhiteSpace(part.Name) ? "—" : part.Name;
+                    var number = string.IsNullOrWhiteSpace(part.Number) ? "—" : part.Number;
+                    var defect = part.DefectiveCount > 0 ? $", брак {part.DefectiveCount}" : string.Empty;
+                    sb.AppendLine($"Деталь: {name} {number} (заказ {order}, установ {part.Setup}, {part.FinishedCount} / {part.TotalCount} шт{defect})");
+
+                    string Fmt(DateTime dt) =>
+                        dt == DateTime.MinValue ? "—" : dt.ToString(Constants.DateTimeFormat);
+
+                    sb.AppendLine($"Наладка: {Fmt(part.StartSetupTime)} → {Fmt(part.StartMachiningTime)}" +
+                        (part.SetupIsFinished ? " (завершена)" : " (идёт)"));
+
+                    var openDownTime = !part.DownTimesIsClosed ? part.LastDownTime : null;
+                    string stage = openDownTime is not null
+                        ? $"простой: {openDownTime.Name} с {Fmt(openDownTime.StartTime)}"
+                        : !part.SetupIsFinished
+                            ? "наладка"
+                            : part.InProduction
+                                ? "изготовление"
+                                : part.IsFinished.ToString();
+                    sb.AppendLine($"Этап: {stage}");
+
+                    var downTimes = part.DownTimes?.ToList() ?? new List<Models.DownTime>();
+                    if (downTimes.Count == 0)
+                    {
+                        sb.Append("Простои: нет");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"Простои ({downTimes.Count}):");
+                        var lines = new List<string>();
+                        foreach (var dt in downTimes)
+                        {
+                            var scope = dt.Relation == Models.DownTime.Relations.Machining ? "изг." : "наладка";
+                            var interval = dt.InProgress
+                                ? $"в работе с {Fmt(dt.StartTime)}"
+                                : $"{Fmt(dt.StartTime)}–{Fmt(dt.EndTime)} ({(int)Math.Max(0, dt.Time.TotalMinutes)} мин)";
+                            var comment = (dt.Comment ?? string.Empty).Trim();
+                            if (comment.Length > 200) comment = comment.Substring(0, 200) + "…";
+                            var commentText = string.IsNullOrEmpty(comment) ? string.Empty : $" «{comment}»";
+                            lines.Add($"— [{scope}] {dt.Name} {interval}{commentText}");
+                        }
+                        sb.Append(string.Join(Environment.NewLine, lines));
+                    }
+
+                    return sb.ToString();
+                }).Task.ConfigureAwait(false);
+
+                return snapshot;
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "Ошибка сбора состояния для RequestState");
+                return $"Ошибка сбора состояния: {ex.Message}";
+            }
         }
 
         /// <summary>Копирует файл ярлыка на рабочий стол текущего пользователя.</summary>

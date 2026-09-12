@@ -63,6 +63,8 @@
                                   Command="{Binding ShowNotificationCommand}"/>
                         <MenuItem Header="Уведомить об обновлении"
                                   Command="{Binding NotifyUpdateCommand}"/>
+                        <MenuItem Header="Запросить состояние"
+                                  Command="{Binding RequestStateCommand}"/>
                     </ContextMenu>
                 </Setter.Value>
             </Setter>

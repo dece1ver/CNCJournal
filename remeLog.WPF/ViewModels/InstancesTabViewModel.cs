@@ -31,6 +31,9 @@ namespace remeLog.ViewModels
 
         private readonly Dictionary<Guid, string> _pendingResults = new();
 
+        /// <summary>Команды RequestState: их результат показываем в MessageBox, а не в статусе.</summary>
+        private readonly HashSet<Guid> _stateRequests = new();
+
         public ObservableCollection<AppPresence> Instances { get; } = new();
 
         private AppPresence? _selectedInstance;
@@ -71,6 +74,7 @@ namespace remeLog.ViewModels
         public LambdaCommand ForceCloseCommand { get; }
         public LambdaCommand ShowNotificationCommand { get; }
         public LambdaCommand NotifyUpdateCommand { get; }
+        public LambdaCommand RequestStateCommand { get; }
         public LambdaCommand ForceCloseSelectedCommand { get; }
         public LambdaCommand NotifySelectedCommand { get; }
         public LambdaCommand NotifyUpdateSelectedCommand { get; }
@@ -166,6 +170,36 @@ namespace remeLog.ViewModels
                     catch (Exception ex)
                     {
                         Util.WriteLog(ex, "Ошибка при отправке уведомления об обновлении");
+                        MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                },
+                _ => SelectedInstance?.IsOnline == true);
+
+            RequestStateCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var target = SelectedInstance;
+                        if (target is null || !target.IsOnline) return;
+
+                        var commandId = await Database.SendAppCommandAsync(
+                            target.SessionId, target.Application, target.MachineName, target.UserName,
+                            "RequestState", null).ConfigureAwait(false);
+
+                        lock (_pendingResults)
+                        {
+                            _pendingResults[commandId] = $"{target.MachineName}\\{target.UserName}";
+                            _stateRequests.Add(commandId);
+                        }
+
+                        LastCommandResult = $"Ожидание ответа от {target.MachineName}...";
+                        await RefreshPendingCountAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке команды RequestState");
                         MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
                             MessageBoxButton.OK, MessageBoxImage.Error);
                     }
@@ -352,6 +386,7 @@ namespace remeLog.ViewModels
 
             var completedIds = new List<Guid>();
             var resultMessages = new List<string>();
+            var stateAnswers = new List<(string Target, string Text)>();
 
             foreach (var (id, target) in pending)
             {
@@ -359,7 +394,15 @@ namespace remeLog.ViewModels
                 if (result is null) continue;
 
                 completedIds.Add(id);
-                resultMessages.Add($"{target}: {result}");
+
+                bool isState;
+                lock (_pendingResults)
+                    isState = _stateRequests.Contains(id);
+
+                if (isState && result != "Cancelled")
+                    stateAnswers.Add((target, result));
+                else
+                    resultMessages.Add($"{target}: {result}");
             }
 
             if (completedIds.Count == 0) return;
@@ -367,10 +410,24 @@ namespace remeLog.ViewModels
             lock (_pendingResults)
             {
                 foreach (var id in completedIds)
+                {
                     _pendingResults.Remove(id);
+                    _stateRequests.Remove(id);
+                }
+            }
+
+            // Ответ RequestState — в общий кастомный MessageBox, в статусе только ОК.
+            foreach (var (target, text) in stateAnswers)
+            {
+                MessageBoxWindow.Show(text, $"Состояние {target}",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
             var summary = string.Join("\n", resultMessages);
+            if (stateAnswers.Count > 0 && summary.Length == 0)
+                summary = "OK";
+            else if (stateAnswers.Count > 0)
+                summary += "\nOK";
             await App.Current.Dispatcher.InvokeAsync(() => LastCommandResult = summary);
         }
 
