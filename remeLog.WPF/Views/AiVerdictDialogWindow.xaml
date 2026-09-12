@@ -1,0 +1,105 @@
+<Window x:Class="remeLog.Views.AiVerdictDialogWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008" mc:Ignorable="d"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:remeLog.Views"
+        Title="{Binding Title, RelativeSource={RelativeSource Self}}"
+        SizeToContent="Height" Width="580" MaxHeight="720"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        WindowStyle="ToolWindow">
+    <StackPanel Margin="14">
+        <!-- Вердикт -->
+        <TextBlock Text="{Binding VerdictTitle}" d:Text="Всё в порядке"
+                   FontWeight="Bold" FontSize="16"
+                   Foreground="{Binding VerdictBrush}"/>
+        <TextBlock Text="{Binding VerdictDetails}" d:Text="Уверенность 85%"
+                   Opacity="0.7" Margin="0 2 0 12" TextWrapping="Wrap"/>
+
+        <!-- Объяснение -->
+        <TextBlock Text="Объяснение" FontWeight="SemiBold" Margin="0 0 0 4"/>
+        <Border BorderThickness="1" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                Padding="8" Margin="0 0 0 10" MaxHeight="200">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <TextBlock Text="{Binding Explanation}" d:Text="Объяснение ИИ..."
+                           TextWrapping="Wrap"/>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Признаки -->
+        <StackPanel Margin="0 0 0 10"
+                    Visibility="{Binding HasSignals, Converter={StaticResource VisibilityConverter}}">
+            <TextBlock Text="Признаки" FontWeight="SemiBold" Margin="0 0 0 4"/>
+            <ItemsControl ItemsSource="{Binding Signals}" Margin="8 0 0 0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding StringFormat='• {0}'}" TextWrapping="Wrap" Margin="0 1"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+
+        <!-- Кандидаты на исключение из К1 -->
+        <StackPanel Visibility="{Binding HasCandidates, Converter={StaticResource VisibilityConverter}}">
+            <TextBlock Text="Исключение из расчёта К1" FontWeight="SemiBold" Margin="0 0 0 2"/>
+            <TextBlock Text="Отметьте записи, в которых не виноват оператор — они не попадут в расчёт."
+                       Opacity="0.7" FontSize="11" Margin="0 0 0 4" TextWrapping="Wrap"/>
+            <Border BorderThickness="1" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                    Padding="6" Margin="0 0 0 6" MaxHeight="220">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Candidates}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                          IsEnabled="{Binding IsMatched}"
+                                          Margin="0 2" VerticalContentAlignment="Top">
+                                    <TextBlock Text="{Binding DisplayText}" TextWrapping="Wrap"/>
+                                </CheckBox>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+            <TextBlock Text="{Binding UnmatchedText}" TextWrapping="Wrap" Opacity="0.7" FontSize="11" Margin="0 0 0 6"
+                       Visibility="{Binding HasUnmatched, Converter={StaticResource VisibilityConverter}}"/>
+        </StackPanel>
+
+        <!-- Строки, которые ИИ отметит проблемными при эскалации -->
+        <TextBlock Text="{Binding FlaggedPreviewText}" TextWrapping="Wrap" FontSize="12" Margin="0 0 0 6"
+                   Visibility="{Binding HasFlaggedPreview, Converter={StaticResource VisibilityConverter}}"/>
+
+        <!-- Предупреждение (перезапись / результат не сохранён / строки вручную) -->
+        <TextBlock Text="{Binding DayStatusHint}" TextWrapping="Wrap" Opacity="0.8" FontSize="11" Margin="0 0 0 6"
+                   Visibility="{Binding HasDayStatusHint, Converter={StaticResource VisibilityConverter}}"/>
+
+        <!-- Отзыв -->
+        <TextBlock Text="Отзыв на результат ИИ" FontWeight="SemiBold" Margin="0 4 0 2"/>
+        <TextBlock Text="Обязателен для кнопки «Не согласен», иначе — по желанию. Уточнение уйдёт в обучение."
+                   Opacity="0.7" FontSize="11" Margin="0 0 0 4"/>
+        <TextBox Text="{Binding Feedback, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 AcceptsReturn="True" TextWrapping="Wrap" MinHeight="50" MaxHeight="120"
+                 VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"/>
+
+        <!-- Действия: только К1 — во всю ширину; согласие/несогласие — пополам.
+             Отмена — крестик/Escape, отдельной кнопки нет -->
+        <Button Content="Только исключить из К1" Margin="0 14 0 0" Padding="0 6"
+                Click="ExcludesOnly_Click"
+                ToolTip="Применить отмеченные исключения, статус дня не менять"
+                Visibility="{Binding ShowExcludesOnly, Converter={StaticResource VisibilityConverter}}"/>
+        <Grid Margin="0 10 0 0"
+              Visibility="{Binding PrimaryActionVisible, Converter={StaticResource VisibilityConverter}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition/>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" Content="{Binding OppositeActionText}" Padding="0 6" Margin="0 0 5 0"
+                    Click="Opposite_Click"
+                    ToolTip="{Binding OppositeActionTooltip}"
+                    IsEnabled="{Binding OppositeEnabled}"/>
+            <Button Grid.Column="1" Content="{Binding PrimaryActionText}" Padding="0 6" Margin="5 0 0 0" IsDefault="True"
+                    Click="Primary_Click"
+                    ToolTip="{Binding PrimaryActionTooltip}"/>
+        </Grid>
+    </StackPanel>
+</Window>

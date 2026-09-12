@@ -103,6 +103,14 @@ public class AnalyzeResponse
     public List<string> DowngradedSignals { get; set; } = [];
     public List<string> SuggestExcludeFromReports { get; set; } = [];
 
+    /// <summary>
+    /// Ключи PartName§Setup§Order деталей с неустранёнными сигналами (hard +
+    /// непониженные soft): ИИ предлагает отметить их проблемными строками (флаги СГТ)
+    /// при согласии с вердиктом. Пусто — конкретные строки не указаны.
+    /// </summary>
+    [JsonPropertyName("flaggedParts")]
+    public List<string> FlaggedParts { get; set; } = [];
+
     public string Explanation { get; set; } = "";
     public string ThinkingProcess { get; set; } = "";
     public string SuggestedReason { get; set; } = "";

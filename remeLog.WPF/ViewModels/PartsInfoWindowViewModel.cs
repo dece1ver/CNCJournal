@@ -168,7 +168,7 @@ namespace remeLog.ViewModels
             }
             ChipFilters = new ObservableCollection<FilterChip>();
             ChipFilters.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasChipFilters));
-            AiThinkingEnabled = AppSettings.Instance.AiThinkingEnabled;
+            AiThinkingEnabled = true;
             OnPropertyChanged(nameof(HasErrors));
             UpdateHasErrors();
             _ = Init();
@@ -2914,6 +2914,10 @@ namespace remeLog.ViewModels
                 return;
             }
 
+            // Некорректные данные ИИ на проверку не отдаём — тот же обход, что у
+            // перехода к суточному отчёту: фича ValidationOverride + подтверждение.
+            if (!ConfirmAnalyzeWithValidationErrors()) return;
+
             var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine
                           ?? PartsInfo.Machine;
 
@@ -2964,12 +2968,12 @@ namespace remeLog.ViewModels
                         // но CurrentDayReview.AiAnalyzedAt останется от предыдущего прогона, если
                         // не сообщить об этом явно (симптом «дата анализа не обновляется»).
                         Status = $"ИИ подумал, но результат не сохранён в БД: {saveResult.Error}";
-                        ProcessExcludeFromReportsSuggestions(result);
+                        await ShowAiVerdictAsync(result, machine, canChangeDayStatus: false);
                         return;
                     }
                 }
                 Status = "ИИ подумал";
-                ProcessExcludeFromReportsSuggestions(result);
+                await ShowAiVerdictAsync(result, machine, canChangeDayStatus: true);
             }
             catch (OperationCanceledException)
             {
@@ -2984,49 +2988,252 @@ namespace remeLog.ViewModels
             }
         }
 
-        private void ProcessExcludeFromReportsSuggestions(AiAnalysisResult result)
+        /// <summary>
+        /// Гейт валидации для ИИ-анализа: запрещает отдавать ИИ некорректные данные
+        /// (есть ошибки валидации). Обход — как у перехода к суточному отчёту
+        /// (см. OnOpenDailyReportWindowCommandExecuted): фича ValidationOverride
+        /// (для разбора старых записей), после подтверждения — анализ всё равно идёт.
+        /// </summary>
+        private bool ConfirmAnalyzeWithValidationErrors()
         {
-            if (result.SuggestExcludeFromReports is not { Length: > 0 }) return;
+            if (!HasErrors) return true;
 
-            foreach (var entry in result.SuggestExcludeFromReports)
+            if (!Util.HasFeature(RemeLogFeature.ValidationOverride))
             {
-                var parts = entry.Split('§');
-                if (parts.Length < 3) continue;
-
-                var partName = parts[0];
-                var setupStr = parts[1];
-                var order = parts[2];
-                // 4-й сегмент — причина именно по этой строке (формат
-                // PartName§SetupNumber§Order§Причина); старый трёхсегментный
-                // формат — откат на общее объяснение по суткам.
-                var reason = parts.Length > 3 ? string.Join("§", parts[3..]).Trim() : "";
-                if (string.IsNullOrEmpty(reason)) reason = result.Explanation;
-
-                if (!int.TryParse(setupStr, out var setupNumber)) continue;
-
-                var part = Parts.FirstOrDefault(p =>
-                    p.PartName == partName &&
-                    p.Setup == setupNumber &&
-                    p.Order == order);
-
-                if (part == null) continue;
-
-                var message =
-                    $"ИИ предлагает исключить деталь из расчётов:\n\n" +
-                    $"  {partName}  |  М/Л: {order}  |  Уст.{setupNumber}\n\n" +
-                    $"Причина: {reason}\n\n" +
-                    $"Исключить из отчётов?";
-
-                var answer = MessageBoxWindow.Show(
-                    message,
-                    "Исключить из отчётов?",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question,
-                    MessageBoxDefaultButton.Yes);
-
-                if (answer == MessageBoxResult.Yes)
-                    part.ExcludeFromReports = true;
+                MessageBoxWindow.Show("Не всё заполнено корректно.", "Предупреждение.",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
             }
+
+            var errorCount = Parts.Count(x => !string.IsNullOrEmpty(x.Error));
+            var choice = MessageBoxWindow.Show(
+                $"Найдены записи с ошибками валидации ({errorCount} шт.).\n\n" +
+                "Всё равно запустить ИИ-анализ?",
+                "Не всё заполнено корректно",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+            return choice == MessageBoxResult.Yes;
+        }
+
+        /// <summary>
+        /// Диалог вердикта ИИ (этап 2 «Тестовый запуск»): вместо попапа на каждую строку —
+        /// один диалог с оценкой, объяснением, чекбоксами кандидатов на исключение из К1
+        /// и предложением зафиксировать статус проверки СГТ. При согласии выполняет
+        /// accept-путь: исключения → сохранение строк → DayReview (+ИИ) → «Проверено техотделом».
+        /// </summary>
+        private async Task ShowAiVerdictAsync(AiAnalysisResult result, string machine, bool canChangeDayStatus)
+        {
+            var suggestions = AiExcludeSuggestion.ParseMany(
+                result.SuggestExcludeFromReports, result.Explanation);
+
+            Part? FindPart(AiExcludeSuggestion s) => Parts.FirstOrDefault(p =>
+                p.PartName == s.PartName &&
+                p.Setup == s.Setup &&
+                p.Order == s.Order);
+            static string DisplayOf(AiExcludeSuggestion s) => $"{s.PartName} | М/Л: {s.Order} | Уст.{s.Setup}";
+
+            var matched = new List<(Part Part, string Reason)>();
+            var unmatched = new List<string>();
+            foreach (var s in suggestions)
+            {
+                var part = FindPart(s);
+                if (part == null)
+                    unmatched.Add(DisplayOf(s));
+                else
+                    matched.Add((part, s.Reason));
+            }
+
+            // Строки, которые ИИ предлагает отметить проблемными (hard + непониженные soft).
+            var aiFlagged = AiExcludeSuggestion.ParseMany(result.FlaggedParts, string.Empty)
+                .Select(s => FindPart(s))
+                .OfType<Part>()
+                .Distinct()
+                .ToList();
+            var flaggedPreview = aiFlagged
+                .Select(p => $"{p.PartName} | М/Л: {p.Order} | Уст.{p.Setup}")
+                .ToList();
+
+            string alreadyReviewedHint = string.Empty;
+            if (canChangeDayStatus && CurrentDayReview != null)
+            {
+                alreadyReviewedHint =
+                    $"День уже имеет решение СГТ: {CurrentDayReview.Decision.ToDisplayString()} " +
+                    $"({CurrentDayReview.ReviewedBy}, {CurrentDayReview.ReviewedAt:dd.MM.yy HH:mm}) — " +
+                    "принятие перезапишет его.";
+            }
+
+            var owner = Application.Current?.Windows.OfType<PartsInfoWindow>()
+                            .FirstOrDefault(w => ReferenceEquals(w.DataContext, this))
+                        ?? Application.Current?.MainWindow;
+            var dlg = new AiVerdictDialogWindow(
+                machine, FromDate.Date,
+                result.RequiresReview, result.Confidence, result.Explanation ?? string.Empty,
+                result.Signals ?? Array.Empty<string>(),
+                matched, unmatched,
+                canChangeDayStatus,
+                alreadyReviewedHint,
+                flaggedPreview)
+            {
+                Owner = owner
+            };
+            dlg.ShowDialog();
+
+            if (dlg.DialogResult != true)
+            {
+                // Отказ: решение и строки не трогаем, сохраняем только отзыв (если есть что обновлять).
+                if (!string.IsNullOrWhiteSpace(dlg.Feedback) && CurrentDayReview != null)
+                {
+                    AiFeedbackText = dlg.Feedback;
+                    await SaveDayReviewInternalAsync(
+                        CurrentDayReview.Decision, CurrentDayReview.IsFullyReviewed,
+                        touchReviewMeta: false);
+                }
+                return;
+            }
+
+            // 1. Исключения из К1 по выбранным чекбоксам.
+            var accepted = dlg.AcceptedParts;
+            foreach (var part in accepted)
+                part.ExcludeFromReports = true;
+            if (!await SaveDirtyPartsAsync()) return;
+
+            // 2. Отзыв + аудиторский тег модели/промпта.
+            if (!string.IsNullOrWhiteSpace(dlg.Feedback))
+                AiFeedbackText = dlg.Feedback;
+            AppendAiAuditTag(result);
+
+            // 3. Флаги строк расставляет сам ИИ, человек только согласился/не согласился:
+            //    OK — все строки однозначны, флаги снимаются; эскалация — ИИ отмечает
+            //    свои строки, ручные пометки аналитика сохраняются (объединение).
+            //    Только потом пишем решение в БД (SaveDayReviewInternalAsync персистит флаги).
+            //    Несогласие — то же противоположное действие, но с обязательным отзывом.
+            AnalystDecision? dayDecision = dlg.ChosenAction switch
+            {
+                AiVerdictAction.ConfirmOk or AiVerdictAction.OppositeOk => AnalystDecision.Ok,
+                AiVerdictAction.Escalate or AiVerdictAction.OppositeEscalate => AnalystDecision.Escalated,
+                _ => null,
+            };
+            var againstAiVerdict = dlg.ChosenAction is AiVerdictAction.OppositeOk or AiVerdictAction.OppositeEscalate;
+            if (againstAiVerdict && string.IsNullOrWhiteSpace(dlg.Feedback))
+            {
+                MessageBoxWindow.Show("Для несогласия с вердиктом ИИ нужен отзыв.",
+                    "Нужен отзыв", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (dayDecision == AnalystDecision.Ok)
+            {
+                foreach (var part in Parts.Where(p => p.IsFlagged))
+                    part.IsFlagged = false;
+                OnPropertyChanged(nameof(FlaggedPartsCount));
+                OnPropertyChanged(nameof(HasFlaggedParts));
+
+                if (!MarkShiftsCheckedAsReviewed(machine, FromDate.Date)) return;
+                await SaveDayReviewInternalAsync(AnalystDecision.Ok, isFullyReviewed: true,
+                    acceptedFromAi: true, againstAiVerdict: againstAiVerdict);
+            }
+            else if (dayDecision == AnalystDecision.Escalated)
+            {
+                foreach (var part in aiFlagged.Where(p => !p.IsFlagged))
+                    part.IsFlagged = true;
+                OnPropertyChanged(nameof(FlaggedPartsCount));
+                OnPropertyChanged(nameof(HasFlaggedParts));
+
+                await SaveDayReviewInternalAsync(AnalystDecision.Escalated, isFullyReviewed: false,
+                    acceptedFromAi: true, againstAiVerdict: againstAiVerdict);
+            }
+            else if (CurrentDayReview != null)
+            {
+                // Только исключения (+отзыв): решение дня не меняем, но отзыв persist'им.
+                await SaveDayReviewInternalAsync(
+                    CurrentDayReview.Decision, CurrentDayReview.IsFullyReviewed,
+                    touchReviewMeta: false);
+                Status = accepted.Count > 0
+                    ? $"Исключено из отчётов: {accepted.Count}"
+                    : "Вердикт ИИ принят без изменений";
+                await Task.Delay(2500);
+                Status = string.Empty;
+            }
+            else
+            {
+                Status = accepted.Count > 0
+                    ? $"Исключено из отчётов: {accepted.Count}"
+                    : "Вердикт ИИ принят без изменений";
+                await Task.Delay(2500);
+                Status = string.Empty;
+            }
+        }
+
+        /// <summary> Молча сохраняет изменённые строки (accept-путь вердикта ИИ). </summary>
+        /// <returns> false — были ошибки сохранения, статус дня менять нельзя. </returns>
+        private async Task<bool> SaveDirtyPartsAsync()
+        {
+            foreach (var part in Parts.Where(p => p.NeedUpdate).ToList())
+            {
+                var updateResult = await part.UpdatePartAsync();
+                if (updateResult.Status == remeLog.Core.Db.DbResult.Ok)
+                {
+                    part.NeedUpdate = false;
+                }
+                else
+                {
+                    MessageBoxWindow.Show(
+                        $"Не удалось сохранить строку {part.PartName} (Уст.{part.Setup}):{Environment.NewLine}{updateResult.Error}",
+                        "Ошибка сохранения", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Проставляет «Проверено техотделом» (cnc_shifts.IsChecked) на обе смены суток —
+        /// тот флаг, по которому работает календарь проверки. Содержимое отчётов мастера
+        /// не трогается: читаем запись и меняем только IsChecked.
+        /// </summary>
+        /// <returns> false — отчёта нет или ошибка БД, день закрывать нельзя. </returns>
+        private bool MarkShiftsCheckedAsReviewed(string machine, DateTime date)
+        {
+            foreach (var shiftType in new[] { ShiftType.Day, ShiftType.Night })
+            {
+                var shiftName = shiftType == ShiftType.Day ? "дневной" : "ночной";
+                var read = Database.ReadShiftInfo(new ShiftInfo(date, shiftType, machine));
+                if (!read.IsOk)
+                {
+                    MessageBoxWindow.Show(
+                        $"Не удалось прочитать отчёт {shiftName} смены: {read.Error}",
+                        "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return false;
+                }
+                if (read.Value is not { Count: 1 })
+                {
+                    MessageBoxWindow.Show(
+                        "Нет суточного отчёта мастера за эти сутки — откройте суточный отчёт " +
+                        "и поставьте «Проверено техотделом» вручную.",
+                        "Нет отчёта", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return false;
+                }
+                read.Value[0].IsChecked = true;
+                var write = Database.WriteShiftInfo(read.Value[0]);
+                if (!write.IsOk)
+                {
+                    MessageBoxWindow.Show(
+                        $"Не удалось отметить {shiftName} смену как проверенную: {write.Error}",
+                        "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /// <summary> Аудиторский тег принятого вердикта: модель и промпт — для разбора расхождений. </summary>
+        private void AppendAiAuditTag(AiAnalysisResult result)
+        {
+            var tag = $"[ИИ {AppSettings.AiModel}/{result.PromptVersion}]";
+            if ((AiFeedbackText ?? string.Empty).Contains("[ИИ")) return;
+            AiFeedbackText = string.IsNullOrWhiteSpace(AiFeedbackText)
+                ? tag
+                : AiFeedbackText.TrimEnd() + " " + tag;
         }
 
         private bool CanAnalyzeDayExecute(object _) =>
@@ -3436,7 +3643,11 @@ namespace remeLog.ViewModels
         /// <summary>
         /// Сохраняет решение аналитика и обновляет UI.
         /// </summary>
-        private async Task SaveDayReviewInternalAsync(AnalystDecision decision, bool isFullyReviewed, bool touchReviewMeta = true)
+        /// <param name="acceptedFromAi">Решение принято через диалог вердикта ИИ (этап 2):
+        /// автор фиксируется как «аналитик+ИИ».</param>
+        /// <param name="againstAiVerdict">Решение вопреки вердикту (кнопка «Не согласен») —
+        /// помечается в комментарии; отзыв при этом обязателен.</param>
+        private async Task SaveDayReviewInternalAsync(AnalystDecision decision, bool isFullyReviewed, bool touchReviewMeta = true, bool acceptedFromAi = false, bool againstAiVerdict = false)
         {
             var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine
                           ?? PartsInfo.Machine;
@@ -3457,13 +3668,19 @@ namespace remeLog.ViewModels
                 if (answer == MessageBoxResult.No) return;
             }
 
+            var comment = DayReviewComment ?? string.Empty;
+            if (acceptedFromAi)
+            {
+                comment = (againstAiVerdict ? "[ИИ] Вопреки вердикту ИИ." : "[ИИ] Вердикт ИИ принят.")
+                    + (string.IsNullOrWhiteSpace(comment) ? "" : " " + comment.Trim());
+            }
             var review = new DayReview(
                 machine: machine,
                 shiftDate: FromDate.Date,
-                reviewedBy: Environment.UserName,
+                reviewedBy: acceptedFromAi ? Environment.UserName + "+ИИ" : Environment.UserName,
                 decision: decision,
                 isFullyReviewed: isFullyReviewed,
-                comment: DayReviewComment
+                comment: comment
             );
             review.AiFeedback = AiFeedbackText;
             review.TouchReviewMeta = touchReviewMeta;
@@ -3511,7 +3728,8 @@ namespace remeLog.ViewModels
             var flagInfo = flaggedParts.Count > 0
                 ? $" ({flaggedParts.Count} проблемных строк)"
                 : "";
-            Status = $"Решение сохранено: {decision.ToDisplayString()}{flagInfo}";
+            Status = $"Решение сохранено: {decision.ToDisplayString()}{flagInfo}"
+                + (acceptedFromAi ? (againstAiVerdict ? " (вопреки ИИ)" : " (по ИИ)") : "");
             await Task.Delay(2500);
             Status = string.Empty;
         }

@@ -1892,9 +1892,9 @@ namespace remeLog.Models
             get
             {
                 // Ячейки причин в гриде привязаны к Effective*Reason (показывают переопределение
-                // СГТ, если оно есть), но валидируется всегда отметка МАСТЕРА: требование
-                // заполнить причину адресовано ему и не снимается тем, что аналитик потом
-                // проставил свою. Без этой развязки Validation.ErrorTemplate на ячейке молчал бы.
+                // СГТ, если оно есть) — валидируется ИТОГОВАЯ причина: решение СГТ при наличии
+                // переопределения, иначе отметка мастера. Ошибка мастера, уже исправленная
+                // переопределением СГТ, на строке больше не висит.
                 columnName = columnName switch
                 {
                     nameof(EffectiveSetupReason) => nameof(MasterSetupComment),
@@ -1904,16 +1904,25 @@ namespace remeLog.Models
                     _ => columnName,
                 };
 
+                // Итоговые значения с учётом переопределения СГТ — именно их проверяет
+                // дневной ИИ-анализ (финальная причина), и именно они валидируются здесь.
+                // Построчная ИИ-проверка мастера (GetAiCheckAnomalies) по-прежнему работает
+                // только по отметкам мастера и не затрагивается.
+                var setupReason = HasSetupReasonOverride ? SetupReasonOverride : MasterSetupComment;
+                var machiningReason = HasMachiningReasonOverride ? MachiningReasonOverride : MasterMachiningComment;
+                var setupDetail = HasSetupReasonOverride ? SetupReasonOverrideComment : MasterSetupDetail;
+                var machiningDetail = HasMachiningReasonOverride ? MachiningReasonOverrideComment : MasterMachiningDetail;
+
                 return columnName switch
                 {
                     // Норматив=0 при реальном заказе требует объяснения ВСЕГДА, независимо от того,
                     // была ли выполнена работа в эту смену (б/н/б/и/частичная наладка) — норматив
                     // привязан к заказу/техпроцессу, а не к факту работы (см. HasOrder).
-                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && SetupTimePlanForCalc <= 0 && HasOrder => "Необходимо указать причину отсутствия норматива наладки.",
-                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && (SetupRatio < 0.695 || SetupRatio > DomainSettings.MaxSetupLimit) && SetupTimeFact > 0 && (SetupTimePlanForCalc > 0 || HasOrder) => "Необходимо указать причину отклонения от норматива наладки.",
-                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(MasterSetupComment) && PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695 => "Необходимо указать причину превышения частичной наладки.",
-                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionTimePlanForCalc <= 0 && HasOrder => "Необходимо указать причину отсутствия норматива изготовления.",
-                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(MasterMachiningComment) && ProductionRatio is < 0.695 or > 1.2 && (ProductionTimePlanForCalc > 0 || HasOrder) => "Необходимо указать причину отклонения от норматива изготовления.",
+                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(setupReason) && SetupTimePlanForCalc <= 0 && HasOrder => "Необходимо указать причину отсутствия норматива наладки.",
+                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(setupReason) && (SetupRatio < 0.695 || SetupRatio > DomainSettings.MaxSetupLimit) && SetupTimeFact > 0 && (SetupTimePlanForCalc > 0 || HasOrder) => "Необходимо указать причину отклонения от норматива наладки.",
+                    nameof(MasterSetupComment) when string.IsNullOrWhiteSpace(setupReason) && PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695 => "Необходимо указать причину превышения частичной наладки.",
+                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(machiningReason) && ProductionTimePlanForCalc <= 0 && HasOrder => "Необходимо указать причину отсутствия норматива изготовления.",
+                    nameof(MasterMachiningComment) when string.IsNullOrWhiteSpace(machiningReason) && ProductionRatio is < 0.695 or > 1.2 && (ProductionTimePlanForCalc > 0 || HasOrder) => "Необходимо указать причину отклонения от норматива изготовления.",
                     // Проверки «причина против отсутствия норматива» идут ПЕРЕД частными правилами
                     // ниже: при нулевом нормативе КПД вырождается в 0, и правило про «Изготовление
                     // типовой детали» сработало бы первым, сообщив про низкий показатель вместо
@@ -1924,49 +1933,49 @@ namespace remeLog.Models
                     // «Отсутствие нормативов» (норматив не установлен) либо «Изготовление не по
                     // техпроцессу» (норматив есть, но от другой операции/рабочего центра).
                     nameof(MasterSetupComment) when
-                        !string.IsNullOrWhiteSpace(MasterSetupComment)
-                        && SetupReasonsRequiringNormative.Contains(MasterSetupComment)
+                        !string.IsNullOrWhiteSpace(setupReason)
+                        && SetupReasonsRequiringNormative.Contains(setupReason)
                         && SetupTimePlanForCalc <= 0
-                        => $"Причина «{MasterSetupComment}» не объясняет отсутствие норматива наладки — укажите «{NoNormativesReason}» или «{NotByProcessReason}».",
+                        => $"Причина «{setupReason}» не объясняет отсутствие норматива наладки — укажите «{NoNormativesReason}» или «{NotByProcessReason}».",
                     nameof(MasterMachiningComment) when
-                        !string.IsNullOrWhiteSpace(MasterMachiningComment)
-                        && MachiningReasonsRequiringNormative.Contains(MasterMachiningComment)
+                        !string.IsNullOrWhiteSpace(machiningReason)
+                        && MachiningReasonsRequiringNormative.Contains(machiningReason)
                         && ProductionTimePlanForCalc <= 0
-                        => $"Причина «{MasterMachiningComment}» не объясняет отсутствие норматива изготовления — укажите «{NoNormativesReason}» или «{NotByProcessReason}».",
+                        => $"Причина «{machiningReason}» не объясняет отсутствие норматива изготовления — укажите «{NoNormativesReason}» или «{NotByProcessReason}».",
 
                     // Зеркальные проверки: «Отсутствие нормативов» при заданном нормативе — прямое
                     // противоречие факту, а «Некорректные нормативы» при отсутствующем: нельзя
                     // назвать некорректным то, чего нет, это «Отсутствие нормативов».
                     nameof(MasterSetupComment) when
-                        MasterSetupComment == NoNormativesReason && SetupTimePlanForCalc > 0
+                        setupReason == NoNormativesReason && SetupTimePlanForCalc > 0
                         => $"«{NoNormativesReason}» неприменимо: норматив наладки задан.",
                     nameof(MasterMachiningComment) when
-                        MasterMachiningComment == NoNormativesReason && ProductionTimePlanForCalc > 0
+                        machiningReason == NoNormativesReason && ProductionTimePlanForCalc > 0
                         => $"«{NoNormativesReason}» неприменимо: норматив изготовления задан.",
                     nameof(MasterSetupComment) when
-                        MasterSetupComment == WrongNormativesReason && SetupTimePlanForCalc <= 0
+                        setupReason == WrongNormativesReason && SetupTimePlanForCalc <= 0
                         => $"«{WrongNormativesReason}» неприменимо: норматива наладки нет — это «{NoNormativesReason}».",
                     nameof(MasterMachiningComment) when
-                        MasterMachiningComment == WrongNormativesReason && ProductionTimePlanForCalc <= 0
+                        machiningReason == WrongNormativesReason && ProductionTimePlanForCalc <= 0
                         => $"«{WrongNormativesReason}» неприменимо: норматива изготовления нет — это «{NoNormativesReason}».",
 
                     nameof(MasterSetupComment) when
-                        !string.IsNullOrWhiteSpace(MasterSetupComment)
-                        && MasterSetupComment == "Изготовление типовой детали"
+                        !string.IsNullOrWhiteSpace(setupReason)
+                        && setupReason == "Изготовление типовой детали"
                         && ((SetupTimeFact > 0 && SetupRatio < 0.695)
                             || (PartialSetupTime > 0 && SetupTimePlanForCalc > 0 && PartialSetupTime > SetupTimePlanForCalc / 0.695))
                         => "«Изготовление типовой детали» объясняет только превышение норматива наладки (>200%) — не низкий показатель и не превышение частичной наладки",
                     nameof(MasterMachiningComment) when
-                        !string.IsNullOrWhiteSpace(MasterMachiningComment)
-                        && MasterMachiningComment == "Штучная/длительная работа"
+                        !string.IsNullOrWhiteSpace(machiningReason)
+                        && machiningReason == "Штучная/длительная работа"
                         && FinishedCount > 0
                         && !IsSmallBatch
                         => "Причина «Штучная/длительная работа» применима только при малой партии: м/в < 3 мин и изготовлено ≤ 10 деталей или м/в ≥ 3 мин и изготовлено ≤ 5 деталей",
 
-                    nameof(MasterSetupDetail) when string.IsNullOrWhiteSpace(MasterSetupDetail) &&
-                                        RequiresComment(MasterSetupComment, SetupReasonsRequireComment) => "Требуется указать дополнительный комментарий для выбранной причины наладки.",
-                    nameof(MasterMachiningDetail) when string.IsNullOrWhiteSpace(MasterMachiningDetail) &&
-                                        RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment) => "Требуется указать дополнительный комментарий для выбранной причины изготовления.",
+                    nameof(MasterSetupDetail) when string.IsNullOrWhiteSpace(setupDetail) &&
+                                        RequiresComment(setupReason, SetupReasonsRequireComment) => "Требуется указать дополнительный комментарий для выбранной причины наладки.",
+                    nameof(MasterMachiningDetail) when string.IsNullOrWhiteSpace(machiningDetail) &&
+                                        RequiresComment(machiningReason, MachiningReasonsRequireComment) => "Требуется указать дополнительный комментарий для выбранной причины изготовления.",
                     nameof(SpecifiedDowntimesComment) when string.IsNullOrWhiteSpace(SpecifiedDowntimesComment) && SpecifiedDowntimesRatio > 0.5 => "Необходимо дать комментарий т.к. простой более 50%.",
                     _ => null!,
                 };

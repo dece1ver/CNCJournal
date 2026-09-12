@@ -654,11 +654,23 @@ namespace eLog.Views.Windows.Dialogs
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            if (FromTasks) Task.Run(() =>
+            if (FromTasks) Task.Run(async () =>
             {
+                try
+                {
+                    // Поиск сразу по локальному файлу: не ждём БД,
+                    // её таймаут раньше маскировался под «поиск не стартует».
+                    await FindOrders();
+                }
+                catch (Exception ex)
+                {
+                    Status = $"Ошибка автопоиска: {ex.Message}";
+                }
                 if (Database.TryGetOrdersPath(out var ordersPath) && !string.IsNullOrEmpty(ordersPath)) AppSettings.Instance.OrdersSourcePath = ordersPath;
-                FindOrders();
+                // Обновление файла — только после поиска, чтобы копия не легла под чтение.
+                StartOrdersUpdater();
             });
+            else StartOrdersUpdater();
             if (File.Exists(AppSettings.LocalOrdersFile))
             {
                 Status =
@@ -666,14 +678,18 @@ namespace eLog.Views.Windows.Dialogs
             }
             OnPropertyChanged(nameof(NonEmptyOrder));
             KeyboardVisibility = Visibility.Collapsed;
+        }
+
+        private void StartOrdersUpdater()
+        {
             var updaterThread = new Thread(UpdateOrders) { IsBackground = true };
             updaterThread.Start();
         }
 
         /// <summary> Поиска номенклатуры по номеру М/Л </summary>
-        private void FindOrderDetailsButton_Click(object sender, RoutedEventArgs e) => FindOrders();
+        private async void FindOrderDetailsButton_Click(object sender, RoutedEventArgs e) => await FindOrders();
 
-        private async void FindOrders()
+        private async Task FindOrders()
         {
             App.Current.Dispatcher.Invoke(() =>
             {

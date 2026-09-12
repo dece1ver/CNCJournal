@@ -118,10 +118,13 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 .Concat(notDowngraded)
                 .Distinct()];
 
+            result.FlaggedParts = CollectFlaggedPartKeys(hardRules, notDowngraded);
+
             logger.LogInformation(
-                "Анализ: {Machine} {Date} → RequiresReview={R} (hard={H}, softNotDowngraded={S}), Confidence={C:F2}",
+                "Анализ: {Machine} {Date} → RequiresReview={R} (hard={H}, softNotDowngraded={S}), Confidence={C:F2}, FlaggedParts={F}",
                 request.Machine, request.ShiftDate, result.RequiresReview,
-                hardRules.HardSignals.Count, notDowngraded.Count, result.Confidence);
+                hardRules.HardSignals.Count, notDowngraded.Count, result.Confidence,
+                result.FlaggedParts.Count);
 
             if (hardRules.SoftSignals.Count > 0)
             {
@@ -441,9 +444,12 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         .Concat(notDowngraded)
         .Distinct()];
 
+        result.FlaggedParts = CollectFlaggedPartKeys(hardRules, notDowngraded);
+
         logger.LogInformation(
-            "Stream-анализ завершён: {Machine} {Date} → RequiresReview={R}, Confidence={C:F2}",
-            request.Machine, request.ShiftDate, result.RequiresReview, result.Confidence);
+            "Stream-анализ завершён: {Machine} {Date} → RequiresReview={R}, Confidence={C:F2}, FlaggedParts={F}",
+            request.Machine, request.ShiftDate, result.RequiresReview, result.Confidence,
+            result.FlaggedParts.Count);
 
         await requestLog.WriteAsync(request, result, "stream");
         await Send("result", JsonSerializer.Serialize(result, _camelCase));
@@ -639,6 +645,22 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         return request.Parts.SelectMany(p => p.Signals.Where(s =>
             !(machiningParts.Contains(p.PartName) && SoftSignalMatcher.IsMachiningTimeEcho(s))
             && !(operatorParts.Contains(p.PartName) && SoftSignalMatcher.IsOperatorComplaintEcho(s))));
+    }
+
+    /// <summary>
+    /// Ключи строк, которые ИИ предлагает отметить проблемными (флаги СГТ):
+    /// все детали с hard-сигналами + детали, чьи soft-сигналы модель не понизила.
+    /// Пониженные soft-сигналы считаются объяснёнными — их детали не флагуются.
+    /// </summary>
+    public static List<string> CollectFlaggedPartKeys(
+        HardRuleResult hardRules, List<string> notDowngraded)
+    {
+        var surviving = notDowngraded.ToHashSet();
+        return [.. hardRules.HardFlaggedPartKeys
+            .Concat(hardRules.SoftFlagged
+                .Where(t => surviving.Contains(t.Signal))
+                .Select(t => t.PartKey))
+            .Distinct()];
     }
 
     /// <summary> Пробуем спарсить JSON из ответа модели, обрабатываем типичные огрехи </summary>

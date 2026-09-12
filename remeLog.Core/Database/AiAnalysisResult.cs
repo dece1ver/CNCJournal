@@ -12,6 +12,8 @@ namespace remeLog.Infrastructure
         [JsonPropertyName("suggestedReason")] public string SuggestedReason { get; set; } = "";
         [JsonPropertyName("suggestExcludeFromReports")]
         public string[] SuggestExcludeFromReports { get; set; } = Array.Empty<string>();
+        [JsonPropertyName("flaggedParts")]
+        public string[] FlaggedParts { get; set; } = Array.Empty<string>();
         [JsonPropertyName("error")] public string? Error { get; set; }
         [JsonPropertyName("promptVersion")] public string? PromptVersion { get; set; }
         public bool HasError => !string.IsNullOrEmpty(Error);

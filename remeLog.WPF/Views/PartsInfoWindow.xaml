@@ -1228,14 +1228,17 @@
                                 <ColumnDefinition Width="160"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
+                            <!-- Фиксированная высота: панель не прыгает, когда в момент
+                                 размышлений ИИ чекбокс сменяется тонким прогресс-баром -->
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="17"/>
+                                <RowDefinition Height="17"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Кнопка "Проверено" -->
+                            <!-- Кнопка "Проверено" — скрыта (этап 2): статус дня только через вердикт ИИ -->
                             <Button Grid.Row="0" Grid.Column="0" Width="90"
                                     Margin="0" Padding="0 -2" Height="17"
+                                    Visibility="Collapsed"
                                     Command="{Binding MarkDayOkCommand}"
                                     ToolTip="Сутки проверены, все записи однозначны">
                                 <Button.Content>
@@ -1265,21 +1268,14 @@
                                 </Button.Resources>
                             </Button>
 
-                            <!-- Кнопка "Эскалация" -->
+                            <!-- Кнопка "Эскалация" — скрыта (этап 2): статус дня только через вердикт ИИ -->
                             <Button Grid.Row="0" Grid.Column="1" Width="90"
                                     Margin="-1 0 0 0" Padding="0 -2"  Height="17"
+                                    Visibility="Collapsed"
                                     Command="{Binding MarkDayEscalatedCommand}"
                                     ToolTip="Есть неоднозначные строки — передать экспертам">
                                 <Button.Content>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="Эскалация"/>
-                                        <!-- Счётчик помеченных строк — появляется когда есть флаги -->
-                                        <Border Background="#E53935" CornerRadius="6"
-                                                Margin="6 0 0 0" Height="13" Width="12" d:Visibility="Visible"
-                                                Visibility="{Binding HasFlaggedParts, Converter={StaticResource VisibilityConverter}}">
-                                            <TextBlock Text="{Binding FlaggedPartsCount}" d:Text="1" Foreground="White" FontSize="8" FontFamily="Consolas" FontWeight="Bold" TextAlignment="Center"/>
-                                        </Border>
-                                    </StackPanel>
+                                    <TextBlock Text="Эскалация"/>
                                 </Button.Content>
                                 <Button.Style>
                                     <Style TargetType="Button">
@@ -1362,37 +1358,45 @@
                                 </Popup>
                             </Grid>
 
-                            <!-- Статус -->
-                            <TextBlock Grid.Row="0" Grid.Column="3"
-                                       Text="{Binding DayReviewStatusText}"
-                                       VerticalAlignment="Center"
-                                       Margin="8 0 0 0"
-                                       FontSize="11">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="#757575"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsDayReviewed}" Value="True">
-                                                <Setter Property="Foreground"
-                                    Value="{Binding DayReviewStatusColor}"/>
-                                                <Setter Property="FontWeight" Value="SemiBold"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
+                            <!-- Статус + счётчик помеченных строк (переехал со скрытой кнопки эскалации) -->
+                            <StackPanel Grid.Row="0" Grid.Column="3" Orientation="Horizontal"
+                                        VerticalAlignment="Center" Margin="8 0 0 0">
+                                <TextBlock Text="{Binding DayReviewStatusText}"
+                                           VerticalAlignment="Center"
+                                           FontSize="11">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="#757575"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsDayReviewed}" Value="True">
+                                                    <Setter Property="Foreground"
+                                        Value="{Binding DayReviewStatusColor}"/>
+                                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <Border Background="#E53935" CornerRadius="6"
+                                        Margin="6 0 0 0" Height="13" MinWidth="12"
+                                        ToolTip="Помечено проблемных строк"
+                                        Visibility="{Binding HasFlaggedParts, Converter={StaticResource VisibilityConverter}}">
+                                    <TextBlock Text="{Binding FlaggedPartsCount}" d:Text="1" Foreground="White" FontSize="8" FontFamily="Consolas" FontWeight="Bold" TextAlignment="Center"/>
+                                </Border>
+                            </StackPanel>
 
-                            <!-- Вызов AI -->
-                            <DockPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                            <!-- Вызов AI — на месте скрытых ручных кнопок, на обе строки -->
+                            <DockPanel Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Grid.ColumnSpan="2"
                                        Visibility="{Binding HasFeatureAi, Converter={StaticResource VisibilityConverter}}">
-                                <Button Margin="0 -1 0 0"
-                                        Content="Призвать ИИ к ответу" Height="17"
-                                        Padding="0 -1 0 0"
+                                <Button Margin="0"
+                                        Content="Призвать ИИ к ответу"
+                                        Padding="12 2"
+                                        VerticalAlignment="Stretch"
                                         Command="{Binding AnalyzeDayCommand}"
                                         ToolTip="Запустить ИИ-анализ суток">
                                     <Button.Resources>
                                         <Style TargetType="Border">
-                                            <Setter Property="CornerRadius" Value="0 0 2 2"/>
+                                            <Setter Property="CornerRadius" Value="2"/>
                                         </Style>
                                     </Button.Resources>
                                 </Button>
@@ -1402,7 +1406,7 @@
                             <StackPanel x:Name="AiResultPanel" Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="3" 
                                         Margin="4 -1 0 0" Orientation="Horizontal">
                                 <Grid Width="156">
-                                    <CheckBox Content="Сильно много думать" DockPanel.Dock="Left" Visibility="{Binding AiInProgress, Converter={StaticResource InvertedVisibilityConverter}}"
+                                    <CheckBox Content="Сильно много думать" DockPanel.Dock="Left" Visibility="Collapsed"
                                               IsChecked="{Binding AiThinkingEnabled}"
                                               ToolTip="Включить режим рассуждений (медленнее, иногда точнее и можно почитать мысли)"
                                               VerticalAlignment="Center"

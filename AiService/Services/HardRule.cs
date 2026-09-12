@@ -15,6 +15,18 @@ public record HardRuleResult(
 {
     public bool MustEscalate => HardSignals.Count > 0;
     public bool HasSoftSignals => SoftSignals.Count > 0;
+
+    /// <summary>
+    /// Ключи PartName§Setup§Order деталей с hard-сигналами — кандидаты в проблемные
+    /// строки (флаги СГТ) безо всякой модели: hard она отменить не может.
+    /// </summary>
+    public List<string> HardFlaggedPartKeys { get; init; } = [];
+
+    /// <summary>
+    /// Пары (soft-сигнал, ключ детали): флаг ставится, только если сигнал уцелел
+    /// после понижения моделью (см. CollectFlaggedPartKeys в AnalysisController).
+    /// </summary>
+    public List<(string Signal, string PartKey)> SoftFlagged { get; init; } = [];
 }
 
 public static class HardRuleEvaluator
@@ -44,13 +56,21 @@ public static class HardRuleEvaluator
     // КПД = 0 и отсутствие норматива нормальны для доработки.
     private const string ReworkReason = "Доработка";
 
+    /// <summary> Точная идентичность строки для флагов СГТ (имя + установка + заказ). </summary>
+    public static string PartKey(PartContext p) => $"{p.PartName}§{p.Setup}§{p.Order}";
+
     public static HardRuleResult Evaluate(AnalyzeRequest req)
     {
         var hard = new List<string>();
         var soft = new List<string>();
+        var hardKeys = new List<string>();
+        var softFlagged = new List<(string Signal, string PartKey)>();
 
         foreach (var p in req.Parts)
         {
+            var key = PartKey(p);
+            void AddHard(string signal) { hard.Add(signal); hardKeys.Add(key); }
+            void AddSoft(string signal) { soft.Add(signal); softFlagged.Add((signal, key)); }
             var hasOrder = !string.IsNullOrWhiteSpace(p.Order)
                            && !p.Order.Equals("Без М/Л", StringComparison.OrdinalIgnoreCase);
 
@@ -61,9 +81,9 @@ public static class HardRuleEvaluator
             // ВСЕГДА, независимо от факта работы в смену (синхронизировано с Part.cs.Error на
             // клиенте — там это блокирует сохранение — и с клиентским DetectPartSignals).
             if (p.SetupTimePlan <= 0 && hasOrder && string.IsNullOrWhiteSpace(p.MasterSetupComment))
-                hard.Add($"[{p.PartName}] Отсутствует норматив наладки при реальном заказе — комментарий мастера не указан");
+                AddHard($"[{p.PartName}] Отсутствует норматив наладки при реальном заказе — комментарий мастера не указан");
             if (p.SingleProductionTimePlan <= 0 && hasOrder && string.IsNullOrWhiteSpace(p.MasterMachiningComment))
-                hard.Add($"[{p.PartName}] Отсутствует норматив изготовления при реальном заказе — комментарий мастера не указан");
+                AddHard($"[{p.PartName}] Отсутствует норматив изготовления при реальном заказе — комментарий мастера не указан");
 
             // комбобокс-причины, требующие участия технологов
             // Проверяем MasterSetupComment и MasterMachiningComment по фиксированному списку.
@@ -76,7 +96,7 @@ public static class HardRuleEvaluator
                 { }
                 else
                 {
-                    hard.Add($"[{p.PartName}] Причина наладки требует пересмотра технологии: «{p.MasterSetupComment}»");
+                    AddHard($"[{p.PartName}] Причина наладки требует пересмотра технологии: «{p.MasterSetupComment}»");
                 }
             }
 
@@ -88,7 +108,7 @@ public static class HardRuleEvaluator
                 { }
                 else
                 {
-                    hard.Add($"[{p.PartName}] Причина изготовления требует пересмотра технологии: «{p.MasterMachiningComment}»");
+                    AddHard($"[{p.PartName}] Причина изготовления требует пересмотра технологии: «{p.MasterMachiningComment}»");
                 }
             }
 
@@ -103,9 +123,9 @@ public static class HardRuleEvaluator
                     || !string.IsNullOrWhiteSpace(p.MasterSetupComment);
                 // Если мастер вообще ничего не написал — жёстко
                 if (!masterGaveConcreteExplanation)
-                    hard.Add($"[{p.PartName}] Оператор сообщает о некорректном нормативе или технологии без объяснения мастера");
+                    AddHard($"[{p.PartName}] Оператор сообщает о некорректном нормативе или технологии без объяснения мастера");
                 else
-                    soft.Add($"[{p.PartName}] Оператор сообщает о некорректном нормативе или технологии (мастер дал объяснение — требует верификации)");
+                    AddSoft($"[{p.PartName}] Оператор сообщает о некорректном нормативе или технологии (мастер дал объяснение — требует верификации)");
             }
 
             // Правило 3: КПД изготовления < 70% без объяснения мастера
@@ -119,7 +139,7 @@ public static class HardRuleEvaluator
                 && !isReworkMachining
                 && string.IsNullOrWhiteSpace(p.MasterMachiningComment))
             {
-                hard.Add($"[{p.PartName}] КПД изготовления {pr:0%} < 70% без объяснения мастера");
+                AddHard($"[{p.PartName}] КПД изготовления {pr:0%} < 70% без объяснения мастера");
             }
 
             // Правило 4: КПД = 0 при наличии фактической работы
@@ -133,7 +153,7 @@ public static class HardRuleEvaluator
                 && hasOrder
                 && !isReworkSetup)
             {
-                hard.Add($"[{p.PartName}] КПД наладки = 0% при наличии фактической наладки ({p.SetupTimeFact:0}мин) и норматива");
+                AddHard($"[{p.PartName}] КПД наладки = 0% при наличии фактической наладки ({p.SetupTimeFact:0}мин) и норматива");
             }
 
             // Изготовление: КПД = 0 при наличии деталей и заказа — противоречие данных.
@@ -142,7 +162,7 @@ public static class HardRuleEvaluator
                 && hasOrder
                 && !isReworkMachining)
             {
-                hard.Add($"[{p.PartName}] КПД изготовления = 0% при {p.FinishedCount:0} изготовленных деталях");
+                AddHard($"[{p.PartName}] КПД изготовления = 0% при {p.FinishedCount:0} изготовленных деталях");
             }
 
             // машинное время >= норматива
@@ -182,9 +202,9 @@ public static class HardRuleEvaluator
                     && (!string.IsNullOrWhiteSpace(p.MasterMachiningDetail) || !string.IsNullOrWhiteSpace(p.MasterComment));
 
                 if (hasConcreteOneTimeReason)
-                    soft.Add(signal);
+                    AddSoft(signal);
                 else
-                    hard.Add(signal);
+                    AddHard(signal);
             }
         }
 
@@ -196,7 +216,11 @@ public static class HardRuleEvaluator
             hard.Add($"Два и более необъяснённых сигнала от системы ({allClientSignals.Count})");
         }
 
-        return new HardRuleResult([.. hard.Distinct()], soft);
+        return new HardRuleResult([.. hard.Distinct()], soft)
+        {
+            HardFlaggedPartKeys = [.. hardKeys.Distinct()],
+            SoftFlagged = softFlagged,
+        };
     }
 
     private static bool OperatorMentionsNormativeIssue(string? comment)
