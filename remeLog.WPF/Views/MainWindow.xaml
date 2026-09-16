@@ -100,6 +100,10 @@
                               Command="{Binding ShowAboutCommand}" Icon="{StaticResource AboutIcon}"/>
                 </MenuItem>
             </Menu>
+            <!-- Демо-баннер: виден только в демо режиме -->
+            <TextBlock DockPanel.Dock="Top" Text="ДЕМО-РЕЖИМ: данные сгенерированы, изменения хранятся только до перезапуска"
+                       Foreground="{DynamicResource Areopag.Alert}" FontSize="14" HorizontalAlignment="Center" Margin="0 2"
+                       Visibility="{Binding IsDemoMode, Converter={StaticResource VisibilityConverter}}"/>
             <StatusBar DockPanel.Dock="Bottom">
                 <StatusBarItem>
                     <TextBlock Text="{Binding Status}" FontSize="16" Margin="0 -1"/>

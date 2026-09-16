@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.Data.SqlClient;
 using remeLog.Core;
 using remeLog.Core.Db;
+using remeLog.Core.Services.Demo;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
 using remeLog.Models.Reports;
@@ -17,6 +18,13 @@ namespace remeLog.Infrastructure
     {
         public async static Task<List<Machine>> GetMachinesAsync(IProgress<string> progress)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                progress.Report("Демо-режим: станки из встроенного генератора.");
+                return DemoStore.GetMachineFilters()
+                    .Select((m, i) => new Machine { Id = i + 1, Name = m.Machine, Type = m.Type, IsActive = true }).ToList();
+            }
             progress.Report("Подключение к БД...");
             try
             {
@@ -36,6 +44,11 @@ namespace remeLog.Infrastructure
 
         public static DbResult<List<string>> ReadMachines()
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return DbResult<List<string>>.Ok(DemoStore.GetMachines());
+            }
             try
             {
                 using var conn = DbHelper.OpenConnection(DomainSettings.ConnectionString);
@@ -58,6 +71,11 @@ namespace remeLog.Infrastructure
 
         public static async Task<DbResult<List<MachineFilter>>> ReadMachinesAsync()
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.FromResult(DbResult<List<MachineFilter>>.Ok(DemoStore.GetMachineFilters()));
+            }
             try
             {
                 await using var conn = await DbHelper.OpenConnectionAsync(DomainSettings.ConnectionString);
@@ -81,6 +99,12 @@ namespace remeLog.Infrastructure
 
         public static DbResult<List<(string Reason, bool RequireComment)>> ReadDeviationReasons(DeviationReasonType type)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return DbResult<List<(string Reason, bool RequireComment)>>.Ok(
+                    DemoStore.GetDeviationReasons(type));
+            }
             try
             {
                 const string sql = "SELECT Reason, RequireComment FROM cnc_deviation_reasons WHERE Type IS NULL OR Type = @Type ORDER BY Reason ASC";
@@ -102,6 +126,11 @@ namespace remeLog.Infrastructure
 
         public static DbResult<List<string>> ReadDowntimeReasons()
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return DbResult<List<string>>.Ok(DemoStore.GetDowntimeReasons());
+            }
             try
             {
                 using var conn = DbHelper.OpenConnection(DomainSettings.ConnectionString);
@@ -124,6 +153,8 @@ namespace remeLog.Infrastructure
 
         public async static Task<IEnumerable<Qualification>> GetQualificationsAsync(IProgress<string>? progress = null)
         {
+            // Демо: квалификации не мокаются — отчёты по разрядам покажут пусто.
+            if (DomainSettings.DemoMode) return Enumerable.Empty<Qualification>();
             progress?.Report("Подключение к БД...");
             var sql = @"SELECT [Qualification],
                 [EfficiencyValueHH],[EfficiencyCoefficientHH],[EfficiencyValueH],[EfficiencyCoefficientH],
@@ -157,6 +188,7 @@ namespace remeLog.Infrastructure
 
         public async static Task<bool> GetMachineSerialStatus(string machine, IProgress<string>? progress = null)
         {
+            if (DomainSettings.DemoMode) return await Task.FromResult(false);
             progress?.Report("Подключение к БД...");
             try
             {
@@ -178,6 +210,7 @@ namespace remeLog.Infrastructure
         /// </summary>
         public async static Task<string?> GetMachineAiPromptProfileAsync(string machine, CancellationToken ct = default)
         {
+            if (DomainSettings.DemoMode) return await Task.FromResult<string?>(null);
             try
             {
                 await using var conn = await DbHelper.OpenConnectionAsync(DomainSettings.ConnectionString);
@@ -196,6 +229,11 @@ namespace remeLog.Infrastructure
 
         public async static Task<List<DateTime>> GetHolidaysAsync(IProgress<string>? progress)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.FromResult(DomainSettings.Holidays.ToList());
+            }
             progress?.Report("Подключение к БД...");
             try
             {
@@ -215,6 +253,8 @@ namespace remeLog.Infrastructure
 
         public async static Task<List<ToolSearchCase>> GetToolSearchCasesAsync(List<Guid> guids, IProgress<string> progress)
         {
+            // Демо: кейсы поиска инструмента не мокаются.
+            if (DomainSettings.DemoMode) return new List<ToolSearchCase>();
             var cases = new List<ToolSearchCase>();
             if (guids == null || guids.Count == 0) return cases;
 
@@ -246,6 +286,9 @@ namespace remeLog.Infrastructure
 
         public static DbResult<WncConfig> GetWncConfig()
         {
+            // Демо: Windchill недоступен вне рабочей среды.
+            if (DomainSettings.DemoMode)
+                return DbResult<WncConfig>.Fail(DbResult.Error, "Демо-режим: Windchill недоступен.");
             try
             {
                 using var conn = DbHelper.OpenConnection(DomainSettings.ConnectionString);
@@ -271,6 +314,15 @@ namespace remeLog.Infrastructure
 
         public static async Task UpdateAppSettings()
         {
+            // Демо: конфиг из генератора (см. DemoStore.ApplyConfigToDomainSettings),
+            // права на фичи — все тестовые, SQL Server не трогаем.
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                Persistence.Save();
+                await Task.CompletedTask;
+                return;
+            }
             await using var conn = await DbHelper.OpenConnectionAsync(DomainSettings.ConnectionString);
 
             var administrators = new List<string>();

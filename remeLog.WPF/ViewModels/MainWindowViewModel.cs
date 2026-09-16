@@ -192,6 +192,9 @@ namespace remeLog.ViewModels
         public bool IsAdministrator =>
             AppSettings.Administrators.Contains(Environment.UserName, StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>Демо-режим (--demo): данные сгенерированы, SQL Server не используется.</summary>
+        public bool IsDemoMode => Core.DomainSettings.DemoMode;
+
         public bool HasFeatureAi => Util.HasFeature(RemeLogFeature.Ai);
         public bool HasFeatureAdvancedEdit => Util.HasFeature(RemeLogFeature.AdvancedEdit);
         public bool HasFeatureInstances => Util.HasFeature(RemeLogFeature.Instances);
@@ -216,6 +219,8 @@ namespace remeLog.ViewModels
             get
             {
                 var title = "Отчеты электронного журнала";
+                if (Core.DomainSettings.DemoMode)
+                    title += " [ДЕМО — данные сгенерированы, изменения не сохраняются]";
                 if ((!Util.IsAppAdmin() || AppSettings.FeaturesExplicitlySet) && AppSettings.EnabledFeatures != RemeLogFeature.None)
                 {
                     title += $" [{string.Join(", ", AppSettings.EnabledFeatures.Names())}]";
@@ -274,10 +279,16 @@ namespace remeLog.ViewModels
         public ICommand UpdateDatabaseCommand { get; }
         private void OnUpdateDatabaseCommandExecuted(object p)
         {
+            if (Core.DomainSettings.DemoMode)
+            {
+                MessageBoxWindow.Show("Проверка БД недоступна в демо-режиме.",
+                    "Демо-режим", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
             UpdateDatabaseWindow updateDatabaseWindow = new();
             updateDatabaseWindow.ShowDialog();
         }
-        private bool CanUpdateDatabaseCommandExecute(object p) => !InProgress;
+        private bool CanUpdateDatabaseCommandExecute(object p) => !InProgress && !Core.DomainSettings.DemoMode;
         #endregion
 
         #region EditSettings
@@ -382,6 +393,12 @@ namespace remeLog.ViewModels
         public ICommand ShowMonitorCommand { get; }
         private void OnShowMonitorCommandExecuted(object p)
         {
+            if (Core.DomainSettings.DemoMode)
+            {
+                MessageBoxWindow.Show("Мониторинг станка недоступен в демо-режиме: нет связи с ЧПУ.",
+                    "Демо-режим", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
             using (Overlay = new())
             {
                 FanucMonitor fanucMonitor = new();
@@ -389,13 +406,19 @@ namespace remeLog.ViewModels
                 fanucMonitor.Show();
             }
         }
-        private bool CanShowMonitorCommandExecute(object p) => !InProgress;
+        private bool CanShowMonitorCommandExecute(object p) => !InProgress && !Core.DomainSettings.DemoMode;
         #endregion
 
         #region ShowBatchAiAnalysis
         public ICommand ShowBatchAiAnalysisCommand { get; }
         private void OnShowBatchAiAnalysisCommandExecuted(object p)
         {
+            if (Core.DomainSettings.DemoMode)
+            {
+                MessageBoxWindow.Show("Пакетный ИИ-анализ недоступен в демо-режиме: нет связи с AiService.",
+                    "Демо-режим", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
             using (Overlay = new())
             {
                 var window = new BatchAiAnalysisWindow();
@@ -604,6 +627,12 @@ namespace remeLog.ViewModels
 
         private async void OnShowActiveInstancesCommandExecuted(object p)
         {
+            if (Core.DomainSettings.DemoMode)
+            {
+                MessageBoxWindow.Show("Активные экземпляры недоступны в демо-режиме: нет общей БД.",
+                    "Демо-режим", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
             if (string.IsNullOrWhiteSpace(AppSettings.Instance.ConnectionString))
             {
                 MessageBoxWindow.Show("Строка подключения не настроена.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -768,7 +797,8 @@ namespace remeLog.ViewModels
 
                 _updatePending = false;
 
-                if (string.IsNullOrWhiteSpace(AppSettings.Instance.ConnectionString))
+                if (string.IsNullOrWhiteSpace(AppSettings.Instance.ConnectionString)
+                    && !Core.DomainSettings.DemoMode)
                 {
                     MessageBoxWindow.Show(
                         "Перейдите в параметры приложения и настройте строку подключения к базе данных.",

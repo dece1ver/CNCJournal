@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.Data.SqlClient;
 using remeLog.Core;
 using remeLog.Core.Db;
+using remeLog.Core.Services.Demo;
 using remeLog.Models;
 using System;
 using System.Collections.Generic;
@@ -30,6 +31,11 @@ namespace remeLog.Infrastructure
 
         public static List<OperatorInfo> GetOperators()
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return DemoStore.GetOperators();
+            }
             using var conn = DbHelper.OpenConnection(DomainSettings.ConnectionString);
             var rows = conn.Query<(int Id, string FirstName, string LastName, string Patronymic, int Qualification, bool IsActive)>(
                 "SELECT Id, FirstName, LastName, Patronymic, Qualification, IsActive FROM cnc_operators ORDER BY LastName ASC");
@@ -38,6 +44,12 @@ namespace remeLog.Infrastructure
 
         public async static Task<List<OperatorInfo>> GetOperatorsAsync(IProgress<string>? progress = null)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                progress?.Report("Демо-режим: операторы из встроенного генератора.");
+                return await Task.FromResult(DemoStore.GetOperators());
+            }
             progress?.Report("Подключение к БД...");
             try
             {
@@ -57,6 +69,14 @@ namespace remeLog.Infrastructure
 
         public static async Task SaveOperatorAsync(OperatorInfo operatorInfo, IProgress<string> progress)
         {
+            if (DomainSettings.DemoMode)
+            {
+                progress.Report("Демо-режим: сохранение в память...");
+                DemoStore.SaveOperator(operatorInfo);
+                progress.Report($"Оператор '{operatorInfo.DisplayName}' сохранён (демо, до перезапуска).");
+                await Task.CompletedTask;
+                return;
+            }
             const string query = @"IF EXISTS (SELECT 1 FROM cnc_operators WHERE Id = @Id)
                 BEGIN UPDATE cnc_operators SET FirstName=@FirstName, LastName=@LastName, Patronymic=@Patronymic, Qualification=@Qualification, IsActive=@IsActive WHERE Id=@Id; END
                 ELSE BEGIN INSERT INTO cnc_operators(FirstName, LastName, Patronymic, Qualification, IsActive) VALUES(@FirstName, @LastName, @Patronymic, @Qualification, @IsActive); END";
@@ -85,6 +105,13 @@ namespace remeLog.Infrastructure
 
         public static async Task DeleteOperatorAsync(int operatorId, IProgress<string> progress)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.DeleteOperator(operatorId);
+                progress.Report("Оператор удалён (демо, до перезапуска).");
+                await Task.CompletedTask;
+                return;
+            }
             progress.Report("Удаление оператора из БД...");
             await using var conn = await DbHelper.OpenConnectionAsync(DomainSettings.ConnectionString);
             var rows = await conn.ExecuteAsync("DELETE FROM cnc_operators WHERE Id = @Id", new { Id = operatorId });

@@ -369,6 +369,17 @@ namespace remeLog
 
         private static void ParseFeatureArgs(string[] args)
         {
+            // Демо-режим для тестов вне рабочей среды: встроенные mock-данные,
+            // SQL Server не нужен. Изменения живут только в памяти до перезапуска.
+            if (args.Any(a => a.Equals("--demo", StringComparison.OrdinalIgnoreCase)))
+            {
+                Core.DomainSettings.DemoMode = true;
+                var seedArg = args.FirstOrDefault(a => a.StartsWith("--demo-seed=", StringComparison.OrdinalIgnoreCase));
+                if (seedArg != null && int.TryParse(seedArg["--demo-seed=".Length..], out int seed))
+                    Core.DomainSettings.DemoSeed = seed;
+                Util.WriteLog($"Демо-режим включён (seed={Core.DomainSettings.DemoSeed}).");
+            }
+
             var featureArg = args.FirstOrDefault(a => a.StartsWith("--features=", StringComparison.OrdinalIgnoreCase));
             if (featureArg == null) return;
             AppSettings.FeaturesExplicitlySet = true;

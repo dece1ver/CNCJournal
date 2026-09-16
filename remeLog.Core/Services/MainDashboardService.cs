@@ -1,4 +1,5 @@
 using remeLog.Core.Db;
+using remeLog.Core.Services.Demo;
 using remeLog.Infrastructure;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
@@ -28,6 +29,19 @@ namespace remeLog.Core.Services
         /// <summary>Справочники станков/причин простоев/отклонений — четыре запроса параллельно.</summary>
         public static async Task<ReferenceData> LoadReferenceDataAsync(CancellationToken cancellationToken)
         {
+            // Демо-режим: справочники из встроенного генератора, без SQL Server.
+            if (Core.DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.FromResult(new ReferenceData(
+                    DbResult<List<string>>.Ok(DemoStore.GetMachines()),
+                    DbResult<List<string>>.Ok(DemoStore.GetDowntimeReasons()),
+                    DbResult<List<(string Reason, bool RequireComment)>>.Ok(
+                        DemoStore.GetDeviationReasons(DeviationReasonType.Setup)),
+                    DbResult<List<(string Reason, bool RequireComment)>>.Ok(
+                        DemoStore.GetDeviationReasons(DeviationReasonType.Machining))));
+            }
+
             var machinesTask = Task.Run(Database.ReadMachines, cancellationToken);
             var downtimeTask = Task.Run(Database.ReadDowntimeReasons, cancellationToken);
             var setupTask = Task.Run(() => Database.ReadDeviationReasons(DeviationReasonType.Setup), cancellationToken);
@@ -52,6 +66,15 @@ namespace remeLog.Core.Services
         public static async Task<ShiftOverview> LoadShiftOverviewAsync(
             List<string> machines, DateTime fromDate, DateTime toDate, CancellationToken cancellationToken)
         {
+            // Демо-режим: смены из памяти (тот же расчёт состояний отчётов).
+            if (Core.DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                var states = ComputeReportStates(machines, fromDate, toDate);
+                var demoShifts = DemoStore.GetShifts(machines, fromDate, toDate, new Shift(ShiftType.All));
+                return await Task.FromResult(new ShiftOverview(states, demoShifts));
+            }
+
             var reportStatesTask = Task.Run(() => ComputeReportStates(machines, fromDate, toDate), cancellationToken);
             var totalShiftsTask = Task.Run(
                 () => Database.GetShiftsByPeriod(machines, fromDate, toDate, new Shift(ShiftType.All)),
@@ -73,6 +96,18 @@ namespace remeLog.Core.Services
         public static async Task<List<MachineWorkStatus>> LoadMachineWorkStatusAsync(
             List<string> machines, DateTime date, CancellationToken cancellationToken)
         {
+            if (Core.DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.Run(() => machines.Select(machine =>
+                {
+                    var parts = DemoStore.GetParts(date, date, machine);
+                    var workedDay = parts.Any(p => p.ShiftDate == date && p.Shift == Shifts.Day);
+                    var workedNight = parts.Any(p => p.ShiftDate == date && p.Shift == Shifts.Night);
+                    return new MachineWorkStatus(machine, workedDay, workedNight);
+                }).ToList(), cancellationToken);
+            }
+
             var tasks = machines.Select(async machine =>
             {
                 var parts = await Database.ReadPartsByShiftDateAndMachine(date, date, machine, cancellationToken);
@@ -91,6 +126,17 @@ namespace remeLog.Core.Services
         public static async Task<HashSet<string>> LoadWorkedMachinesAsync(
             List<string> machines, DateTime fromDate, DateTime toDate, CancellationToken cancellationToken)
         {
+            if (Core.DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.Run(() =>
+                {
+                    var withParts = DemoStore.GetParts(fromDate, toDate)
+                        .Select(p => p.Machine).ToHashSet(StringComparer.Ordinal);
+                    return machines.Where(withParts.Contains).ToHashSet(StringComparer.Ordinal);
+                }, cancellationToken);
+            }
+
             var parts = await Task.Run(() => Database.ReadPartsByShiftDate(fromDate, toDate, cancellationToken), cancellationToken);
             var machinesWithParts = parts.Select(p => p.Machine).ToHashSet(StringComparer.Ordinal);
             return machines.Where(machinesWithParts.Contains).ToHashSet(StringComparer.Ordinal);
@@ -104,6 +150,14 @@ namespace remeLog.Core.Services
         public static async Task<Dictionary<string, MachineActivity?>> LoadMachineActivityAsync(
             List<string> machines, CancellationToken cancellationToken)
         {
+            if (Core.DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                var demo = DemoStore.GetMachineActivity().ToDictionary(a => a.Machine);
+                return await Task.FromResult(
+                    machines.ToDictionary(m => m, m => demo.GetValueOrDefault(m)));
+            }
+
             var activity = await Database.ReadMachineActivityAsync();
             var byMachine = activity.ToDictionary(a => a.Machine);
             return machines.ToDictionary(m => m, m => byMachine.GetValueOrDefault(m));

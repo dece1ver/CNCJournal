@@ -18,6 +18,12 @@ namespace remeLog.Infrastructure
         public static async Task<DbResult<int>>
             SaveDayReviewAsync(DayReview review)
         {
+            // Демо: ревью дня нигде не хранятся — возвращаем фиктивный Id.
+            if (DomainSettings.DemoMode)
+            {
+                review.Id = -1;
+                return await Task.FromResult(DbResult<int>.Ok(-1));
+            }
             const string upsertSql = @"
                 DECLARE @id INT;
 
@@ -91,6 +97,7 @@ namespace remeLog.Infrastructure
         public static async Task<DbResult<bool>> SaveAiAnalysisAsync(
             int dayReviewId, AiAnalysisResult result, string modelVersion, bool thinkingEnabled)
         {
+            if (DomainSettings.DemoMode) return await Task.FromResult(DbResult<bool>.Ok(true));
             const string sql = @"
         UPDATE ai_day_reviews
         SET AiRequiresReview = @AiRequiresReview,
@@ -131,6 +138,7 @@ namespace remeLog.Infrastructure
 
         public static async Task<DayReview?> GetDayReviewAsync(string machine, DateTime shiftDate)
         {
+            if (DomainSettings.DemoMode) return await Task.FromResult<DayReview?>(null);
             const string sql = @"
                 SELECT Id, Machine, ShiftDate, ReviewedBy, ReviewedAt,
                        Decision, IsFullyReviewed, Comment,
@@ -161,6 +169,8 @@ namespace remeLog.Infrastructure
         public static async Task<Dictionary<(string Machine, DateTime Date), DayReview>>
             GetDayReviewsForPeriodAsync(IEnumerable<string> machines, DateTime fromDate, DateTime toDate)
         {
+            if (DomainSettings.DemoMode)
+                return await Task.FromResult(new Dictionary<(string, DateTime), DayReview>());
             var result = new Dictionary<(string, DateTime), DayReview>();
 
             const string sql = @"
@@ -198,6 +208,7 @@ namespace remeLog.Infrastructure
 
         public static async Task<List<DayReview>> GetAllDayReviewsAsync(CancellationToken ct = default)
         {
+            if (DomainSettings.DemoMode) return await Task.FromResult(new List<DayReview>());
             var result = new List<DayReview>();
 
             const string sql = @"
@@ -231,6 +242,7 @@ namespace remeLog.Infrastructure
         public static async Task<DbResult<string>>
             SavePartFlagAsync(PartFlag flag)
         {
+            if (DomainSettings.DemoMode) return await Task.FromResult(DbResult<string>.Ok("OK"));
             const string sql = @"
                 IF EXISTS (SELECT 1 FROM ai_part_flags
                            WHERE DayReviewId = @DayReviewId AND PartGuid = @PartGuid)
@@ -264,6 +276,7 @@ namespace remeLog.Infrastructure
 
         public static async Task<List<PartFlag>> GetPartFlagsAsync(int dayReviewId)
         {
+            if (DomainSettings.DemoMode) return await Task.FromResult(new List<PartFlag>());
             const string sql = @"
                 SELECT Id, DayReviewId, PartGuid, IsCleared, Comment,
                        AiRequiresReview, AiConfidence, AiSuggestedReason, AiSignals, AiExplanation
@@ -306,6 +319,7 @@ namespace remeLog.Infrastructure
         public static async Task<DbResult<string>>
             ClearPartFlagsAsync(int dayReviewId)
         {
+            if (DomainSettings.DemoMode) return await Task.FromResult(DbResult<string>.Ok("OK"));
             const string sql = "DELETE FROM ai_part_flags WHERE DayReviewId = @DayReviewId";
 
             try

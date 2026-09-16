@@ -1,6 +1,7 @@
 using Dapper;
 using remeLog.Core;
 using remeLog.Core.Db;
+using remeLog.Core.Services.Demo;
 using remeLog.Models;
 using System;
 using System.Collections.Generic;
@@ -18,6 +19,12 @@ namespace remeLog.Infrastructure
         /// </summary>
         public static async Task<List<MachineActivity>> ReadMachineActivityAsync()
         {
+            // Демо: heartbeat eLog недоступен — статусы из генератора.
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.FromResult(DemoStore.GetMachineActivity());
+            }
             try
             {
                 await using var conn = await DbHelper.OpenConnectionAsync(DomainSettings.ConnectionString);

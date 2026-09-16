@@ -2,6 +2,7 @@ using Microsoft.Data.SqlClient;
 using remeLog.Core;
 using remeLog.Core.Db;
 using remeLog.Core.Extensions;
+using remeLog.Core.Services.Demo;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
 using System;
@@ -15,6 +16,11 @@ namespace remeLog.Infrastructure
     {
         public static DbResult<bool> WriteShiftInfo(ShiftInfo shiftInfo)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return DemoStore.WriteShift(shiftInfo);
+            }
             try
             {
                 var readResult = ReadShiftInfo(shiftInfo);
@@ -77,6 +83,11 @@ namespace remeLog.Infrastructure
 
         public static DbResult<List<ShiftInfo>> ReadShiftInfo(ShiftInfo shiftInfo)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return DbResult<List<ShiftInfo>>.Ok(DemoStore.FindShift(shiftInfo));
+            }
             var shifts = new List<ShiftInfo>();
             try
             {
@@ -146,6 +157,11 @@ namespace remeLog.Infrastructure
 
         public static DbResult<List<ShiftInfo>> GetShiftsByPeriod(ICollection<string> machines, DateTime fromDate, DateTime toDate, Shift shift)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return DbResult<List<ShiftInfo>>.Ok(DemoStore.GetShifts(machines, fromDate, toDate, shift));
+            }
             var shifts = new List<ShiftInfo>();
             try
             {
@@ -218,6 +234,11 @@ namespace remeLog.Infrastructure
 
         public static DbResult<bool> UpdateShiftInfo(ShiftInfo shiftInfo)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return DemoStore.UpdateShift(shiftInfo);
+            }
             try
             {
                 using (SqlConnection connection = new(DomainSettings.ConnectionString))

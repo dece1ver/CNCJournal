@@ -69,7 +69,7 @@ namespace remeLog.ViewModels
         private async void OnSaveOperatorsCommandExecuted(object p)
         {
             if (!Util.HasFeature(RemeLogFeature.AdvancedEdit)) { Status = "Нет прав на выполнение операции"; return; }
-            if (string.IsNullOrEmpty(AppSettings.Instance.ConnectionString))
+            if (string.IsNullOrEmpty(AppSettings.Instance.ConnectionString) && !Core.DomainSettings.DemoMode)
             {
                 Status = "Операторы не могут быть сохранены т.к. строка подключения не настроена";
                 return;
@@ -105,7 +105,7 @@ namespace remeLog.ViewModels
 
         private async void LoadOperatorsAsync()
         {
-            if (string.IsNullOrEmpty(AppSettings.Instance.ConnectionString))
+            if (string.IsNullOrEmpty(AppSettings.Instance.ConnectionString) && !Core.DomainSettings.DemoMode)
             {
                 Status = "Операторы не могут быть загружены т.к. строка подключения не настроена";
                 return;

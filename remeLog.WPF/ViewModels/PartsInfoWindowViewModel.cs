@@ -4,6 +4,7 @@ using libeLog.Extensions;
 using libeLog.Infrastructure;
 using libeLog.Models;
 using remeLog.Core.Services;
+using remeLog.Core.Services.Demo;
 using remeLog.Infrastructure;
 using remeLog.Infrastructure.Extensions;
 using remeLog.Infrastructure.Types;
@@ -221,7 +222,12 @@ namespace remeLog.ViewModels
             }
             OnPropertyChanged(nameof(MachineFilters));
             OnPropertyChanged(nameof(MachineFilterSummary));
-            SerialParts = await libeLog.Infrastructure.Database.GetSerialPartsAsync(AppSettings.Instance.ConnectionString!);
+            // Демо: серийные детали из генератора (SQL Server недоступен).
+            SerialParts = Core.DomainSettings.DemoMode
+                ? DemoStore.GetSerialParts()
+                    .Select((p, i) => new SerialPart { Id = p.Id, PartName = p.PartName, YearCount = 120 })
+                    .ToList()
+                : await libeLog.Infrastructure.Database.GetSerialPartsAsync(AppSettings.Instance.ConnectionString!);
 
             lockUpdate = false;
 
@@ -258,6 +264,8 @@ namespace remeLog.ViewModels
         /// </summary>
         private void ScheduleAiCheck(Part part)
         {
+            // Демо: AiService недоступен вне рабочей среды — проверки не планируем.
+            if (Core.DomainSettings.DemoMode) return;
             if (!HasFeatureAiMasterCheck || lockUpdate || InProgress) return;
 
             int version = (_aiCheckVersion.TryGetValue(part, out var v) ? v : 0) + 1;
@@ -3301,7 +3309,7 @@ namespace remeLog.ViewModels
                 await Util.UpdateAppSettingsAsync();
                 if (!first) await Task.Delay(1000, cancellationToken);
 
-                if (UseMockData)
+                if (UseMockData && !Core.DomainSettings.DemoMode)
                 {
                     Parts = await Util.GenerateMockPartsAsync();
                     InProgress = false;
@@ -3319,7 +3327,10 @@ namespace remeLog.ViewModels
                     return false;
                 }
 
-                var tempParts = await Database.ReadPartsWithConditions(BuildConditions(), cancellationToken);
+                // Демо: SQL недоступен — те же критерии, фильтрация в памяти.
+                var tempParts = Core.DomainSettings.DemoMode
+                    ? await Database.ReadPartsWithCriteria(BuildCriteria(), cancellationToken)
+                    : await Database.ReadPartsWithConditions(BuildConditions(), cancellationToken);
                 tempParts = ApplyInMemoryFilters(tempParts);
 
                 await Application.Current.Dispatcher.InvokeAsync(() =>
@@ -3355,16 +3366,16 @@ namespace remeLog.ViewModels
         }
 
         /// <summary>
-        /// Собирает строку запроса
+        /// Собирает критерии фильтрации (используются и для SQL, и для демо).
         /// </summary>
-        private string BuildConditions()
+        private PartsFilterCriteria BuildCriteria()
         {
             var finishedCountFilter = Util.TryParseComparison(FinishedCountFilter, out var finishedOp, out var finishedVal)
                 ? (finishedOp, finishedVal) : ((string, int)?)null;
             var totalCountFilter = Util.TryParseComparison(TotalCountFilter, out var totalOp, out var totalVal)
                 ? (totalOp, totalVal) : ((string, int)?)null;
 
-            var criteria = new PartsFilterCriteria(
+            return new PartsFilterCriteria(
                 FromDate, ToDate, ShiftFilter,
                 OperatorFilter, PartNameFilter, OrderFilter,
                 EngineerConclusionFilter, EngineerCommentFilter,
@@ -3373,9 +3384,12 @@ namespace remeLog.ViewModels
                 SerialParts.Select(sp => sp.PartName.NormalizedPartNameWithoutComments()).ToList(),
                 MachineFilters.Where(mf => mf.Filter).Select(m => m.Machine).ToList(),
                 ChipFilters.ToList());
-
-            return PartsFilterService.BuildConditions(criteria);
         }
+
+        /// <summary>
+        /// Собирает строку запроса
+        /// </summary>
+        private string BuildConditions() => PartsFilterService.BuildConditions(BuildCriteria());
 
         /// <summary>
         /// Собирает строку запроса для получения списка всех изготовлений на всех станках для этой детали

@@ -599,7 +599,10 @@ namespace remeLog.Infrastructure
 
         public static async Task UpdateAppSettingsAsync()
         {
+            // Демо: Database.UpdateAppSettings уже положил конфиг из генератора
+            // (включая SerialParts) — обращение к SQL Server пропускаем.
             await Database.UpdateAppSettings();
+            if (Core.DomainSettings.DemoMode) return;
             AppSettings.SerialParts = (await libeLog.Infrastructure.Database.GetSerialPartsAsync(AppSettings.Instance.ConnectionString!))
                 .PartNamesHashSet(EnumerableExtensions.PartNameNormalizeOption.NormalizeAndRemoveParentheses);
         }

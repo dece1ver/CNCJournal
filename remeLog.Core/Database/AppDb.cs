@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using remeLog.Core;
+using remeLog.Core.Services.Demo;
 using remeLog.Models;
 using System;
 using System.Collections.Generic;
@@ -17,6 +18,8 @@ namespace remeLog.Infrastructure
         /// </param>
         public static async Task<List<AppPresence>> ReadActiveInstancesAsync(string? application = null)
         {
+            // Демо: presence не работает без общей БД.
+            if (DomainSettings.DemoMode) return await Task.FromResult(new List<AppPresence>());
             // Application входит в партиционирование: на одной машине под одним пользователем
             // могут работать и eLog, и remeLog — это разные экземпляры, а не дубликаты.
             const string sql = @"
@@ -91,6 +94,8 @@ namespace remeLog.Infrastructure
             Guid? targetSessionId, string targetApplication, string targetMachine, string? targetUser,
             string commandType, string? payload)
         {
+            if (DomainSettings.DemoMode)
+                throw new InvalidOperationException("Демо-режим: отправка команд недоступна.");
             const string sql = @"
 INSERT INTO remeLog_app_commands
     (Id, TargetSessionId, TargetApplication, TargetMachine, TargetUser,
@@ -131,6 +136,7 @@ VALUES
 
         public static async Task<string?> GetCommandResultAsync(Guid commandId)
         {
+            if (DomainSettings.DemoMode) return await Task.FromResult<string?>(null);
             const string sql = @"
 SELECT Result
 FROM remeLog_app_commands
@@ -147,6 +153,8 @@ WHERE Id = @Id AND ProcessedUtc IS NOT NULL;";
         public static async Task<List<Guid>> SendAppCommandToAllAsync(
             List<AppPresence> targets, string commandType, string? payload)
         {
+            if (DomainSettings.DemoMode)
+                throw new InvalidOperationException("Демо-режим: отправка команд недоступна.");
             const string sql = @"
 INSERT INTO remeLog_app_commands
     (Id, TargetSessionId, TargetApplication, TargetMachine, TargetUser,
@@ -198,6 +206,7 @@ VALUES
         /// </param>
         public static async Task<int> GetPendingCommandCountAsync(string? application = null)
         {
+            if (DomainSettings.DemoMode) return await Task.FromResult(0);
             const string sql = @"
 SELECT COUNT(*) FROM remeLog_app_commands
 WHERE ProcessedUtc IS NULL
@@ -217,6 +226,8 @@ WHERE ProcessedUtc IS NULL
             string TargetMachine, string TargetUser, string Payload, DateTime CreatedUtc)>>
             GetPendingCommandsAsync(string? application = null)
         {
+            if (DomainSettings.DemoMode)
+                return await Task.FromResult(new List<(Guid, string, string, string, string, string, DateTime)>());
             const string sql = @"
 SELECT Id, CommandType, TargetApplication, TargetMachine, TargetUser, Payload, CreatedUtc
 FROM remeLog_app_commands
@@ -250,6 +261,7 @@ ORDER BY CreatedUtc;";
 
         public static async Task<bool> CancelPendingCommandAsync(Guid commandId)
         {
+            if (DomainSettings.DemoMode) return await Task.FromResult(false);
             const string sql = @"
 UPDATE remeLog_app_commands
 SET ProcessedUtc = SYSUTCDATETIME(),
@@ -287,6 +299,8 @@ WHERE Id = @Id AND ProcessedUtc IS NULL;";
             int? resultCount, bool? truncated,
             bool success, string? errorMessage, long elapsedMs)
         {
+            // Демо: лог обращений к Windchill не пишем (сам Windchill недоступен).
+            if (DomainSettings.DemoMode) { await Task.CompletedTask; return; }
             const string sql = @"
 INSERT INTO remeLog_wnc_requests
     (MachineName, UserName, RequestType, Params, RequestUrls, ResultCount, Truncated, Success, ErrorMessage, ElapsedMs, CreatedUtc)

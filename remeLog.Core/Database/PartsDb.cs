@@ -2,6 +2,8 @@ using Microsoft.Data.SqlClient;
 using remeLog.Core;
 using remeLog.Core.Db;
 using remeLog.Core.Extensions;
+using remeLog.Core.Services;
+using remeLog.Core.Services.Demo;
 using remeLog.Infrastructure.Extensions;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
@@ -20,6 +22,13 @@ namespace remeLog.Infrastructure
     {
         public static async Task DeleteSerialPartAsync(int partId, IProgress<string>? progress = null)
         {
+            // Демо: серийные детали живут в памяти без Id — удаление через окно недоступно.
+            if (DomainSettings.DemoMode)
+            {
+                progress?.Report("Демо-режим: удаление серийных деталей недоступно.");
+                await Task.CompletedTask;
+                return;
+            }
             const string query = "DELETE FROM cnc_serial_parts WHERE Id = @Id;";
 
             using var connection = new SqlConnection(DomainSettings.ConnectionString);
@@ -43,6 +52,14 @@ namespace remeLog.Infrastructure
 
         public async static Task<List<Part>> ReadPartsWithConditions(string conditions, CancellationToken cancellationToken)
         {
+            // Демо: прямой SQL недоступен — вызывающая сторона (PartsInfoWindow)
+            // в демо ходит через ReadPartsWithCriteria. Запасной путь: все детали.
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.Run(() => DemoStore.GetParts(
+                    DateTime.Today.AddDays(-DemoDataFactory.DaysBack), DateTime.Today), cancellationToken);
+            }
             List<Part> parts = new();
             await Task.Run(async () =>
             {
@@ -59,8 +76,22 @@ namespace remeLog.Infrastructure
             return parts;
         }
 
+        /// <summary>
+        /// Демо-эквивалент <see cref="ReadPartsWithConditions"/>: фильтрация в памяти
+        /// по тем же критериям (см. <see cref="DemoStore.QueryParts"/>).
+        /// </summary>
+        public async static Task<List<Part>> ReadPartsWithCriteria(
+            PartsFilterCriteria criteria, CancellationToken cancellationToken) =>
+            await Task.Run(() => DemoStore.QueryParts(criteria), cancellationToken);
+
         public async static Task<ObservableCollection<Part>> ReadPartsByShiftDateAndMachine(DateTime fromDate, DateTime toDate, string machine, CancellationToken cancellationToken)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.Run(() => new ObservableCollection<Part>(
+                    DemoStore.GetParts(fromDate, toDate, machine)), cancellationToken);
+            }
             ObservableCollection<Part> parts = new();
             using (SqlConnection connection = new(DomainSettings.ConnectionString))
             {
@@ -81,6 +112,12 @@ namespace remeLog.Infrastructure
 
         public async static Task<ObservableCollection<Part>> ReadPartsByShiftDate(DateTime fromDate, DateTime toDate, CancellationToken cancellationToken)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.Run(() => new ObservableCollection<Part>(
+                    DemoStore.GetParts(fromDate, toDate)), cancellationToken);
+            }
             ObservableCollection<Part> parts = new();
             using (SqlConnection connection = new(DomainSettings.ConnectionString))
             {
@@ -100,6 +137,12 @@ namespace remeLog.Infrastructure
 
         public async static Task<ObservableCollection<Part>> ReadPartsByGuids(IEnumerable<Guid> guids, CancellationToken cancellationToken)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.Run(() => new ObservableCollection<Part>(
+                    DemoStore.GetPartsByGuids(guids)), cancellationToken);
+            }
             ObservableCollection<Part> parts = new();
 
             if (guids == null || !guids.Any())
@@ -135,6 +178,14 @@ namespace remeLog.Infrastructure
 
         public async static Task<ObservableCollection<Part>> ReadPartsByPartNameAndOrder(string[] partNames, string[] orders, CancellationToken cancellationToken)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.Run(() => new ObservableCollection<Part>(DemoStore
+                    .GetParts(DateTime.Today.AddDays(-DemoDataFactory.DaysBack), DateTime.Today)
+                    .Where(p => partNames.Contains(p.PartName) && orders.Contains(p.Order))
+                    .OrderBy(p => p.StartSetupTime)), cancellationToken);
+            }
             ObservableCollection<Part> parts = new();
             using (SqlConnection connection = new(DomainSettings.ConnectionString))
             {
@@ -151,6 +202,12 @@ namespace remeLog.Infrastructure
 
         public async static Task<DbResult<string>> UpdatePartAsync(this Part part)
         {
+            // Демо: сохранение в память, без SQL Server.
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.FromResult(DemoStore.UpsertPart(part));
+            }
             try
             {
                 using (SqlConnection connection = new(DomainSettings.ConnectionString))
@@ -450,6 +507,18 @@ namespace remeLog.Infrastructure
             string partName, string order, string machine, int setup, DateTime beforeDate,
             int maxRecords, int maxDaysBack, CancellationToken cancellationToken)
         {
+            // Демо: история из памяти, без ревью аналитика.
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.Run(() => DemoStore
+                    .GetParts(beforeDate.AddDays(-maxDaysBack), beforeDate.AddDays(-1), machine)
+                    .Where(p => p.PartName == partName && p.Order != order && p.Setup == setup)
+                    .OrderByDescending(p => p.ShiftDate).ThenByDescending(p => p.StartSetupTime)
+                    .Take(maxRecords)
+                    .Select(p => new PartsHistoryEntry { Part = p })
+                    .ToList(), cancellationToken);
+            }
             using var connection = new SqlConnection(DomainSettings.ConnectionString);
             await connection.OpenAsync(cancellationToken);
 
@@ -536,6 +605,8 @@ namespace remeLog.Infrastructure
 
         public static DbResult<List<string>> ReadMasters()
         {
+            if (DomainSettings.DemoMode)
+                return DbResult<List<string>>.Ok(new List<string> { "Петров П.П.", "Сидоров С.С." });
             var masters = new List<string>();
             try
             {
@@ -577,6 +648,11 @@ namespace remeLog.Infrastructure
 
         public static DbResult<bool> DeletePart(this Part part)
         {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return DemoStore.DeletePart(part.Guid);
+            }
             try
             {
                 using (SqlConnection connection = new(DomainSettings.ConnectionString))

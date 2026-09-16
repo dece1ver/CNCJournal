@@ -108,6 +108,22 @@ namespace remeLog.ViewModels
         public ICommand SaveSerialPartsCommand { get; }
         private async void OnSaveSerialPartsCommandExecuted(object p)
         {
+            // Демо: сохраняем только состав имён (для фильтра серийности), без БД.
+            if (Core.DomainSettings.DemoMode)
+            {
+                InProgress = true;
+                await Task.Run(() =>
+                {
+                    foreach (var part in SerialParts)
+                        Core.Services.Demo.DemoStore.AddSerialPartName(part.PartName);
+                });
+                await LoadSerialPartsAsync();
+                InProgress = false;
+                Status = "Обновление завершено (демо, до перезапуска)";
+                await Task.Delay(3000);
+                Status = "";
+                return;
+            }
             if (string.IsNullOrEmpty(AppSettings.Instance.ConnectionString))
             {
                 Status = "Детали не могут быть сохранены т.к. строка подключения не настроена";
@@ -453,6 +469,17 @@ namespace remeLog.ViewModels
 
         private async Task LoadSerialPartsAsync()
         {
+            // Демо: серийные детали из генератора (без операций/нормативов — только имена).
+            if (Core.DomainSettings.DemoMode)
+            {
+                var demo = await Task.Run(() => Core.Services.Demo.DemoStore.GetSerialParts());
+                SerialParts = new ObservableCollection<SerialPart>(demo.Select(p =>
+                    new SerialPart { Id = p.Id, PartName = p.PartName, YearCount = 120 }));
+                foreach (var part in SerialParts) part.AcceptChanges();
+                ValidateSerialParts();
+                Status = "Демо-режим: операции и нормативы недоступны";
+                return;
+            }
             if (string.IsNullOrEmpty(AppSettings.Instance.ConnectionString))
             {
                 Status = "Детали не могут быть загружены т.к. строка подключения не настроена";
@@ -495,7 +522,11 @@ namespace remeLog.ViewModels
                 foreach (SerialPart p in e.OldItems)
                 {
                     UnsubscribeFromSerialPart(p);
-                    if (p.Id != -1)
+                    if (Core.DomainSettings.DemoMode)
+                    {
+                        Core.Services.Demo.DemoStore.RemoveSerialPartName(p.PartName);
+                    }
+                    else if (p.Id != -1)
                     {
                         await Database.DeleteSerialPartAsync(p.Id, new Progress<string>(p => Status = p));
                     }

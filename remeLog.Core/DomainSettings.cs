@@ -50,6 +50,14 @@ namespace remeLog.Core
         public static RemeLogFeature EnabledFeatures { get; set; } = RemeLogFeature.None;
         /// <summary>Заданы ли <see cref="EnabledFeatures"/> явно (флагом запуска), а не из БД.</summary>
         public static bool FeaturesExplicitlySet { get; set; }
+        /// <summary>
+        /// Демо-режим для тестов вне рабочей среды (флаг запуска <c>--demo</c>):
+        /// данные берутся из встроенного генератора <c>DemoStore</c>, SQL Server не нужен.
+        /// Изменения живут только в памяти до перезапуска.
+        /// </summary>
+        public static bool DemoMode { get; set; }
+        /// <summary>Seed генератора демо-данных (по умолчанию 42 — воспроизводимый сценарий).</summary>
+        public static int DemoSeed { get; set; } = 42;
 
         /// <summary>Число рабочих дней в интервале (включительно), за вычетом <see cref="Holidays"/>.</summary>
         public static int GetWorkDaysBetween(DateTime start, DateTime end) =>
