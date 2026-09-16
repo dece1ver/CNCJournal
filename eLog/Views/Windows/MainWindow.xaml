@@ -8,9 +8,9 @@
         xmlns:cnv="clr-namespace:eLog.Infrastructure.Converters"
         xmlns:md="clr-namespace:eLog.Models"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
-         xmlns:local="clr-namespace:eLog" FontSize="24"
-         FontFamily="{StaticResource Areopag.FontUI}"
-         Background="{StaticResource Areopag.Bg0}"
+        xmlns:local="clr-namespace:eLog" FontSize="24"
+        FontFamily="{StaticResource Areopag.FontUI}"
+        Background="{StaticResource Areopag.Bg0}"
         Icon="/Views/Windows/elog.ico"
         mc:Ignorable="d" xmlns:vm="clr-namespace:eLog.ViewModels" d:DataContext="{d:DesignInstance Type=vm:MainWindowViewModel}"
         Title="Электронный журнал" MinWidth="930" MinHeight="480" Width="1300" Height="710" WindowState="Maximized" Loaded="Window_Loaded">
@@ -186,30 +186,30 @@
                     </Button.Style>
                 </Button>
                 
-                <TextBlock Text="{Binding Machine.Name}" d:Text="Станок" Padding="0 3" Margin="9 0" DockPanel.Dock="Left"/>
+                <TextBlock Text="{Binding Machine.Name}" d:Text="Станок" Padding="0 3" Margin="9 0" DockPanel.Dock="Left" FontFamily="{StaticResource Areopag.FontMono}"/>
                 <!--<TextBlock Text="Оператор:" Padding="5 3" Margin="10 0 0 0" DockPanel.Dock="Left"/>-->
                 <ComboBox ItemsSource="{Binding Operators}" DockPanel.Dock="Left"
-                          Style="{StaticResource ComboBoxStyle}"
-                          SelectedItem="{Binding CurrentOperator}"
-                          IsEnabled="{Binding CanEditShiftAndParams}"
-                          DisplayMemberPath="DisplayName"
+                          Style="{StaticResource FlatComboBoxStyle}"
+                          SelectedItem="{Binding CurrentOperator}" Background="{StaticResource Areopag.BtnBg}"
+                          IsEnabled="{Binding CanEditShiftAndParams}" BorderThickness="0"
+                          DisplayMemberPath="DisplayName" Padding="6,3,20,3"
                           Width="250" Margin="4 0 0 0"/>
                 <ComboBox ItemsSource="{Binding Shifts}" 
-                          Style="{StaticResource ComboBoxStyle}"
-                          SelectedItem="{Binding CurrentShift}" 
-                          IsEnabled="{Binding CanEditShiftAndParams}"
-                            Width="150" Margin="4 0 0 0"/>
-                <Button Content="Начать смену" DockPanel.Dock="Left" Margin="4 0 0 0"
+                          Style="{StaticResource FlatComboBoxStyle}"
+                          SelectedItem="{Binding CurrentShift}" Background="{StaticResource Areopag.BtnBg}"
+                          IsEnabled="{Binding CanEditShiftAndParams}" Padding="6,3,20,3" BorderThickness="0"
+                          Width="100" Margin="4 0 0 0"/>
+                <Button Content="Начать смену" DockPanel.Dock="Left" Margin="4 0 0 0" FontSize="16" FontFamily="{StaticResource Areopag.FontMono}"
                         Visibility="{Binding ShiftStarted, Converter={StaticResource InvertedVisibilityConverter}}"
                         IsEnabled="{Binding CanStartShift}" FontWeight="Normal"
                         Command="{Binding StartShiftCommand}" Style="{StaticResource Areopag.PrimaryButton}" Width="250"/>
-                <Button Content="Завершить смену" DockPanel.Dock="Left" Margin="4 0 0 0" FontWeight="Normal"
+                <Button Content="Завершить смену" DockPanel.Dock="Left" Margin="4 0 0 0" FontWeight="Normal" FontSize="16" FontFamily="{StaticResource Areopag.FontMono}"
                         Visibility="{Binding ShiftStarted, Converter={StaticResource VisibilityConverter}}"
                         IsEnabled="{Binding CanEndShift, UpdateSourceTrigger=PropertyChanged}"
                         Command="{Binding EndShiftCommand}" Style="{StaticResource Areopag.OkButton}" Width="250"/>
                 <Button DockPanel.Dock="Right" Content="-TEST-" Style="{StaticResource GeneralButton}"
                         Visibility="Collapsed" Command="{Binding TestCommand}"/>
-                <Button DockPanel.Dock="Top" Content="Запустить деталь" Margin="4 0" Style="{StaticResource Areopag.PrimaryButton}"
+                <Button DockPanel.Dock="Top" Content="Запустить деталь" Margin="4 0" FontSize="16" FontFamily="{StaticResource Areopag.FontMono}" Style="{StaticResource Areopag.PrimaryButton}"
                         Command="{Binding StartDetailCommand}" IsEnabled="{Binding CanAddPart}" FontWeight="Regular"/>
                 
             </DockPanel>
@@ -220,7 +220,7 @@
                 <StatusBarItem HorizontalAlignment="Right" VerticalContentAlignment="Stretch">
                     <ProgressBar Value="{Binding Progress}" Maximum="{Binding ProgressMaxValue}" IsIndeterminate="True"
                              Visibility="{Binding ProgressBarVisibility}" Width="200" Margin="0"/>
-                </StatusBarItem>и 
+                </StatusBarItem>
             </StatusBar>
             <DockPanel LastChildFill="True">
                 <ListView ItemsSource="{Binding Parts, UpdateSourceTrigger=PropertyChanged}" IsManipulationEnabled="True" FontSize="16" DockPanel.Dock="Top" Focusable="False" 

@@ -93,9 +93,9 @@
                 </StatusBar>
                 <Grid Margin="10 9 10 10">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="157"/>
+                        <ColumnDefinition Width="170"/>
                         <ColumnDefinition />
-                        <ColumnDefinition Width="157"/>
+                        <ColumnDefinition Width="170"/>
                         <ColumnDefinition/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="280"/>
@@ -186,7 +186,7 @@
                                       Visibility="{Binding NonEmptyOrder, Converter={StaticResource VisibilityConverter}}"
                                       ItemsSource="{Binding OrderYears, Mode=OneWay}" FontSize="20" BorderThickness="5"
                                       VerticalContentAlignment="Center" Padding="3" MaxDropDownHeight="Auto"/>
-                                <StackPanel Visibility="{Binding NonEmptyOrder, Converter={StaticResource VisibilityConverter}}">
+                                <Grid Visibility="{Binding NonEmptyOrder, Converter={StaticResource VisibilityConverter}}">
                                     <ComboBox 
                                         Style="{DynamicResource SlashComboBoxStyle}"
                                         ItemContainerStyle="{StaticResource OrderComboBoxItemStyle}"
@@ -213,7 +213,7 @@
                                         MaxDropDownHeight="400"
                                         Visibility="{Binding NewOrderFormat, Converter={StaticResource VisibilityConverter}}">
                                     </ComboBox>
-                                </StackPanel>
+                                </Grid>
                             </StackPanel>
                         </Border>
                         <Button x:Name="FindOrderDetailsButton" Style="{StaticResource OperationButton}"
@@ -474,7 +474,7 @@
                         Visibility="{Binding KeyboardVisibility, RelativeSource={RelativeSource AncestorType=l:EditDetailWindow}}"
                         Style="{StaticResource KeyboardButton}" 
                         VerticalAlignment="Top" HorizontalAlignment="Stretch"
-                        Margin="92 1 84 1" Click="SpaceButton_Click"/>
+                        Margin="68 1 80 1" Click="SpaceButton_Click"/>
                     <ctrl:ControlKeyboardControl Grid.Column="5" Grid.Row="7" Margin="0 8 -1 0"
                                              Visibility="{Binding KeyboardVisibility, RelativeSource={RelativeSource AncestorType=l:EditDetailWindow}}"/>
 

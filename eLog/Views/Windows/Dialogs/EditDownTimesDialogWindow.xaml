@@ -72,11 +72,11 @@
                         <ColumnDefinition Width="270"/>
                     </Grid.ColumnDefinitions>
                     <ListView Grid.Column="0" ItemsSource="{Binding Part.DownTimes}" 
-                              BorderBrush="Transparent" BorderThickness="0"
+                              BorderBrush="Transparent" BorderThickness="0" Background="Transparent"
                               ItemContainerStyle="{StaticResource ListViewItemsStyle}" Margin="3 -14 -12 -2">
                         <ListView.ItemTemplate>
                             <DataTemplate>
-                                <GroupBox DockPanel.Dock="Top" BorderBrush="{StaticResource Areopag.Line}" Margin="0 -1 0 0" Tag="{Binding}">
+                                <GroupBox DockPanel.Dock="Top" Style="{StaticResource PulseGroupBoxStyle}" Margin="0 2 0 2" Tag="{Binding}">
                                     <GroupBox.Header>
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock>
@@ -104,14 +104,14 @@
                                             <TextBox x:Name="StartTimeTextBox" Grid.Row="0" Grid.Column="1" Height="25" Padding="0 -1 0 0" VerticalContentAlignment="Center"
                                                      Text="{Binding StartTimeText, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" 
                                                      Validation.ErrorTemplate="{StaticResource ValidationFailed}"
-                                                     Margin="0 4 0 0" KeyUp="TimeTextBox_KeyUp"/>
+                                                     Margin="0 4 0 0" KeyUp="TimeTextBox_KeyUp" Width="200"/>
                                             <TextBlock Grid.Row="1" Grid.Column="0" Text="Завершение:" 
                                                VerticalAlignment="Center" HorizontalAlignment="Right" 
                                                Margin="5 0"/>
                                             <TextBox x:Name="EndTimeTextBox" Grid.Row="1" Grid.Column="1" Height="25" Padding="0 -1 0 0"
                                                      Text="{Binding EndTimeText, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}"
                                                      Validation.ErrorTemplate="{StaticResource ValidationFailed}"
-                                                     Margin="0 -1 0 0" KeyUp="TimeTextBox_KeyUp"/>
+                                                     Margin="0 -1 0 0" KeyUp="TimeTextBox_KeyUp" Width="200"/>
                                         </Grid>
                                         <DockPanel Width="150" DockPanel.Dock="Right" HorizontalAlignment="Right">
                                             <Button x:Name="DeleteDownTimeButton" Style="{StaticResource Areopag.DangerButton}" Width="125" DockPanel.Dock="Right" 

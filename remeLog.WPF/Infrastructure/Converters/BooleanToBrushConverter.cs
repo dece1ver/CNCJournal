@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Data;
-using System.Windows.Media;
 
 namespace remeLog.Infrastructure.Converters
 {
@@ -15,10 +14,10 @@ namespace remeLog.Infrastructure.Converters
         {
             if (value is bool booleanValue)
             {
-                return booleanValue ? Brushes.Red : Brushes.Black;
+                return booleanValue ? ThemeBrushes.Alert : ThemeBrushes.Text;
             }
 
-            return Brushes.Black;
+            return ThemeBrushes.Text;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

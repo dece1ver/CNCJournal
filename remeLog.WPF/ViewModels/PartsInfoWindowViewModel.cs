@@ -220,6 +220,7 @@ namespace remeLog.ViewModels
                 machineFilter.Filter = machineFilter.Machine == PartsInfo.Machine || PartsInfo.Machine == "Все станки";
             }
             OnPropertyChanged(nameof(MachineFilters));
+            OnPropertyChanged(nameof(MachineFilterSummary));
             SerialParts = await libeLog.Infrastructure.Database.GetSerialPartsAsync(AppSettings.Instance.ConnectionString!);
 
             lockUpdate = false;
@@ -378,6 +379,7 @@ namespace remeLog.ViewModels
         private async void MachineFilters_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
             OnPropertyChanged(nameof(MachineVisibility));
+            OnPropertyChanged(nameof(MachineFilterSummary));
             if (e.PropertyName == "Filter")
                 await LoadPartsAsync();
         }
@@ -859,6 +861,7 @@ namespace remeLog.ViewModels
                 if (!CanBeChanged()) return;
                 if (Set(ref _MachineFilters, value))
                 {
+                    OnPropertyChanged(nameof(MachineFilterSummary));
                     _ = LoadPartsAsync();
                 }
             }
@@ -1184,6 +1187,9 @@ namespace remeLog.ViewModels
 
 
         public bool MachineVisibility => MachineFilters.Count(m => m.Filter == true) == 1;
+
+        /// <summary> Текст на кнопке фильтра по станкам — сколько выбрано. </summary>
+        public string MachineFilterSummary => MachineFilters.Summary();
 
         #region IncreaseDateCommand
         public ICommand IncreaseDateCommand { get; }

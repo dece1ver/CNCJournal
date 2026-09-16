@@ -356,13 +356,13 @@ namespace remeLog.ViewModels
         public System.Windows.Media.Brush StateBrush =>
             State switch
             {
-                BatchItemState.Pending => System.Windows.Media.Brushes.Gray,
-                BatchItemState.Running => System.Windows.Media.Brushes.DodgerBlue,
-                BatchItemState.Done => System.Windows.Media.Brushes.ForestGreen,
-                BatchItemState.Error => System.Windows.Media.Brushes.OrangeRed,
-                BatchItemState.Skipped => System.Windows.Media.Brushes.DarkGray,
-                BatchItemState.Cancelled => System.Windows.Media.Brushes.DarkOrange,
-                _ => System.Windows.Media.Brushes.Black,
+                BatchItemState.Pending => Infrastructure.ThemeBrushes.Text3,
+                BatchItemState.Running => Infrastructure.ThemeBrushes.Accent,
+                BatchItemState.Done => Infrastructure.ThemeBrushes.Ok,
+                BatchItemState.Error => Infrastructure.ThemeBrushes.Alert,
+                BatchItemState.Skipped => Infrastructure.ThemeBrushes.Disabled,
+                BatchItemState.Cancelled => Infrastructure.ThemeBrushes.Warn,
+                _ => Infrastructure.ThemeBrushes.Text,
             };
     }
 }

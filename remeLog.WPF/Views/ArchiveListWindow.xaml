@@ -1,11 +1,13 @@
-﻿<Window x:Class="remeLog.Views.ArchiveListWindow"
+﻿<Window x:Class="remeLog.Views.ArchiveListWindow" chrome:WindowChromeTheme.Enabled="True"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:chrome="clr-namespace:libeLog.Infrastructure;assembly=libeLog"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008" mc:Ignorable="d"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:remeLog.Views" WindowState="Maximized"
         WindowStartupLocation="CenterOwner"
-        Title="Список для вставки в таблицу по архиву УП" Height="450" Width="1000" DataContext="{Binding RelativeSource={RelativeSource Self}}">
+        Title="Список для вставки в таблицу по архиву УП" Height="450" Width="1000" DataContext="{Binding RelativeSource={RelativeSource Self}}"
+        Background="{DynamicResource Areopag.Bg0}">
     <Grid>
         <DataGrid ItemsSource="{Binding Parts}" AutoGenerateColumns="False" 
                   CanUserAddRows="False" CanUserDeleteRows="False" 

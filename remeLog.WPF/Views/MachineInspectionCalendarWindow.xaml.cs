@@ -4,7 +4,6 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 
@@ -100,69 +99,32 @@ namespace remeLog.Views
             _suppressSelectionSync = true;
             try
             {
-                CalendarGrid.Columns.Clear();
-
-                var dateColumn = new DataGridTextColumn
+                // Статические колонки («Дата», «Проверено») объявлены в XAML
+                // (MachineInspectionCalendarWindow.xaml). Здесь управляем только
+                // динамическими колонками станков — по одной на выбранный станок.
+                for (int i = CalendarGrid.Columns.Count - 1; i >= 0; i--)
                 {
-                    Header = "Дата",
-                    Binding = new Binding("DateDisplay"),
-                    Width = new DataGridLength(100),
-                    ElementStyle = (Style)FindResource("DateCellStyle")
-                };
-                CalendarGrid.Columns.Add(dateColumn);
+                    if (CalendarGrid.Columns[i] is DataGridTemplateColumn)
+                        CalendarGrid.Columns.RemoveAt(i);
+                }
 
-                var cellConverter = (IValueConverter)FindResource("MachineInspectionCalendarCellConverter");
-                var iconMultiConverter = (IMultiValueConverter)FindResource("MachineInspectionCalendarCellIconMultiConverter");
-
+                var template = (DataTemplate)FindResource("MachineCellTemplate");
+                // вставляем перед последней статической колонкой («Проверено»)
+                int index = Math.Max(0, CalendarGrid.Columns.Count - 1);
                 foreach (var machine in _vm.FilteredMachines)
                 {
-                    var column = new DataGridTemplateColumn
+                    CalendarGrid.Columns.Insert(index++, new DataGridTemplateColumn
                     {
                         Header = machine,
                         Width = new DataGridLength(50),
-                        CellTemplate = CreateMachineCellTemplate(machine, cellConverter, iconMultiConverter)
-                    };
-                    CalendarGrid.Columns.Add(column);
+                        CellTemplate = template
+                    });
                 }
-
-                var percentColumn = new DataGridTextColumn
-                {
-                    Header = "Проверено",
-                    Binding = new Binding(nameof(MachineInspectionCalendarDayRow.CheckedPercent)),
-                    Width = new DataGridLength(110),
-                    ElementStyle = (Style)FindResource("PercentCellStyle")
-                };
-                CalendarGrid.Columns.Add(percentColumn);
             }
             finally
             {
                 Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => _suppressSelectionSync = false));
             }
-        }
-
-        private static DataTemplate CreateMachineCellTemplate(string machine, IValueConverter cellConverter, IMultiValueConverter iconMultiConverter)
-        {
-            var cellBinding = new Binding
-            {
-                Path = new PropertyPath("."),
-                ConverterParameter = machine,
-                Converter = cellConverter
-            };
-
-            var iconMultiBinding = new MultiBinding { Converter = iconMultiConverter };
-            iconMultiBinding.Bindings.Add(cellBinding);
-
-            var template = new DataTemplate();
-            var factory = new FrameworkElementFactory(typeof(ContentControl));
-            factory.SetValue(ContentControl.WidthProperty, 16.0);
-            factory.SetValue(ContentControl.HeightProperty, 16.0);
-            factory.SetValue(ContentControl.MarginProperty, new Thickness(0, 1, 0, 1));
-            factory.SetValue(ContentControl.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-            factory.SetValue(ContentControl.VerticalAlignmentProperty, VerticalAlignment.Center);
-            factory.SetBinding(ContentControl.ContentProperty, iconMultiBinding);
-            template.VisualTree = factory;
-            template.Seal();
-            return template;
         }
     }
 }

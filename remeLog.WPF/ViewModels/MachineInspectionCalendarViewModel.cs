@@ -201,11 +201,15 @@ namespace remeLog.ViewModels
             UpdateCheckedPercents();
             UpdateStatistics();
             OnPropertyChanged(nameof(FilteredMachines));
+            OnPropertyChanged(nameof(MachineFilterSummary));
             OnPropertyChanged(nameof(Days));
         }
 
         public List<string> FilteredMachines =>
             MachineFilters.Where(m => m.Filter).Select(m => m.Machine).ToList();
+
+        /// <summary> Текст на кнопке фильтра по станкам. </summary>
+        public string MachineFilterSummary => MachineFilters.Summary();
 
         private void SaveFilter()
         {
@@ -255,6 +259,7 @@ namespace remeLog.ViewModels
                         UpdateCheckedPercents();
                         UpdateStatistics();
                         OnPropertyChanged(nameof(FilteredMachines));
+                        OnPropertyChanged(nameof(MachineFilterSummary));
                         OnPropertyChanged(nameof(Days));
                     };
                 }
@@ -262,6 +267,7 @@ namespace remeLog.ViewModels
                 _MachineFilters = machineFilters.ToObservableCollection();
                 OnPropertyChanged(nameof(MachineFilters));
                 OnPropertyChanged(nameof(FilteredMachines));
+                OnPropertyChanged(nameof(MachineFilterSummary));
 
                 _AllMachines = machineFilters.Select(m => m.Machine).ToList();
                 OnPropertyChanged(nameof(AllMachines));
@@ -403,7 +409,7 @@ namespace remeLog.ViewModels
             {
                 var checkedCount = day.Cells.Count(c => visible.Contains(c.Machine) && c.IsChecked);
                 var percent = Convert.ToDouble(checkedCount) / visible.Count;
-                day.CheckedPercent = $"{checkedCount}/{visible.Count} · {percent:0.#%}";
+                day.CheckedPercent = $"{checkedCount}/{visible.Count} · {percent:000.0%}";
             }
         }
     }

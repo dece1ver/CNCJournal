@@ -23,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using static libeLog.Constants;
 using static remeLog.Models.CombinedParts;
 using Application = System.Windows.Application;
@@ -44,8 +45,14 @@ namespace remeLog.ViewModels
 
         private SemaphoreSlim semaphoreSlim = new SemaphoreSlim(1, 1);
 
+        // Диспетчер UI, захваченный при создании VM: обращаться к UI только через него.
+        // Application.Current при завершении работы становится null — прямое обращение
+        // (Application.Current.Dispatcher) в продолжении после await даёт NRE при закрытии.
+        private readonly Dispatcher _uiDispatcher;
+
         public MainWindowViewModel()
         {
+            _uiDispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
             CloseApplicationCommand = new LambdaCommand(OnCloseApplicationCommandExecuted, CanCloseApplicationCommandExecute);
             TestCommand = new LambdaCommand(OnTestCommandExecuted, CanTestCommandExecute);
             UpdateDatabaseCommand = new LambdaCommand(OnUpdateDatabaseCommandExecuted, CanUpdateDatabaseCommandExecute);
@@ -57,6 +64,7 @@ namespace remeLog.ViewModels
             EditOperatorsCommand = new LambdaCommand(OnEditOperatorsCommandExecuted, CanEditOperatorsCommandExecute);
             EditSerialPartsCommand = new LambdaCommand(OnEditSerialPartsCommandExecuted, CanEditSerialPartsCommandExecute);
             ShowAboutCommand = new LambdaCommand(OnShowAboutCommandExecuted, CanShowAboutCommandExecute);
+            SetThemeCommand = new LambdaCommand(OnSetThemeCommandExecuted);
             ShowPartsInfoCommand = new LambdaCommand(OnShowPartsInfoCommandExecuted, CanShowPartsInfoCommandExecute);
             IncreaseDateCommand = new LambdaCommand(OnIncreaseDateCommandExecuted, CanIncreaseDateCommandExecute);
             DecreaseDateCommand = new LambdaCommand(OnDecreaseDateCommandExecuted, CanDecreaseDateCommandExecute);
@@ -423,6 +431,36 @@ namespace remeLog.ViewModels
         private bool CanShowAboutCommandExecute(object p) => !InProgress;
         #endregion
 
+        #region Theme
+        public ICommand SetThemeCommand { get; }
+
+        /// <summary> Текущая тема оформления (светлая по умолчанию) </summary>
+        public libeLog.Infrastructure.AppTheme Theme
+        {
+            get => AppSettings.Instance.Theme;
+            set
+            {
+                if (AppSettings.Instance.Theme == value) return;
+                AppSettings.Instance.Theme = value;
+                libeLog.Infrastructure.ThemeManager.Apply(value);
+                AppSettings.Save();
+                OnPropertyChanged(nameof(Theme));
+                OnPropertyChanged(nameof(IsLightTheme));
+                OnPropertyChanged(nameof(IsDarkTheme));
+            }
+        }
+        public bool IsLightTheme => Theme == libeLog.Infrastructure.AppTheme.Light;
+        public bool IsDarkTheme => Theme == libeLog.Infrastructure.AppTheme.Dark;
+
+        private void OnSetThemeCommandExecuted(object p)
+        {
+            if (p is libeLog.Infrastructure.AppTheme theme)
+                Theme = theme;
+            else if (p is string name && Enum.TryParse<libeLog.Infrastructure.AppTheme>(name, true, out var parsed))
+                Theme = parsed;
+        }
+        #endregion
+
         #region ShowPartsInfo
         public ICommand ShowPartsInfoCommand { get; }
         private void OnShowPartsInfoCommandExecuted(object p)
@@ -648,6 +686,53 @@ namespace remeLog.ViewModels
         #endregion
         #endregion
 
+        /// <summary>
+        /// UI ещё жив? При закрытии окна/завершении приложения диспетчер останавливается,
+        /// а Application.Current становится null — трогать UI уже нельзя.
+        /// </summary>
+        private bool IsUiAlive =>
+            _uiDispatcher != null
+            && !_uiDispatcher.HasShutdownStarted
+            && !_uiDispatcher.HasShutdownFinished;
+
+        /// <summary>
+        /// Выполнить действие на UI-потоке. Возвращает false, если UI уже недоступен
+        /// (закрытие) или операция отменена — вызывающий должен тихо завершиться.
+        /// Никогда не бросает исключений из-за shutdown (иначе NRE при закрытии).
+        /// </summary>
+        private async Task<bool> InvokeOnUiAsync(Action action, CancellationToken ct)
+        {
+            if (ct.IsCancellationRequested || !IsUiAlive)
+                return false;
+            try
+            {
+                await _uiDispatcher.InvokeAsync(action, DispatcherPriority.Normal, ct);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                // Гонка: диспетчер остановился между проверкой и вызовом
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Отмена фоновой загрузки. Вызывается при закрытии окна — чтобы продолжения
+        /// после await не лезли в уже разобранный UI/Application.Current (NRE).
+        /// </summary>
+        public void CancelLoading()
+        {
+            try { _cancellationTokenSource.Cancel(); } catch (ObjectDisposedException) { }
+            lock (_debounceLock)
+            {
+                try { _debounceTokenSource?.Cancel(); } catch (ObjectDisposedException) { }
+            }
+        }
+
         private async Task LoadPartsAsync(bool first = false)
         {
             if (lockUpdate)
@@ -792,7 +877,8 @@ namespace remeLog.ViewModels
                     var t6 = sw.Elapsed;
                     Status = "Построение списка деталей...";
 
-                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    // Окно могли закрыть, пока ждали БД: UI уже недоступен — тихо выходим
+                    if (!await InvokeOnUiAsync(() =>
                     {
                         var list = reportStates.Select(r =>
                             new CombinedParts(r.Machine, FromDate, ToDate)
@@ -812,7 +898,8 @@ namespace remeLog.ViewModels
                         OnPropertyChanged(nameof(CheckedSummary));
                         OnPropertyChanged(nameof(ReportsSummaryForPeriod));
                         OnPropertyChanged(nameof(CheckedSummaryForPeriod));
-                    });
+                    }, cancellationToken))
+                        return;
 
 #if DEBUG
                     Util.WriteLog($"[LoadParts] UI update (Parts collection): {(sw.Elapsed - t6).TotalMilliseconds:F0} ms"); 
@@ -838,8 +925,8 @@ namespace remeLog.ViewModels
                                 var partsData = await Database.ReadPartsByShiftDateAndMachine(
                                     FromDate, ToDate, part.Machine, ct);
 
-                                await Application.Current.Dispatcher.InvokeAsync(
-                                    () => part.Parts = partsData);
+                                await InvokeOnUiAsync(
+                                    () => part.Parts = partsData, ct);
 
 #if DEBUG
                                 Util.WriteLog($"[LoadParts] ReadParts({part.Machine}): {(sw.Elapsed - tPart).TotalMilliseconds:F0} ms"); 
@@ -858,14 +945,14 @@ namespace remeLog.ViewModels
                                     SqlErrorCode.AuthError => StatusTips.AuthFailedToDb,
                                     _ => $"Ошибка БД №{sqlEx.Number}\n{sqlEx.Message}",
                                 };
-                                await Application.Current.Dispatcher.InvokeAsync(
-                                    () => MessageBoxWindow.Show(message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error));
+                                await InvokeOnUiAsync(
+                                    () => MessageBoxWindow.Show(message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error), ct);
                             }
                             catch (Exception ex)
                             {
                                 Util.WriteLog(ex, $"[LoadParts] Exception при загрузке {part.Machine}");
-                                await Application.Current.Dispatcher.InvokeAsync(
-                                    () => MessageBoxWindow.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error));
+                                await InvokeOnUiAsync(
+                                    () => MessageBoxWindow.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error), ct);
                             }
                         });
 
@@ -888,8 +975,20 @@ namespace remeLog.ViewModels
                         _ = AiHealthMonitor.Instance.CheckNowAsync();
                 }
             }
+            catch (OperationCanceledException)
+            {
+                // Отмена — не ошибка (новый запуск вытеснил старый, окно закрыли): тихо выходим
+                return;
+            }
             catch (Exception ex)
             {
+                // При закрытии окно сообщений уже не показать (и не нужно) — только в лог,
+                // иначе исключение из catch на фоне закрытия роняет приложение в дебаге
+                if (!IsUiAlive)
+                {
+                    Util.WriteLog(ex, "[LoadParts] исключение при завершении работы");
+                    return;
+                }
                 MessageBoxWindow.Show($"Непредвиденная ошибка: {ex.Message}", "Ошибка",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }

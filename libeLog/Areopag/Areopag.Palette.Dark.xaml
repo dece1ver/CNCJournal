@@ -1,0 +1,126 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- ============================================================
+         Areopag — тёмная палитра. Тот же набор ключей 1:1, что и
+         Areopag.Palette.xaml (светлая). Инверсия по аналогии:
+         акценты (Ok/Alert/Warn/Accent) узнаваемы, но осветлены
+         для контраста на тёмном фоне; *Soft — тёмные подложки.
+         Шрифты НЕ менять (размеры под них подогнаны) — ключи
+         оставлены с теми же значениями для совместимости.
+         ============================================================ -->
+
+    <!-- Фон и поверхности -->
+    <SolidColorBrush x:Key="Areopag.Bg0" Color="#12161C"/>
+    <SolidColorBrush x:Key="Areopag.Bg1" Color="#1A2029"/>
+    <!-- Чередующийся фон строк таблиц (через одну) -->
+    <SolidColorBrush x:Key="Areopag.RowAlt" Color="#20262F"/>
+    <SolidColorBrush x:Key="Areopag.Input" Color="#232B36"/>
+    <!-- Границы -->
+    <SolidColorBrush x:Key="Areopag.Line" Color="#3E4753"/>
+    <SolidColorBrush x:Key="Areopag.LineSoft" Color="#2A323C"/>
+    <!-- Текст -->
+    <SolidColorBrush x:Key="Areopag.Text" Color="#E8EDF2"/>
+    <SolidColorBrush x:Key="Areopag.Text2" Color="#A9B4C0"/>
+    <SolidColorBrush x:Key="Areopag.Text3" Color="#7D8895"/>
+    <!-- Нейтральная кнопка: светлее фона Bg0, чтобы не сливалась; hover — приглушённый -->
+    <SolidColorBrush x:Key="Areopag.BtnBg" Color="#2E3742"/>
+    <SolidColorBrush x:Key="Areopag.BtnHover" Color="#2A323C"/>
+    <!-- Акцент: выбранное / ссылка / фокус (осветлён, текст на нём тёмный) -->
+    <SolidColorBrush x:Key="Areopag.Accent" Color="#8FA2C8"/>
+    <SolidColorBrush x:Key="Areopag.AccentHover" Color="#A9B8D8"/>
+    <SolidColorBrush x:Key="Areopag.AccentSoft" Color="#2A3348"/>
+    <SolidColorBrush x:Key="Areopag.OnAccent" Color="#10161F"/>
+    <!-- Primary: фирменная синяя заливка важных кнопок — одинакова в обеих
+         темах, текст на ней всегда белый -->
+    <SolidColorBrush x:Key="Areopag.Primary" Color="#303C60"/>
+    <SolidColorBrush x:Key="Areopag.PrimaryHover" Color="#475172"/>
+    <SolidColorBrush x:Key="Areopag.OnPrimary" Color="#FFFFFF"/>
+    <!-- Подтверждение -->
+    <SolidColorBrush x:Key="Areopag.Ok" Color="#2FBF82"/>
+    <SolidColorBrush x:Key="Areopag.OkHover" Color="#4ACD94"/>
+    <SolidColorBrush x:Key="Areopag.OkSoft" Color="#14392D"/>
+    <!-- Отклонение / внимание -->
+    <SolidColorBrush x:Key="Areopag.Alert" Color="#F0665C"/>
+    <SolidColorBrush x:Key="Areopag.AlertHover" Color="#F47E75"/>
+    <SolidColorBrush x:Key="Areopag.AlertSoft" Color="#4A2320"/>
+    <!-- Предупреждение -->
+    <SolidColorBrush x:Key="Areopag.Warn" Color="#D9A845"/>
+    <SolidColorBrush x:Key="Areopag.WarnSoft" Color="#453312"/>
+    <!-- Disabled -->
+    <SolidColorBrush x:Key="Areopag.Disabled" Color="#5A636D"/>
+    <SolidColorBrush x:Key="Areopag.DisabledBg" Color="#22282F"/>
+    <SolidColorBrush x:Key="Areopag.DisabledFg" Color="#6B7683"/>
+    <!-- Полупрозрачная вуаль поверх disabled-контролов (DatePicker) -->
+    <SolidColorBrush x:Key="Areopag.DisabledVeil" Color="#A5000000"/>
+    <!-- Затемнение фона под оверлеем загрузки (LoadingOverlay) -->
+    <SolidColorBrush x:Key="Areopag.OverlayDim" Color="#50000000"/>
+
+    <!-- Дубли цветов кистей типом Color (см. светлую палитру).
+         Значения обязаны совпадать с одноимёнными кистями выше. -->
+    <Color x:Key="Areopag.AccentSoftColor">#2A3348</Color>
+    <Color x:Key="Areopag.TextColor">#E8EDF2</Color>
+
+    <!-- Иконки: цвета для тематических копий. Светлый «серый» вместо
+         #212121, осветлённый синий/красный — иначе иконки не видны. -->
+    <SolidColorBrush x:Key="Areopag.IconGrey" Color="#E8EDF2"/>
+    <SolidColorBrush x:Key="Areopag.IconGrey10" Color="#E8EDF2" Opacity="0.1"/>
+    <SolidColorBrush x:Key="Areopag.IconBlue" Color="#6FA8FF"/>
+    <SolidColorBrush x:Key="Areopag.IconBlue10" Color="#6FA8FF" Opacity="0.1"/>
+    <SolidColorBrush x:Key="Areopag.IconRed" Color="#F0665C"/>
+
+    <!-- Корпоративные шрифты — НЕ МЕНЯТЬ (см. шапку) -->
+    <FontFamily x:Key="Areopag.FontUI">pack://application:,,,/libeLog;component/Resources/Fonts/#Golos Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="Areopag.FontMono">pack://application:,,,/libeLog;component/Resources/Fonts/#JetBrains Mono, Consolas</FontFamily>
+    <!-- Системный Segoe UI отдельным ключом: remeLog перекрывает им FontUI -->
+    <FontFamily x:Key="Areopag.FontSegoe">Segoe UI</FontFamily>
+
+    <!-- ============================================================
+         Те же ключи меню/комбобоксов для ТЁМНОЙ темы
+         (светлые значения — в Areopag.Palette.xaml).
+         ============================================================ -->
+    <SolidColorBrush x:Key="OutlineButtonBackgroundColor" Color="#2E3742"/>
+    <SolidColorBrush x:Key="OutlineForegroundColor" Color="#E8EDF2"/>
+    <SolidColorBrush x:Key="OutlineBorderColor" Color="#3E4753"/>
+
+    <SolidColorBrush x:Key="TextBox.Static.Background" Color="#232B36"/>
+    <SolidColorBrush x:Key="Menu.Static.Background" Color="#1A2029"/>
+    <SolidColorBrush x:Key="Menu.Static.Border" Color="#3E4753"/>
+    <SolidColorBrush x:Key="Menu.Static.Foreground" Color="#E8EDF2"/>
+    <SolidColorBrush x:Key="Menu.Static.Separator" Color="#2A323C"/>
+    <SolidColorBrush x:Key="Menu.Disabled.Foreground" Color="#7D8895"/>
+    <SolidColorBrush x:Key="MenuItem.Selected.Background" Color="#2A3348"/>
+    <SolidColorBrush x:Key="MenuItem.Selected.Border" Color="#3E4753"/>
+    <SolidColorBrush x:Key="MenuItem.Highlight.Background" Color="#2A3348"/>
+    <SolidColorBrush x:Key="MenuItem.Highlight.Border" Color="#3E4753"/>
+    <SolidColorBrush x:Key="MenuItem.Highlight.Disabled.Background" Color="#0AFFFFFF"/>
+    <SolidColorBrush x:Key="MenuItem.Highlight.Disabled.Border" Color="#21FFFFFF"/>
+
+    <SolidColorBrush x:Key="ComboBox.Static.Background" Color="#232B36"/>
+    <SolidColorBrush x:Key="ComboBox.Static.Border" Color="#3E4753"/>
+    <SolidColorBrush x:Key="ComboBox.Static.Glyph" Color="#A9B4C0"/>
+    <SolidColorBrush x:Key="ComboBox.Static.Editable.Background" Color="#232B36"/>
+    <SolidColorBrush x:Key="ComboBox.Static.Editable.Border" Color="Transparent"/>
+    <SolidColorBrush x:Key="ComboBox.Static.Editable.Button.Background" Color="Transparent"/>
+    <SolidColorBrush x:Key="ComboBox.Static.Editable.Button.Border" Color="Transparent"/>
+    <SolidColorBrush x:Key="ComboBox.MouseOver.Background" Color="#2A3348"/>
+    <SolidColorBrush x:Key="ComboBox.MouseOver.Border" Color="#8FA2C8"/>
+    <SolidColorBrush x:Key="ComboBox.MouseOver.Glyph" Color="#E8EDF2"/>
+    <SolidColorBrush x:Key="ComboBox.MouseOver.Editable.Background" Color="#232B36"/>
+    <SolidColorBrush x:Key="ComboBox.MouseOver.Editable.Border" Color="#8FA2C8"/>
+    <SolidColorBrush x:Key="ComboBox.MouseOver.Editable.Button.Background" Color="#2A3348"/>
+    <SolidColorBrush x:Key="ComboBox.MouseOver.Editable.Button.Border" Color="#3E4753"/>
+    <SolidColorBrush x:Key="ComboBox.Pressed.Background" Color="#2A323C"/>
+    <SolidColorBrush x:Key="ComboBox.Pressed.Border" Color="#8FA2C8"/>
+    <SolidColorBrush x:Key="ComboBox.Pressed.Glyph" Color="#E8EDF2"/>
+    <SolidColorBrush x:Key="ComboBox.Pressed.Editable.Background" Color="#232B36"/>
+    <SolidColorBrush x:Key="ComboBox.Pressed.Editable.Border" Color="#8FA2C8"/>
+    <SolidColorBrush x:Key="ComboBox.Pressed.Editable.Button.Background" Color="#2A323C"/>
+    <SolidColorBrush x:Key="ComboBox.Pressed.Editable.Button.Border" Color="#8FA2C8"/>
+    <SolidColorBrush x:Key="ComboBox.Disabled.Background" Color="#22282F"/>
+    <SolidColorBrush x:Key="ComboBox.Disabled.Border" Color="#2A323C"/>
+    <SolidColorBrush x:Key="ComboBox.Disabled.Glyph" Color="#7D8895"/>
+    <SolidColorBrush x:Key="ComboBox.Disabled.Editable.Background" Color="#22282F"/>
+    <SolidColorBrush x:Key="ComboBox.Disabled.Editable.Border" Color="#2A323C"/>
+    <SolidColorBrush x:Key="ComboBox.Disabled.Editable.Button.Background" Color="Transparent"/>
+    <SolidColorBrush x:Key="ComboBox.Disabled.Editable.Button.Border" Color="Transparent"/>
+</ResourceDictionary>

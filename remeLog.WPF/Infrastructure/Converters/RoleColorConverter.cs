@@ -6,7 +6,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Data;
-using System.Windows.Media;
 
 namespace remeLog.Infrastructure.Converters
 {
@@ -18,12 +17,12 @@ namespace remeLog.Infrastructure.Converters
         {
             if (Enum.TryParse(roleParameter, out User comparedRole))
             {
-                return currentRole == comparedRole 
-                    ? Brushes.Black 
-                    : Brushes.Gray;
+                return currentRole == comparedRole
+                    ? ThemeBrushes.Text
+                    : ThemeBrushes.Text3;
             }
         }
-        return Brushes.Gray;
+        return ThemeBrushes.Text3;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

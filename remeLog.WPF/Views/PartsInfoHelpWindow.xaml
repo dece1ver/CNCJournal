@@ -1,22 +1,24 @@
-﻿<Window x:Class="remeLog.Views.PartsInfoHelpWindow"
+﻿<Window x:Class="remeLog.Views.PartsInfoHelpWindow" chrome:WindowChromeTheme.Enabled="True"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:chrome="clr-namespace:libeLog.Infrastructure;assembly=libeLog"
         xmlns:models="clr-namespace:remeLog.Models"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        Title="Справка" Height="600" Width="500">
+        Title="Справка" Height="600" Width="500"
+        Background="{DynamicResource Areopag.Bg0}">
     <Window.Resources>
         <Style TargetType="ListView">
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="BorderBrush" Value="#DDDDDD"/>
+            <Setter Property="Background" Value="{DynamicResource Areopag.Bg1}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Areopag.LineSoft}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Margin" Value="5"/>
         </Style>
 
         <Style TargetType="GridViewColumnHeader">
-            <Setter Property="Background" Value="#F7F7F7"/>
-            <Setter Property="Foreground" Value="#333333"/>
+            <Setter Property="Background" Value="{DynamicResource Areopag.Bg1}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Padding" Value="4"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
@@ -29,14 +31,14 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="{Binding KeyCombination}" Margin="2 0" FontWeight="Bold" Grid.Column="0" Foreground="#0056A0" FontSize="12"/>
-                <TextBlock Text="{Binding Description}" Margin="2 0" Grid.Column="1" Foreground="#444444" FontSize="12"/>
+                <TextBlock Text="{Binding KeyCombination}" Margin="2 0" FontWeight="Bold" Grid.Column="0" Foreground="{DynamicResource Areopag.Accent}" FontSize="12"/>
+                <TextBlock Text="{Binding Description}" Margin="2 0" Grid.Column="1" Foreground="{DynamicResource Areopag.Text2}" FontSize="12"/>
             </Grid>
         </DataTemplate>
 
         <DataTemplate x:Key="GroupHeaderTemplate">
-            <Border Background="Transparent" Padding="4" Margin="0 2 0 2" BorderBrush="#CCCCCC" BorderThickness="0">
-                <TextBlock FontWeight="Bold" FontSize="12" Foreground="#333333" Text="{Binding Name}"/>
+            <Border Background="Transparent" Padding="4" Margin="0 2 0 2" BorderBrush="{DynamicResource Areopag.LineSoft}" BorderThickness="0">
+                <TextBlock FontWeight="Bold" FontSize="12" Foreground="{DynamicResource Areopag.Text}" Text="{Binding Name}"/>
             </Border>
         </DataTemplate>
 

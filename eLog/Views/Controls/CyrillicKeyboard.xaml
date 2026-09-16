@@ -19,6 +19,7 @@
             <ColumnDefinition/>
             <ColumnDefinition/>
             <ColumnDefinition/>
+            <ColumnDefinition/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition/>
@@ -49,6 +50,8 @@
                 x:Name="PButton" Click="PButton_Click"/>
         <Button Grid.Column="10" Grid.Row="0" Content="Х" Style="{StaticResource KeyboardButton}"
                 x:Name="LsbButton" Click="LsbButton_Click"/>
+        <Button Grid.Column="11" Grid.Row="0" Content="Ё" Style="{StaticResource KeyboardButton}"
+                x:Name="YoButton" Click="YoButton_Click"/>
 
         <Button Grid.Column="0" Grid.Row="1" Content="Ф" Style="{StaticResource KeyboardButton}" 
                 x:Name="AButton" Click="AButton_Click"/>
@@ -72,6 +75,8 @@
                 x:Name="ColonButton" Click="ColonButton_Click"/>
         <Button Grid.Column="10" Grid.Row="1" Content="Э" Style="{StaticResource KeyboardButton}"
                 x:Name="ApButton" Click="ApButton_Click"/>
+        <Button Grid.Column="11" Grid.Row="1" Content="/" Style="{StaticResource KeyboardButton}"
+                x:Name="SlashButton" Click="SlashButton_Click"/>
 
         <Button Grid.Column="0" Grid.Row="2" Content="Я" Style="{StaticResource KeyboardButton}" 
                 x:Name="ZButton" Click="ZButton_Click"/>

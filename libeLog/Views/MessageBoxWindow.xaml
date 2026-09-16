@@ -1,12 +1,14 @@
-<Window x:Class="libeLog.Views.MessageBoxWindow"
+<Window x:Class="libeLog.Views.MessageBoxWindow" chrome:WindowChromeTheme.Enabled="True"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:chrome="clr-namespace:libeLog.Infrastructure"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         SizeToContent="WidthAndHeight"
         MinWidth="300" MaxWidth="480"
-        FontFamily="Segoe UI" FontSize="12">
+        FontFamily="Segoe UI" FontSize="12"
+        Background="{DynamicResource Areopag.Bg0}">
     <Window.Resources>
         <DrawingBrush x:Key="IconError" Stretch="Uniform">
             <DrawingBrush.Drawing>

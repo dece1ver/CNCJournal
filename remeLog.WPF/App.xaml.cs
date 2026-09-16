@@ -1,4 +1,5 @@
 ﻿using libeLog.Extensions;
+using libeLog.Infrastructure;
 using remeLog.Infrastructure;
 using remeLog.Infrastructure.Services;
 using remeLog.Infrastructure.Types;
@@ -390,6 +391,13 @@ namespace remeLog
         {
             ParseFeatureArgs(e.Args);
             base.OnStartup(e);
+            // Тема — здесь, а не в конструкторе: ресурсы из App.xaml
+            // (InitializeComponent) загружаются позже конструктора и
+            // перезаписали бы применённую раньше палитру.
+            Util.WriteLog("Применение темы оформления: " + AppSettings.Instance.Theme);
+            ThemeManager.Apply(AppSettings.Instance.Theme);
+            // Chrome окон включается атрибутом chrome:WindowChromeTheme.Enabled="True"
+            // на корневом теге каждого окна — см. libeLog WindowChromeTheme.
             ConfigureCulture();
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
             DispatcherUnhandledException += OnDispatcherUnhandledException;

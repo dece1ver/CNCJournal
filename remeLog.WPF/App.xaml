@@ -8,11 +8,15 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <!-- Areopag первым: StyleDictionary ссылается на его кисти -->
-                <ResourceDictionary Source="/libeLog;component/Areopag/Areopag.Palette.xaml" />
-                <ResourceDictionary Source="/libeLog;component/Areopag/Areopag.Common.xaml" />
-                <ResourceDictionary Source="/libeLog;component/Icons.xaml" />
-                <ResourceDictionary Source="/libeLog;component/StyleDictionary.xaml" />
+                <!-- Areopag первым: StyleDictionary ссылается на его кисти.
+                     URI — абсолютные pack, как в ThemeManager (LightPaletteUri),
+                     чтобы переключение темы находило и заменяло словарь. -->
+                <ResourceDictionary Source="pack://application:,,,/libeLog;component/Areopag/Areopag.Palette.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/libeLog;component/Areopag/Areopag.Common.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/libeLog;component/Icons.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/libeLog;component/StyleDictionary.xaml" />
+                <!-- Неявные тематические стили remeLog (после StyleDictionary: ссылаются на его ключи) -->
+                <ResourceDictionary Source="Infrastructure/ImplicitStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <contolrs:SpinnerArcs x:Key="SpinnerArcs" x:Shared="False" />
@@ -43,7 +47,6 @@
             <cnv:ColumnVisibilityConverter x:Key="ColumnVisibilityConverter"/>
             <cnv:AllVisibleMultiConverter x:Key="AllVisibleMultiConverter"/>
             <cnv:VisibilityConverter x:Key="VisibilityConverter"/>
-            <cnv:MachineInspectionCalendarCellConverter x:Key="MachineInspectionCalendarCellConverter"/>
             <cnv:MachineInspectionCalendarCellIconMultiConverter x:Key="MachineInspectionCalendarCellIconMultiConverter"/>
             <cnv:MachineActivityStatusTextConverter x:Key="MachineActivityStatusTextConverter"/>
             <cnv:MachineActivityStatusBrushConverter x:Key="MachineActivityStatusBrushConverter"/>

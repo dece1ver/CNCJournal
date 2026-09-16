@@ -1,6 +1,7 @@
-﻿<Window x:Class="remeLog.Views.LongSetupsWindow"
+﻿<Window x:Class="remeLog.Views.LongSetupsWindow" chrome:WindowChromeTheme.Enabled="True"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:chrome="clr-namespace:libeLog.Infrastructure;assembly=libeLog"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:remeLog.Views"
@@ -8,7 +9,8 @@
         WindowStyle="SingleBorderWindow" WindowState="Maximized" ResizeMode="CanResize"
         xmlns:vm="clr-namespace:remeLog.ViewModels" xmlns:md="clr-namespace:remeLog.Models" 
         d:DataContext="{d:DesignInstance Type=vm:LongSetupsViewModel}"
-        Title="Длительные наладки" Height="450" Width="800">
+        Title="Длительные наладки" Height="450" Width="800"
+        Background="{DynamicResource Areopag.Bg0}">
     <DockPanel>
         <StatusBar DockPanel.Dock="Bottom" HorizontalContentAlignment="Stretch">
             <StatusBarItem HorizontalContentAlignment="Stretch">
@@ -20,10 +22,11 @@
             <Button Content="Вернуть взад" Width="100" HorizontalAlignment="Right" Margin="2"
                     Command="{Binding UpdatePartsCommand}"/>
             <Button Content="Записать" Width="100" HorizontalAlignment="Right" Margin="2"
-                    Command="{Binding SavePartsCommand}"/>
+                    Command="{Binding SavePartsCommand}"
+                    Style="{StaticResource Areopag.PrimaryButton}" FontFamily="{DynamicResource Areopag.FontMono}"/>
         </DockPanel>
         <DataGrid ItemsSource="{Binding Parts, UpdateSourceTrigger=PropertyChanged}" AutoGenerateColumns="False" 
-          VerticalGridLinesBrush="LightGray" HorizontalGridLinesBrush="LightGray"
+          VerticalGridLinesBrush="{DynamicResource Areopag.LineSoft}" HorizontalGridLinesBrush="{DynamicResource Areopag.LineSoft}"
           ColumnWidth="SizeToCells" CanUserSortColumns="False" 
           VerticalScrollBarVisibility="Visible" 
           SelectionUnit="CellOrRowHeader" CanUserReorderColumns="False" 
@@ -31,42 +34,23 @@
           EnableRowVirtualization="True"
           VirtualizingPanel.IsVirtualizing="True" 
           VirtualizingPanel.VirtualizationMode="Recycling"
-          IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}" Margin="0 -1 0 0" BorderThickness="0" SelectedItem="{Binding SelectedPart, UpdateSourceTrigger=PropertyChanged}"
-          AlternatingRowBackground="#01D3D3D3">
+          IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}" Margin="0 -1 0 0" BorderThickness="0" SelectedItem="{Binding SelectedPart, UpdateSourceTrigger=PropertyChanged}">
             <DataGrid.RowStyle>
-                <Style TargetType="DataGridRow">
+                <Style TargetType="DataGridRow" BasedOn="{StaticResource Areopag.DataGridRow}">
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding NeedUpdate, UpdateSourceTrigger=PropertyChanged}" Value="True">
-                            <Setter Property="Foreground" Value="Blue"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Accent}"/>
                         </DataTrigger>
                         <Trigger Property="IsEditing" Value="True">
-                            <Setter Property="Foreground" Value="DarkRed"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Alert}"/>
                         </Trigger>
                     </Style.Triggers>
                 </Style>
             </DataGrid.RowStyle>
-            <DataGrid.CellStyle>
-                <Style TargetType="DataGridCell">
-                    <Style.Triggers>
-                        <Trigger Property="IsSelected" Value="True">
-                            <Setter Property="Background" Value="LightBlue"/>
-                            <Setter Property="Foreground" Value="Black"/>
-                        </Trigger>
-                    </Style.Triggers>
-
-                </Style>
-            </DataGrid.CellStyle>
             <DataGrid.Resources>
-                <Style TargetType="DataGridColumnHeader">
-                    <Setter Property="Background" Value="#01D3D3D3"/>
-                    <Setter Property="BorderBrush" Value="LightGray"/>
-                    <Setter Property="BorderThickness" Value="0 1 1 1"/>
-                    <Setter Property="Foreground" Value="Black"/>
-                    <Setter Property="FontWeight" Value="SemiBold"/>
+                <!-- Остальное (фон, рамка, шрифт, шаблон с грипперами) — из глобального Areopag.DataGridColumnHeader -->
+                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource Areopag.DataGridColumnHeader}">
                     <Setter Property="Padding" Value="3"/>
-                    <Setter Property="HorizontalContentAlignment" Value="Center" />
-                    <Setter Property="VerticalContentAlignment" Value="Center" />
-                    <Setter Property="SnapsToDevicePixels" Value="True"/>
                     <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
                     <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
                 </Style>

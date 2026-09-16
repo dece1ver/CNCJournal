@@ -1,18 +1,22 @@
-﻿<Window x:Class="remeLog.Views.PartSelectionFilterWindow"
+<Window x:Class="remeLog.Views.PartSelectionFilterWindow" chrome:WindowChromeTheme.Enabled="True"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:chrome="clr-namespace:libeLog.Infrastructure;assembly=libeLog"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:remeLog.Views"
         mc:Ignorable="d"
-        Title="Дополнительный отбор" Height="158" Width="320">
+        Title="Дополнительный отбор" Height="158" Width="320"
+        Background="{DynamicResource Areopag.Bg0}">
     <Window.Resources>
-        <Style TargetType="Button">
+        <Style TargetType="Button" BasedOn="{StaticResource Areopag.Button}">
             <Setter Property="Width" Value="80"/>
             <Setter Property="Height" Value="25"/>
+            <Setter Property="FontFamily" Value="{DynamicResource Areopag.FontMono}" />
         </Style>
         <Style TargetType="TextBlock">
             <Setter Property="Margin" Value="0 0 0 5"/>
+            <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
         </Style>
     </Window.Resources>
     <DockPanel>
@@ -35,17 +39,7 @@
                  TextAlignment="Center"
                  VerticalContentAlignment="Center"
                  Margin="5 0 0 5"
-                 Text="{Binding RunCountFilter, UpdateSourceTrigger=PropertyChanged, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}">
-                    <TextBox.Style>
-                        <Style TargetType="TextBox">
-                            <Style.Triggers>
-                                <Trigger Property="IsEnabled" Value="True">
-                                    <Setter Property="Background" Value="White"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBox.Style>
-                </TextBox>
+                 Text="{Binding RunCountFilter, UpdateSourceTrigger=PropertyChanged, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}"/>
             </DockPanel>
 
             <CheckBox Grid.Row="1" Content="Индивидуально по станкам" Margin="-1 0 0 7"
@@ -59,7 +53,8 @@
                 IsDefault="True"
                 Click="OkButton_Click"
                 HorizontalAlignment="Right"
-                IsEnabled="{Binding IsInputValid, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                IsEnabled="{Binding IsInputValid, RelativeSource={RelativeSource AncestorType=Window}}"
+                Style="{StaticResource Areopag.PrimaryButton}" FontFamily="{DynamicResource Areopag.FontMono}"/>
             </UniformGrid>
         </Grid>
     </DockPanel>

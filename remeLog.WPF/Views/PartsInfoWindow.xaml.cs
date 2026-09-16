@@ -854,8 +854,7 @@ namespace remeLog.Views
         }
 
         private void PartsInfoWindow_PreviewKeyDown(object sender, KeyEventArgs e)
-        {
-            // если обрабатывать, то окно кнопки в окне нажимаются не с первого раза
+        {            // если обрабатывать, то окно кнопки в окне нажимаются не с первого раза
             return;
             if (DataContext is PartsInfoWindowViewModel d)
             {

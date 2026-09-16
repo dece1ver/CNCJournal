@@ -57,6 +57,7 @@ namespace remeLog.Views
         {
             if (this.DataContext is MainWindowViewModel dx)
             {
+                dx.CancelLoading();
                 dx.StopBackgroundWorker();
             }
         }

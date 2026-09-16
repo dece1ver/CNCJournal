@@ -79,11 +79,10 @@
                     <DataTemplate>
                         <DockPanel>
                             <Button Content="▶" DockPanel.Dock="Right" Style="{StaticResource GeneralButton}" 
-                                    Margin="2 11 1 1" Padding="3 0 0 3" Width="50" Visibility="{Binding IsSelected, Converter={StaticResource VisibilityConverter}}" Click="Button_Click"
+                                    Margin="2 8 1 0" Padding="3 0 0 3" Width="50" Visibility="{Binding IsSelected, Converter={StaticResource VisibilityConverter}}" Click="Button_Click"
                                     />
-                            <Button Content="УП" DockPanel.Dock="Right" Style="{StaticResource GeneralButton}" Margin="2 11 1 1" Padding="0" Width="50" 
+                            <Button Content="УП" DockPanel.Dock="Right" Style="{StaticResource GeneralButton}" Margin="2 8 1 0" Padding="0" Width="50" 
                                     Visibility="{Binding NcProgramButtonEnabled, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource VisibilityConverter}}" Click="Button_Click_1">
-                                
                             </Button>
                             <GroupBox Style="{StaticResource PulseGroupBoxStyle}">
                                 <GroupBox.Header>

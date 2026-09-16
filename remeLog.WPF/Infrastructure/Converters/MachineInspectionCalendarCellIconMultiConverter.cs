@@ -6,14 +6,26 @@ using System.Windows.Data;
 
 namespace remeLog.Infrastructure.Converters
 {
+    /// <summary>
+    /// Иконка статуса ячейки станка в календаре проверок.
+    /// values[0] — строка дня (<see cref="MachineInspectionCalendarDayRow"/>),
+    /// values[1] — имя станка (заголовок колонки DataGrid). Так один XAML-шаблон
+    /// обслуживает все динамические колонки станков (см. MachineInspectionCalendarWindow.xaml).
+    /// </summary>
     internal class MachineInspectionCalendarCellIconMultiConverter : IMultiValueConverter
     {
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         {
-            if (values.Length > 0 && values[0] is MachineInspectionCalendarCell cell)
+            if (values.Length >= 2 && values[0] is MachineInspectionCalendarDayRow row && values[1] is string machine)
             {
-                var key = cell.IsChecked ? "StatusOkIcon" : "StatusErrorIcon";
-                return Application.Current.TryFindResource(key) ?? DependencyProperty.UnsetValue;
+                foreach (var cell in row.Cells)
+                {
+                    if (cell.Machine == machine)
+                    {
+                        var key = cell.IsChecked ? "StatusOkIcon" : "StatusErrorIcon";
+                        return Application.Current.TryFindResource(key) ?? DependencyProperty.UnsetValue;
+                    }
+                }
             }
             return DependencyProperty.UnsetValue;
         }

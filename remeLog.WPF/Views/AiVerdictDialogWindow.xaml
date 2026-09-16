@@ -1,6 +1,7 @@
-<Window x:Class="remeLog.Views.AiVerdictDialogWindow"
+<Window x:Class="remeLog.Views.AiVerdictDialogWindow" chrome:WindowChromeTheme.Enabled="True"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:chrome="clr-namespace:libeLog.Infrastructure;assembly=libeLog"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008" mc:Ignorable="d"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:remeLog.Views"
@@ -8,7 +9,8 @@
         SizeToContent="Height" Width="580" MaxHeight="720"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        WindowStyle="ToolWindow">
+        WindowStyle="ToolWindow"
+        Background="{DynamicResource Areopag.Bg0}">
     <StackPanel Margin="14">
         <!-- Вердикт -->
         <TextBlock Text="{Binding VerdictTitle}" d:Text="Всё в порядке"
@@ -19,7 +21,7 @@
 
         <!-- Объяснение -->
         <TextBlock Text="Объяснение" FontWeight="SemiBold" Margin="0 0 0 4"/>
-        <Border BorderThickness="1" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+        <Border BorderThickness="1" BorderBrush="{DynamicResource Areopag.Line}"
                 Padding="8" Margin="0 0 0 10" MaxHeight="200">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <TextBlock Text="{Binding Explanation}" d:Text="Объяснение ИИ..."
@@ -45,7 +47,7 @@
             <TextBlock Text="Исключение из расчёта К1" FontWeight="SemiBold" Margin="0 0 0 2"/>
             <TextBlock Text="Отметьте записи, в которых не виноват оператор — они не попадут в расчёт."
                        Opacity="0.7" FontSize="11" Margin="0 0 0 4" TextWrapping="Wrap"/>
-            <Border BorderThickness="1" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+            <Border BorderThickness="1" BorderBrush="{DynamicResource Areopag.Line}"
                     Padding="6" Margin="0 0 0 6" MaxHeight="220">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <ItemsControl ItemsSource="{Binding Candidates}">
@@ -96,10 +98,12 @@
             <Button Grid.Column="0" Content="{Binding OppositeActionText}" Padding="0 6" Margin="0 0 5 0"
                     Click="Opposite_Click"
                     ToolTip="{Binding OppositeActionTooltip}"
-                    IsEnabled="{Binding OppositeEnabled}"/>
+                    IsEnabled="{Binding OppositeEnabled}"
+                    Style="{StaticResource Areopag.DangerButton}" FontFamily="{DynamicResource Areopag.FontMono}"/>
             <Button Grid.Column="1" Content="{Binding PrimaryActionText}" Padding="0 6" Margin="5 0 0 0" IsDefault="True"
                     Click="Primary_Click"
-                    ToolTip="{Binding PrimaryActionTooltip}"/>
+                    ToolTip="{Binding PrimaryActionTooltip}"
+                    Style="{StaticResource Areopag.OkButton}" FontFamily="{DynamicResource Areopag.FontMono}"/>
         </Grid>
     </StackPanel>
 </Window>

@@ -1,11 +1,13 @@
-﻿<Window x:Class="remeLog.Views.UpdateDatabaseWindow"
+﻿<Window x:Class="remeLog.Views.UpdateDatabaseWindow" chrome:WindowChromeTheme.Enabled="True"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:chrome="clr-namespace:libeLog.Infrastructure;assembly=libeLog"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:vm="clr-namespace:remeLog.ViewModels"
         Title="Обновление базы данных"
         Height="450" Width="800"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource Areopag.Bg0}">
     <Window.DataContext>
         <vm:UpdateDatabaseViewModel/>
     </Window.DataContext>
@@ -35,7 +37,8 @@
                     Content="Запустить обновление"
                     Command="{Binding StartCommand}"
                     Width="180" Padding="10,5"
-                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"/>
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                    Style="{StaticResource Areopag.PrimaryButton}" FontFamily="{DynamicResource Areopag.FontMono}"/>
                 <Button DockPanel.Dock="Left"
                     Content="Отмена"
                     Command="{Binding CancelCommand}"
@@ -55,7 +58,7 @@
             </DockPanel>
 
             <ListView ItemsSource="{Binding LogMessages}" Grid.Row="2"
-                      FontFamily="Consolas"
+                      FontFamily="{StaticResource Areopag.FontMono}"
                       FontSize="13">
                 <ListView.ItemTemplate>
                     <DataTemplate>
@@ -87,6 +90,7 @@
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="Text" Value="{x:Null}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding Icon}" Value="Ok">
                                                     <Setter Property="Text" Value="- ОК" />

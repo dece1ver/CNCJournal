@@ -1,12 +1,14 @@
-<Window x:Class="remeLog.Views.MachineActivityWindow"
+﻿<Window x:Class="remeLog.Views.MachineActivityWindow" chrome:WindowChromeTheme.Enabled="True"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:chrome="clr-namespace:libeLog.Infrastructure;assembly=libeLog"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:cnt="clr-namespace:remeLog.Views.Controls"
         xmlns:vm="clr-namespace:remeLog.ViewModels"
         mc:Ignorable="d" WindowStartupLocation="CenterOwner"
-        Title="Сейчас в работе" Height="450" Width="1300">
+        Title="Сейчас в работе" Height="450" Width="1300"
+        Background="{DynamicResource Areopag.Bg0}">
     <Window.DataContext>
         <vm:MachineActivityViewModel/>
     </Window.DataContext>
@@ -16,7 +18,7 @@
                      Visibility="{Binding InProgress, Converter={StaticResource VisibilityConverter}}"/>
         <Grid>
             <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="True"
-                      VerticalGridLinesBrush="LightGray" HorizontalGridLinesBrush="LightGray"
+                      VerticalGridLinesBrush="{DynamicResource Areopag.LineSoft}" HorizontalGridLinesBrush="{DynamicResource Areopag.LineSoft}"
                       ColumnWidth="SizeToCells" CanUserSortColumns="False"
                       VerticalScrollBarVisibility="Visible"
                       SelectionUnit="CellOrRowHeader" CanUserReorderColumns="False"
@@ -25,37 +27,19 @@
                       VirtualizingPanel.IsVirtualizing="True"
                       VirtualizingPanel.VirtualizationMode="Recycling"
                       Margin="0 -1 0 0" BorderThickness="0"
-                      AlternatingRowBackground="#01D3D3D3"
                       FontSize="14">
                 <DataGrid.RowStyle>
-                    <Style TargetType="DataGridRow">
+                    <Style TargetType="DataGridRow" BasedOn="{StaticResource Areopag.DataGridRow}">
                         <Setter Property="ToolTip"
                                 Value="{Binding Activity.UpdatedLocal, StringFormat=Обновлено: {0:dd.MM.yyyy HH:mm:ss}}"/>
                     </Style>
                 </DataGrid.RowStyle>
-                <DataGrid.CellStyle>
-                    <Style TargetType="DataGridCell">
-                        <Style.Triggers>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="LightBlue"/>
-                                <Setter Property="Foreground" Value="Black"/>
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </DataGrid.CellStyle>
                 <DataGrid.Resources>
-                    <Style TargetType="DataGridColumnHeader">
-                        <Setter Property="Background" Value="#01D3D3D3"/>
-                        <Setter Property="BorderBrush" Value="LightGray"/>
-                        <Setter Property="BorderThickness" Value="0 1 1 1"/>
-                        <Setter Property="Foreground" Value="Black"/>
-                        <Setter Property="FontWeight" Value="SemiBold"/>
+                    <!-- Остальное (фон, рамка, шрифт, шаблон с грипперами) — из глобального Areopag.DataGridColumnHeader -->
+                    <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource Areopag.DataGridColumnHeader}">
                         <Setter Property="FontSize" Value="12"/>
                         <Setter Property="Padding" Value="8 5"/>
                         <Setter Property="MinHeight" Value="32"/>
-                        <Setter Property="HorizontalContentAlignment" Value="Center"/>
-                        <Setter Property="VerticalContentAlignment" Value="Center"/>
-                        <Setter Property="SnapsToDevicePixels" Value="True"/>
                         <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
                         <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
                     </Style>

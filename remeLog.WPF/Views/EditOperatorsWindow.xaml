@@ -1,13 +1,15 @@
-﻿<Window x:Class="remeLog.Views.EditOperatorsWindow"
+﻿<Window x:Class="remeLog.Views.EditOperatorsWindow" chrome:WindowChromeTheme.Enabled="True"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:chrome="clr-namespace:libeLog.Infrastructure;assembly=libeLog"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:remeLog.Views"
         xmlns:cmd="clr-namespace:remeLog.Infrastructure.Commands"
         xmlns:vm="clr-namespace:remeLog.ViewModels"
         mc:Ignorable="d" WindowStartupLocation="CenterOwner"
-        Title="Редактирование операторов" Height="800" Width="600">
+        Title="Редактирование операторов" Height="800" Width="600"
+        Background="{DynamicResource Areopag.Bg0}">
     <Window.DataContext>
         <vm:EditOperatorsWindowViewModel/>
     </Window.DataContext>
@@ -20,7 +22,7 @@
         </Grid.RowDefinitions>
 
         <DataGrid Grid.Row="0" Name="EmployeesDataGrid" AutoGenerateColumns="False" ItemsSource="{Binding Operators}" IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}" 
-                  AlternatingRowBackground="#01D3D3D3" VerticalGridLinesBrush="LightGray" HorizontalGridLinesBrush="LightGray"
+                 VerticalGridLinesBrush="{DynamicResource Areopag.LineSoft}" HorizontalGridLinesBrush="{DynamicResource Areopag.LineSoft}"
                   CanUserAddRows="True" CanUserDeleteRows="True" PreviewKeyDown="EmployeesDataGrid_PreviewKeyDown">
             <DataGrid.Resources>
                 <Style TargetType="{x:Type DataGridRow}">
@@ -28,10 +30,10 @@
                     <Setter Property="BorderBrush" Value="Transparent"/>
                     <Style.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="Background" Value="{DynamicResource Areopag.Input}"/>
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="Background" Value="{DynamicResource Areopag.Input}"/>
                             <Setter Property="BorderBrush" Value="Transparent"/>
                             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
                         </Trigger>
@@ -66,9 +68,10 @@
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock">
                             <Setter Property="Margin" Value="5 2"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsModified}" Value="True">
-                                    <Setter Property="Foreground" Value="Blue"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource Areopag.Accent}"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -80,9 +83,10 @@
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock">
                             <Setter Property="Margin" Value="5 2"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsModified}" Value="True">
-                                    <Setter Property="Foreground" Value="Blue"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource Areopag.Accent}"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -94,9 +98,10 @@
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock">
                             <Setter Property="Margin" Value="5 2"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsModified}" Value="True">
-                                    <Setter Property="Foreground" Value="Blue"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource Areopag.Accent}"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -109,9 +114,10 @@
                         <Style TargetType="TextBlock">
                             <Setter Property="Margin" Value="5 2"/>
                             <Setter Property="HorizontalAlignment" Value="Center"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsModified}" Value="True">
-                                    <Setter Property="Foreground" Value="Blue"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource Areopag.Accent}"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -133,7 +139,8 @@
 
         <Button Grid.Row="1" Content="Записать" Width="100" Height="30" Margin="10" HorizontalAlignment="Right" 
                 IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}"
-                Command="{Binding SaveOperatorsCommand}"/>
+                Command="{Binding SaveOperatorsCommand}"
+                Style="{StaticResource Areopag.PrimaryButton}" FontFamily="{DynamicResource Areopag.FontMono}"/>
 
         <ProgressBar Grid.Row="2" IsIndeterminate="{Binding InProgress}"/>
         <StatusBar Grid.Row="3">

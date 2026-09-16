@@ -55,8 +55,8 @@
                 </ListView>
             </DockPanel>
             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                <Button Content=">" Margin="4 2" Style="{StaticResource GeneralButton}" Padding="0 -2 0 2" Click="Add_Button_Click"/>
-                <Button Content="&lt;" Margin="4 2" Style="{StaticResource GeneralButton}" Padding="0 -2 0 2" Click="Remove_Button_Click"/>
+                <Button Content=">" Margin="4 2" Width="42" Height="42" Style="{StaticResource GeneralButton}" Padding="0 -2 0 2" Click="Add_Button_Click"/>
+                <Button Content="&lt;" Margin="4 2" Width="42" Height="42" Style="{StaticResource GeneralButton}" Padding="0 -2 0 2" Click="Remove_Button_Click"/>
             </StackPanel>
             <DockPanel Grid.Column="2" >
                 <TextBlock Text="Работающие на данном станке" HorizontalAlignment="Center" DockPanel.Dock="Top"/>

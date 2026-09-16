@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using libeLog.Infrastructure;
+using Newtonsoft.Json;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
 using System;
@@ -183,6 +184,9 @@ namespace remeLog.Infrastructure
         public static int PartsHistoryMaxDaysBack { get; set; } = 720;
         public bool AiThinkingEnabled { get; set; } = true;
 
+        /// <summary> Тема оформления (светлая по умолчанию) </summary>
+        public AppTheme Theme { get; set; } = AppTheme.Light;
+
         public List<string> MachineInspectionCalendarSelectedMachines { get; set; } = new();
 
 
@@ -241,6 +245,7 @@ namespace remeLog.Infrastructure
             AssignedPartsSheet = "";
             ConnectionString = "";
             User = null;
+            Theme = AppTheme.Light;
             Util.WriteLog("Параметры заполнены, сохранение.");
             Save();
             Util.WriteLog("Сохранение завершено.");
