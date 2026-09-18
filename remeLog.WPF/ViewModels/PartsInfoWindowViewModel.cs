@@ -71,6 +71,8 @@ namespace remeLog.ViewModels
                         OnPropertyChanged(nameof(HealthError));
                     if (e.PropertyName == nameof(AiHealthMonitor.HealthTooltip))
                         OnPropertyChanged(nameof(HealthTooltip));
+                    // Кнопка «Анализ дня» зависит от доступности ИИ — пересчитать CanExecute.
+                    CommandManager.InvalidateRequerySuggested();
                 };
             }
             ChangeCalcFixedCommand = new LambdaCommand(OnChangeCalcFixedCommandExecuted, CanChangeCalcFixedCommandExecute);
@@ -266,6 +268,9 @@ namespace remeLog.ViewModels
         {
             // Демо: AiService недоступен вне рабочей среды — проверки не планируем.
             if (Core.DomainSettings.DemoMode) return;
+            // ИИ недоступен — не шлём заведомо дохлые запросы (иначе все строки
+            // получат статус ошибки); проверка перезапустится при следующей правке.
+            if (!IsAiAvailable) return;
             if (!HasFeatureAiMasterCheck || lockUpdate || InProgress) return;
 
             int version = (_aiCheckVersion.TryGetValue(part, out var v) ? v : 0) + 1;
@@ -2919,7 +2924,7 @@ namespace remeLog.ViewModels
 
         private async void OnAnalyzeDayExecuted(object _)
         {
-            if (!Util.HasFeature(RemeLogFeature.Ai)) return;
+            if (!Util.HasFeature(RemeLogFeature.Ai) || !IsAiAvailable) return;
 
             if (AiInProgress)
             {
@@ -3251,7 +3256,7 @@ namespace remeLog.ViewModels
         }
 
         private bool CanAnalyzeDayExecute(object _) =>
-            Util.HasFeature(RemeLogFeature.Ai) && IsSingleMachineSingleDay && Parts.Count > 0 && !InProgress;
+            Util.HasFeature(RemeLogFeature.Ai) && IsAiAvailable && IsSingleMachineSingleDay && Parts.Count > 0 && !InProgress;
 
         #endregion
 

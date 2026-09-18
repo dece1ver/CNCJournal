@@ -212,6 +212,8 @@ namespace remeLog.ViewModels
                 OnPropertyChanged(nameof(HealthError));
             if (e.PropertyName == nameof(AiHealthMonitor.HealthTooltip))
                 OnPropertyChanged(nameof(HealthTooltip));
+            // Состояние ИИ-кнопок зависит от доступности ИИ — пересчитать CanExecute.
+            CommandManager.InvalidateRequerySuggested();
         }
 
         public string WindowTitle
@@ -426,7 +428,7 @@ namespace remeLog.ViewModels
                 window.Show();
             }
         }
-        private bool CanShowBatchAiAnalysisCommandExecute(object p) => !InProgress && HasFeatureAi;
+        private bool CanShowBatchAiAnalysisCommandExecute(object p) => !InProgress && HasFeatureAi && IsAiAvailable;
         #endregion
 
         #region ShowAbout

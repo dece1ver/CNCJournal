@@ -93,9 +93,15 @@ namespace remeLog.ViewModels
         public BatchAiAnalysisViewModel()
         {
             _ThinkingEnabled = AppSettings.Instance.AiThinkingEnabled;
-            StartCommand = new LambdaCommand(OnStartExecuted, _ => !IsRunning);
+            StartCommand = new LambdaCommand(OnStartExecuted, _ => !IsRunning && AiHealthMonitor.Instance.IsAiAvailable);
             CancelCommand = new LambdaCommand(OnCancelExecuted, _ => IsRunning);
             RefreshCommand = new LambdaCommand(OnRefreshExecuted, _ => !IsRunning);
+            // ИИ может упасть/подняться прямо при открытом окне — пересчитать доступность Старта.
+            AiHealthMonitor.Instance.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(AiHealthMonitor.IsAiAvailable))
+                    CommandManager.InvalidateRequerySuggested();
+            };
             _ = RefreshListAsync();
         }
 
