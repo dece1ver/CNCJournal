@@ -192,9 +192,6 @@ namespace remeLog.ViewModels
         public bool IsAdministrator =>
             AppSettings.Administrators.Contains(Environment.UserName, StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>Демо-режим (--demo): данные сгенерированы, SQL Server не используется.</summary>
-        public bool IsDemoMode => Core.DomainSettings.DemoMode;
-
         public bool HasFeatureAi => Util.HasFeature(RemeLogFeature.Ai);
         public bool HasFeatureAdvancedEdit => Util.HasFeature(RemeLogFeature.AdvancedEdit);
         public bool HasFeatureInstances => Util.HasFeature(RemeLogFeature.Instances);
