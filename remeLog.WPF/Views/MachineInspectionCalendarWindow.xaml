@@ -136,7 +136,7 @@
                      RebuildColumns) между «Дата» и «Проверено». -->
                 <!-- Ширина с запасом: текст вида «12/14 — 085.7%» (~108px) +
                      горизонтальный отступ текста (PercentCellStyle.Margin). -->
-                <DataGridTextColumn Header="Проверено" Binding="{Binding CheckedPercent}" Width="130"
+                <DataGridTextColumn Header="Проверено" Binding="{Binding CheckedPercent}" Width="140"
                                     ElementStyle="{StaticResource PercentCellStyle}"/>
             </DataGrid.Columns>
             <DataGrid.Resources>

@@ -96,7 +96,7 @@ public static class HardRuleEvaluator
                 { }
                 else
                 {
-                    AddHard($"[{p.PartName}] Причина наладки требует пересмотра технологии: «{p.MasterSetupComment}»");
+                    AddHard($"[{p.PartName}] Причина отклонения в наладке требует пересмотра технологии: «{p.MasterSetupComment}»");
                 }
             }
 
@@ -108,7 +108,7 @@ public static class HardRuleEvaluator
                 { }
                 else
                 {
-                    AddHard($"[{p.PartName}] Причина изготовления требует пересмотра технологии: «{p.MasterMachiningComment}»");
+                    AddHard($"[{p.PartName}] Причина отклонения в изготовлении требует пересмотра технологии: «{p.MasterMachiningComment}»");
                 }
             }
 

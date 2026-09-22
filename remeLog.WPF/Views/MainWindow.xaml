@@ -337,14 +337,11 @@
                             </Button.ContextMenu>
                         </Button>
                     </Grid>
-                    <Button Width="100" HorizontalAlignment="Left" Margin="6 0" FontSize="12"
+                    <Button Width="100" HorizontalAlignment="Left" Margin="2 0 0 0" FontSize="12"
+                            Style="{StaticResource Areopag.OutlinePrimaryButton}"
+                            FontFamily="{DynamicResource Areopag.FontMono}"
                             IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}"
                             Command="{Binding ShowPartsInfoCommand}">
-                        <Button.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="0"/>
-                            </Style>
-                        </Button.Resources>
                         <Button.Content>
                             <TextBlock TextAlignment="Center">
                                 <Run Text="Подробно"/>

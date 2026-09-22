@@ -1870,9 +1870,9 @@ namespace remeLog.Models
             }
 
             if (RequiresComment(MasterSetupComment, SetupReasonsRequireComment))
-                result.Add((nameof(MasterSetupDetail), $"Причина наладки «{MasterSetupComment}» требует уточнения в комментарии"));
+                result.Add((nameof(MasterSetupDetail), $"Причина отклонения в наладке «{MasterSetupComment}» требует уточнения в комментарии"));
             if (RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment))
-                result.Add((nameof(MasterMachiningDetail), $"Причина изготовления «{MasterMachiningComment}» требует уточнения в комментарии"));
+                result.Add((nameof(MasterMachiningDetail), $"Причина отклонения в изготовлении «{MasterMachiningComment}» требует уточнения в комментарии"));
 
             if (SpecifiedDowntimesRatio > 0.5)
                 result.Add((nameof(SpecifiedDowntimesComment), $"Простои {SpecifiedDowntimesRatio:0%} — более 50% времени работы"));

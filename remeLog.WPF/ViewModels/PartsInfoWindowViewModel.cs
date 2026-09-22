@@ -2950,10 +2950,23 @@ namespace remeLog.ViewModels
             _aiCancellationTokenSource = new CancellationTokenSource();
             var ct = _aiCancellationTokenSource.Token;
 
-            var progress = new Progress<string>(thought =>
+            var thinkingStarted = false;
+            var progress = new Progress<AiProgress>(update =>
             {
-                ThinkingThoughts += thought;
-                Status = "ИИ думает...";
+                if (update.Kind == AiProgressKind.Queue)
+                {
+                    // Транзитный статус: заменяет текст и сбрасывает флаг —
+                    // следующий чанк размышлений начнёт поле заново, без склейки.
+                    ThinkingThoughts = update.Text;
+                    Status = update.Text;
+                    thinkingStarted = false;
+                }
+                else
+                {
+                    ThinkingThoughts = thinkingStarted ? ThinkingThoughts + update.Text : update.Text;
+                    thinkingStarted = true;
+                    Status = "ИИ думает...";
+                }
             });
 
             try
@@ -3045,10 +3058,7 @@ namespace remeLog.ViewModels
             var suggestions = AiExcludeSuggestion.ParseMany(
                 result.SuggestExcludeFromReports, result.Explanation);
 
-            Part? FindPart(AiExcludeSuggestion s) => Parts.FirstOrDefault(p =>
-                p.PartName == s.PartName &&
-                p.Setup == s.Setup &&
-                p.Order == s.Order);
+            Part? FindPart(AiExcludeSuggestion s) => AiExcludeSuggestion.FindRow(Parts, s);
             static string DisplayOf(AiExcludeSuggestion s) => $"{s.PartName} | М/Л: {s.Order} | Уст.{s.Setup}";
 
             var matched = new List<(Part Part, string Reason)>();
@@ -3084,14 +3094,24 @@ namespace remeLog.ViewModels
             var owner = Application.Current?.Windows.OfType<PartsInfoWindow>()
                             .FirstOrDefault(w => ReferenceEquals(w.DataContext, this))
                         ?? Application.Current?.MainWindow;
+            // Вопросы к отчёту мастера — отдельным блоком диалога, из «Признаков» убираются,
+            // чтобы не дублироваться (в Signals сервера они остаются для персистентности).
+            var shiftIssues = result.ShiftReportIssues ?? Array.Empty<string>();
+            var otherSignals = (result.Signals ?? Array.Empty<string>())
+                .Except(shiftIssues)
+                .ToList();
             var dlg = new AiVerdictDialogWindow(
                 machine, FromDate.Date,
                 result.RequiresReview, result.Confidence, result.Explanation ?? string.Empty,
-                result.Signals ?? Array.Empty<string>(),
+                otherSignals,
                 matched, unmatched,
                 canChangeDayStatus,
                 alreadyReviewedHint,
-                flaggedPreview)
+                flaggedPreview,
+                shiftIssues,
+                result.ShiftReportSummary ?? Array.Empty<string>(),
+                result.EscalatedByShiftReport,
+                result.EscalatedByData)
             {
                 Owner = owner
             };

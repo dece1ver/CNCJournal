@@ -1,5 +1,8 @@
+using remeLog.Core.Extensions;
+using remeLog.Models;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace remeLog.Core.Services
 {
@@ -46,6 +49,32 @@ namespace remeLog.Core.Services
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Привязывает предложение к строке суток. Сначала точное совпадение
+        /// (имя + установка + заказ); если его нет — нормализованное имя
+        /// (без скобочных комментариев, регистра и лишних пробелов — модель
+        /// регулярно режет суффиксы вида «(производство)»). Нормализованное
+        /// совпадение принимается только при единственном кандидате — иначе
+        /// неоднозначность (та же деталь в обеих сменах), возвращается null.
+        /// </summary>
+        public static Part? FindRow(IEnumerable<Part> rows, AiExcludeSuggestion s)
+        {
+            var exact = rows.FirstOrDefault(p =>
+                p.PartName == s.PartName &&
+                p.Setup == s.Setup &&
+                p.Order == s.Order);
+            if (exact != null) return exact;
+
+            var norm = s.PartName.NormalizedPartNameWithoutComments();
+            if (string.IsNullOrEmpty(norm)) return null;
+
+            var candidates = rows.Where(p =>
+                p.Setup == s.Setup &&
+                p.Order == s.Order &&
+                p.PartName.NormalizedPartNameWithoutComments() == norm).ToList();
+            return candidates.Count == 1 ? candidates[0] : null;
         }
     }
 }

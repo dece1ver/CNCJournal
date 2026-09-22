@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -77,6 +78,39 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
     string? model = null,
     double? temperature = null)
     {
+        try
+        {
+            return await GenerateCoreOnceAsync(prompt, think, thinkingProgress, ct, model, temperature);
+        }
+        catch (DegenerateGenerationException ex) when (think)
+        {
+            // Один ретрай с температурой повыше: петля часто рвётся на менее
+            // жадном сэмплировании. Не помогло — исключение уходит выше, контроллер
+            // эскалирует день (fail-safe, как HasError).
+            logger.LogWarning(ex,
+                "Петля в рассуждении, повторный прогон с температурой 0.3");
+            thinkingProgress?.Report("\n… повторный прогон после зацикливания …\n");
+            try
+            {
+                return await GenerateCoreOnceAsync(prompt, think, thinkingProgress, ct, model, 0.3);
+            }
+            catch (DegenerateGenerationException retryEx)
+            {
+                logger.LogWarning(retryEx, "Петля в рассуждении и после ретрая");
+                throw new DegenerateGenerationException(
+                    "Модель дважды зациклилась в рассуждении: " + retryEx.Message);
+            }
+        }
+    }
+
+    private async Task<(string Response, string? Thinking)> GenerateCoreOnceAsync(
+    string prompt,
+    bool think,
+    IProgress<string>? thinkingProgress,
+    CancellationToken ct,
+    string? model,
+    double? temperature)
+    {
         var effectiveModel = string.IsNullOrWhiteSpace(model) ? _model : model;
 
         var request = new OllamaGenerateRequest
@@ -89,6 +123,10 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
             Options = new()
             {
                 Temperature = temperature ?? 0.1,
+                // Штраф за повторы везде (и think, и короткие JSON): петли в рассуждении
+                // и залипания в формате режутся сэмплером, на детерминизм 1.15 почти не влияет.
+                RepeatPenalty = 1.15,
+                RepeatLastN = 64,
                 // Промпт (~2.3k токенов) + данные насыщенного дня (~2-3k) + think-генерация
                 // должны помещаться целиком: при переполнении Ollama молча вытесняет
                 // НАЧАЛО промпта (ROLE/DEFINITIONS). 8192 не хватало в think-режиме.
@@ -127,6 +165,14 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
         var fullResponse = new StringBuilder();
         var thinkBuffer = new StringBuilder();
         var lastReportedLen = 0;
+        var lastLoopCheckLen = 0;
+
+        // Временной троттлинг размышлений (≈50 репортов/сек): равномерное «печатание»
+        // независимо от скорости модели + bounded-нагрузка на UI-поток. Дельты идут
+        // как есть, lastReportedLen двигается только на реально отосланное — потерь нет.
+        // Хвост после done дотягивается ниже без троттлинга.
+        var thinkReportInterval = TimeSpan.FromMilliseconds(20);
+        var lastThinkReportAt = Stopwatch.GetTimestamp();
 
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream, Encoding.UTF8);
@@ -158,23 +204,32 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
             {
                 thinkBuffer.Append(chunk.Thinking);
 
+                // Ранний обрыв петли: дальше модель будет повторяться до NumPredict,
+                // жечь GPU и очередь. Проверка не чаще каждых ~200 символов прироста.
+                if (thinkBuffer.Length - lastLoopCheckLen >= 200)
+                {
+                    lastLoopCheckLen = thinkBuffer.Length;
+                    if (ThinkingLoopGuard.IsLooping(thinkBuffer.ToString()))
+                    {
+                        var tail = thinkBuffer.ToString(
+                            Math.Max(0, thinkBuffer.Length - 200), Math.Min(200, thinkBuffer.Length));
+                        throw new DegenerateGenerationException(
+                            $"повтор рассуждения: «{tail.Trim()}»");
+                    }
+                }
+
                 if (thinkingProgress != null)
                 {
                     var currentLen = thinkBuffer.Length;
-                    if (currentLen > lastReportedLen)
+                    if (currentLen > lastReportedLen
+                        && Stopwatch.GetElapsedTime(lastThinkReportAt) >= thinkReportInterval)
                     {
                         var delta = thinkBuffer.ToString(lastReportedLen,
                                            currentLen - lastReportedLen);
-                        var lastChar = delta[^1];
-
-                        if (lastChar is ' ' or '\n' or '\r' or ',' or '.' or '!'
-                                     or '?' or ':' or ';' or '-'
-                            || delta.Length >= 10)
-                        {
-                            lastReportedLen = currentLen;
-                            logger.LogDebug("Think delta [{L}]: [{D}]", delta.Length, delta);
-                            thinkingProgress.Report(delta);
-                        }
+                        lastReportedLen = currentLen;
+                        lastThinkReportAt = Stopwatch.GetTimestamp();
+                        logger.LogDebug("Think delta [{L}]: [{D}]", delta.Length, delta);
+                        thinkingProgress.Report(delta);
                     }
                 }
             }
@@ -227,6 +282,8 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
     private class OllamaOptions
     {
         [JsonPropertyName("temperature")] public double Temperature { get; set; } = 0.1;
+        [JsonPropertyName("repeat_penalty")] public double RepeatPenalty { get; set; } = 1.1;
+        [JsonPropertyName("repeat_last_n")] public int RepeatLastN { get; set; } = 64;
         [JsonPropertyName("num_ctx")] public int NumCtx { get; set; } = 8192;
         [JsonPropertyName("num_predict")] public int NumPredict { get; set; } = -1;
     }

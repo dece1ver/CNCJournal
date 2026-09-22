@@ -14,6 +14,12 @@ namespace remeLog.Infrastructure
         public string[] SuggestExcludeFromReports { get; set; } = Array.Empty<string>();
         [JsonPropertyName("flaggedParts")]
         public string[] FlaggedParts { get; set; } = Array.Empty<string>();
+        [JsonPropertyName("shiftReportIssues")]
+        public string[] ShiftReportIssues { get; set; } = Array.Empty<string>();
+        [JsonPropertyName("shiftReportSummary")]
+        public string[] ShiftReportSummary { get; set; } = Array.Empty<string>();
+        [JsonPropertyName("escalatedByData")] public bool EscalatedByData { get; set; }
+        [JsonPropertyName("escalatedByShiftReport")] public bool EscalatedByShiftReport { get; set; }
         [JsonPropertyName("error")] public string? Error { get; set; }
         [JsonPropertyName("promptVersion")] public string? PromptVersion { get; set; }
         public bool HasError => !string.IsNullOrEmpty(Error);

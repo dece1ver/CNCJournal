@@ -221,6 +221,13 @@
         </Style.Triggers>
     </Style>
 
+    <!-- Outline-кнопка: нейтральный фон обычной кнопки + фирменная рамка Primary
+         (фон как у «Подробно», рамка цветом как у «Сформировать»). -->
+    <Style x:Key="Areopag.OutlinePrimaryButton" TargetType="{x:Type Button}" BasedOn="{StaticResource Areopag.Button}">
+        <Setter Property="BorderBrush" Value="{DynamicResource Areopag.Primary}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+
     <!-- Нейтральный тумблер: то же + подсветка включённого состояния. -->
     <Style x:Key="Areopag.ToggleButton" TargetType="{x:Type ToggleButton}">
         <Setter Property="Background" Value="{DynamicResource Areopag.BtnBg}"/>

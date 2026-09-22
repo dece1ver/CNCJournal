@@ -90,6 +90,12 @@ public static class FalsePositiveFilter
     ///     (<see cref="MasteringAutoApprover.IsConfirmedMastering"/>) — модель
     ///     требует то, чего регламент не требует; формулировки про найденное
     ///     опровержение («уже выполнялась», «противоречит») не трогаются;
+    /// 11. «plan=0 / отсутствует норматив» по строке без заказа (Order пустой
+    ///     или «Без М/Л») при фактически нулевом плане — норма (DEFINITIONS
+    ///     «Норматив отсутствует», зеркало hasOrder из HardRuleEvaluator):
+    ///     модель сомневается в таких строках (кейс 21.09.2026 Rontek HTC420).
+    ///     Строки с заказом не трогаем — там plan=0 эскалируется
+    ///     детерминированным hard (недоработка нормирования).
     /// Пункты 5/6 (исключения для plan=0 при б/н/б/и/частичной наладке) сняты —
     /// норматив привязан к заказу, а не к факту работы, недоработка нормирования
     /// эскалируется всегда. Симптом лечился здесь; корень — remeLog Part.cs
@@ -140,6 +146,7 @@ public static class FalsePositiveFilter
                 !hasNonSmallBatchShtuchnaya && IsSmallBatchThresholdClaim(signal) ? "пороги штучной партии пересчитаны моделью" :
                 IsK1ExcludeEcho(signal) ? "эхо exclude-подсказки про К1" :
                 hasConfirmedMastering && IsUnconfirmedMasteringClaim(signal) ? "освоение подтверждено детерминированно" :
+                IsNoOrderPlan0Claim(signal, request.Parts) ? "plan=0 без заказа — норма" :
                 (string?)null;
 
             if (reason != null)
@@ -349,4 +356,28 @@ public static class FalsePositiveFilter
             System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture,
             out value);
+
+    /// <summary>
+    /// Жалоба на plan=0 / отсутствие норматива, когда все явно названные строки
+    /// без заказа (Order пустой или «Без М/Л» — зеркало hasOrder из HardRule) и
+    /// план там действительно нулевой: норма, объяснений не требует.
+    /// Безымянная жалоба режется, только если без заказа весь день, — иначе
+    /// она может относиться к строке с заказом, где plan=0 — недоработка
+    /// нормирования и детерминированный hard.
+    /// </summary>
+    private static bool IsNoOrderPlan0Claim(string signal, List<PartContext> parts)
+    {
+        var lower = signal.ToLowerInvariant();
+        var mentionsPlan0 = lower.Contains("plan=0") || lower.Contains("план=0") || lower.Contains("план 0")
+            || (lower.Contains("норматив") && (lower.Contains("отсутств") || lower.Contains("нет ")
+                || lower.Contains("не установлен") || lower.Contains("не указан") || lower.Contains("нулев")));
+        if (!mentionsPlan0) return false;
+
+        static bool NoOrderNoNorm(PartContext p) =>
+            (string.IsNullOrWhiteSpace(p.Order) || IsBezMl(p.Order))
+            && (p.SetupTimePlan <= 0 || p.SingleProductionTimePlan <= 0);
+
+        var named = NamedParts(lower, parts);
+        return named.Count > 0 ? named.All(NoOrderNoNorm) : parts.Count > 0 && parts.All(NoOrderNoNorm);
+    }
 }

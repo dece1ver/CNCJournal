@@ -8,6 +8,19 @@ public class AnalyzeRequest
     public string ShiftDate { get; set; } = "";
     public List<string> Signals { get; set; } = [];
     public List<PartContext> Parts { get; set; } = [];
+
+    /// <summary>
+    /// Суточные отчёты мастера (день + ночь, cnc_shifts) для проверки их содержимого:
+    /// свежий пересчёт простоя делает клиент, сервер применяет ShiftReportRuleEvaluator.
+    /// Пусто (старый клиент) — проверка отчёта пропускается.
+    /// </summary>
+    public List<ShiftReportContext> ShiftReports { get; set; } = [];
+
+    /// <summary>
+    /// Закрытый список причин простоя (cnc_downtime_reasons) с клиента —
+    /// сервер сверяет с ним DowntimeReason (правило R6), свой справочник не держит.
+    /// </summary>
+    public List<string> DowntimeReasons { get; set; } = [];
     public bool EnableThinking { get; set; } = false;
     public string? Model { get; set; }
 
@@ -82,6 +95,32 @@ public class PartsHistoryDto
     public List<PartsHistoryLineDto> Lines { get; set; } = new();
 }
 
+/// <summary>
+/// Снимок суточного отчёта мастера по одной смене (cnc_shifts) + свежие значения,
+/// пересчитанные клиентом по строкам parts на момент анализа. Серверные правила
+/// работают по свежим значениям; расхождение со снимком — отдельное нарушение (R4).
+/// </summary>
+public class ShiftReportContext
+{
+    /// <summary> Название смены («День»/«Ночь»). </summary>
+    public string Shift { get; set; } = "";
+    /// <summary> Длительность смены в минутах (660/630). </summary>
+    public int ShiftMinutes { get; set; }
+    /// <summary> Строка отчёта есть в cnc_shifts. Нет — проверять нечего (hard). </summary>
+    public bool ReportExists { get; set; }
+    public string Master { get; set; } = "";
+    /// <summary> Снимок неотмеченного простоя из БД на момент сохранения отчёта. </summary>
+    public double StoredUnspecifiedDowntimes { get; set; }
+    /// <summary> Свежий пересчёт неотмеченного простоя по текущим parts. </summary>
+    public double FreshUnspecifiedDowntimes { get; set; }
+    public string DowntimeReason { get; set; } = "";
+    public string MasterComment { get; set; } = "";
+    /// <summary> Есть ли строки parts за эту смену. </summary>
+    public bool HasParts { get; set; }
+    /// <summary> Доля частичной наладки (0..1+) — для рекомендательного S2. </summary>
+    public double PartialSetupRatio { get; set; }
+}
+
 public class PartsHistoryLineDto
 {
     public string ShiftDate { get; set; } = "";
@@ -114,6 +153,32 @@ public class AnalyzeResponse
     public string Explanation { get; set; } = "";
     public string ThinkingProcess { get; set; } = "";
     public string SuggestedReason { get; set; } = "";
+
+    /// <summary>
+    /// Вопросы к суточному отчёту мастера (детерминированные R1–R6 + рекомендательный
+    /// S2 + семантическая релевантность S1 от модели). Дублируются в Signals,
+    /// отдельный массив — для обособленного блока в диалоге вердикта.
+    /// </summary>
+    public List<string> ShiftReportIssues { get; set; } = [];
+
+    /// <summary>
+    /// Построчная сводка проверки отчёта мастера (по смене: факты + детерминированный
+    /// вердикт). Заполняется всегда, когда клиент прислал ShiftReports, — UI показывает
+    /// блок «Отчёт мастера» даже при отсутствии вопросов.
+    /// </summary>
+    public List<string> ShiftReportSummary { get; set; } = [];
+
+    /// <summary>
+    /// Эскалация вызвана данными записей (hard/soft/вердикт модели). UI подсвечивает
+    /// блок признаков жёлтым. S2-soft по отчёту сюда не входит.
+    /// </summary>
+    public bool EscalatedByData { get; set; }
+
+    /// <summary>
+    /// Эскалация вызвана суточным отчётом (детерминированные hard или S1 модели).
+    /// UI подсвечивает блок «Отчёт мастера» жёлтым.
+    /// </summary>
+    public bool EscalatedByShiftReport { get; set; }
     public string? Error { get; set; }
     public bool HasError => !string.IsNullOrEmpty(Error);
     public string? PromptVersion { get; set; }

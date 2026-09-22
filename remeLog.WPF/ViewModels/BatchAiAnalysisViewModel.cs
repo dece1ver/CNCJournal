@@ -210,9 +210,21 @@ namespace remeLog.ViewModels
                             continue;
                         }
 
-                        var progress = new Progress<string>(thought =>
+                        var thinkingStarted = false;
+                        var progress = new Progress<AiProgress>(update =>
                         {
-                            item.ThinkingThoughts += thought;
+                            if (update.Kind == AiProgressKind.Queue)
+                            {
+                                item.ThinkingThoughts = update.Text;
+                                thinkingStarted = false;
+                            }
+                            else
+                            {
+                                item.ThinkingThoughts = thinkingStarted
+                                    ? item.ThinkingThoughts + update.Text
+                                    : update.Text;
+                                thinkingStarted = true;
+                            }
                         });
 
                         var result = await _aiClient.AnalyzeAsync(
@@ -241,6 +253,10 @@ namespace remeLog.ViewModels
                             item.State = BatchItemState.Done;
                             item.Summary = BuildResultSummary(result);
                             item.Explanation = result.Explanation;
+                            item.ShiftReportNote = result.ShiftReportIssues is { Length: > 0 } issues
+                                ? "Отчёт мастера: " + string.Join("; ", issues)
+                                : "";
+                            item.ShiftCausedEscalation = result.EscalatedByShiftReport;
                             item.Confidence = result.Confidence;
                             item.RequiresReview = result.RequiresReview;
                         }
@@ -351,6 +367,28 @@ namespace remeLog.ViewModels
         {
             get => _Explanation;
             set => Set(ref _Explanation, value);
+        }
+
+        private string _ShiftReportNote = "";
+        /// <summary> Вопросы к суточному отчёту мастера — строкой под объяснением. </summary>
+        public string ShiftReportNote
+        {
+            get => _ShiftReportNote;
+            set
+            {
+                if (Set(ref _ShiftReportNote, value))
+                    OnPropertyChanged(nameof(HasShiftReportNote));
+            }
+        }
+
+        public bool HasShiftReportNote => !string.IsNullOrWhiteSpace(ShiftReportNote);
+
+        private bool _ShiftCausedEscalation;
+        /// <summary> Строка отчёта подсвечивается: эскалация вызвана суточным отчётом. </summary>
+        public bool ShiftCausedEscalation
+        {
+            get => _ShiftCausedEscalation;
+            set => Set(ref _ShiftCausedEscalation, value);
         }
 
         public double Confidence { get; set; }

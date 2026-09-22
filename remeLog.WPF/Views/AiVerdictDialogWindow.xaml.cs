@@ -96,6 +96,42 @@ namespace remeLog.Views
             DependencyProperty.Register(nameof(HasSignals), typeof(bool), typeof(AiVerdictDialogWindow),
                 new PropertyMetadata(false));
 
+        public static readonly DependencyProperty ShiftReportIssuesProperty =
+            DependencyProperty.Register(nameof(ShiftReportIssues), typeof(ObservableCollection<string>), typeof(AiVerdictDialogWindow),
+                new PropertyMetadata(null));
+
+        public static readonly DependencyProperty HasShiftReportIssuesProperty =
+            DependencyProperty.Register(nameof(HasShiftReportIssues), typeof(bool), typeof(AiVerdictDialogWindow),
+                new PropertyMetadata(false));
+
+        public static readonly DependencyProperty ShiftReportSummaryProperty =
+            DependencyProperty.Register(nameof(ShiftReportSummary), typeof(ObservableCollection<string>), typeof(AiVerdictDialogWindow),
+                new PropertyMetadata(null));
+
+        public static readonly DependencyProperty HasShiftReportSummaryProperty =
+            DependencyProperty.Register(nameof(HasShiftReportSummary), typeof(bool), typeof(AiVerdictDialogWindow),
+                new PropertyMetadata(false));
+
+        public static readonly DependencyProperty ShiftCausedEscalationProperty =
+            DependencyProperty.Register(nameof(ShiftCausedEscalation), typeof(bool), typeof(AiVerdictDialogWindow),
+                new PropertyMetadata(false));
+
+        public static readonly DependencyProperty DataVerdictTextProperty =
+            DependencyProperty.Register(nameof(DataVerdictText), typeof(string), typeof(AiVerdictDialogWindow),
+                new PropertyMetadata(string.Empty));
+
+        public static readonly DependencyProperty DataVerdictBrushProperty =
+            DependencyProperty.Register(nameof(DataVerdictBrush), typeof(string), typeof(AiVerdictDialogWindow),
+                new PropertyMetadata("#212121"));
+
+        public static readonly DependencyProperty ShiftVerdictTextProperty =
+            DependencyProperty.Register(nameof(ShiftVerdictText), typeof(string), typeof(AiVerdictDialogWindow),
+                new PropertyMetadata(string.Empty));
+
+        public static readonly DependencyProperty ShiftVerdictBrushProperty =
+            DependencyProperty.Register(nameof(ShiftVerdictBrush), typeof(string), typeof(AiVerdictDialogWindow),
+                new PropertyMetadata("#212121"));
+
         public static readonly DependencyProperty CandidatesProperty =
             DependencyProperty.Register(nameof(Candidates), typeof(ObservableCollection<AiVerdictCandidateItem>), typeof(AiVerdictDialogWindow),
                 new PropertyMetadata(null));
@@ -212,6 +248,64 @@ namespace remeLog.Views
             set => SetValue(HasSignalsProperty, value);
         }
 
+        /// <summary> Вопросы к суточному отчёту мастера — отдельный блок, без действий. </summary>
+        public ObservableCollection<string> ShiftReportIssues
+        {
+            get => (ObservableCollection<string>)GetValue(ShiftReportIssuesProperty);
+            set => SetValue(ShiftReportIssuesProperty, value);
+        }
+
+        public bool HasShiftReportIssues
+        {
+            get => (bool)GetValue(HasShiftReportIssuesProperty);
+            set => SetValue(HasShiftReportIssuesProperty, value);
+        }
+
+        /// <summary> Построчная сводка проверки отчёта мастера — видна всегда. </summary>
+        public ObservableCollection<string> ShiftReportSummary
+        {
+            get => (ObservableCollection<string>)GetValue(ShiftReportSummaryProperty);
+            set => SetValue(ShiftReportSummaryProperty, value);
+        }
+
+        public bool HasShiftReportSummary
+        {
+            get => (bool)GetValue(HasShiftReportSummaryProperty);
+            set => SetValue(HasShiftReportSummaryProperty, value);
+        }
+
+        /// <summary> Рамка отчёта мастера желтеет: эскалация вызвана суточным отчётом. </summary>
+        public bool ShiftCausedEscalation
+        {
+            get => (bool)GetValue(ShiftCausedEscalationProperty);
+            set => SetValue(ShiftCausedEscalationProperty, value);
+        }
+
+        public string DataVerdictText
+        {
+            get => (string)GetValue(DataVerdictTextProperty);
+            set => SetValue(DataVerdictTextProperty, value);
+        }
+
+        public string DataVerdictBrush
+        {
+            get => (string)GetValue(DataVerdictBrushProperty);
+            set => SetValue(DataVerdictBrushProperty, value);
+        }
+
+        /// <summary> Общий вывод по суточному отчёту для заголовка секции. </summary>
+        public string ShiftVerdictText
+        {
+            get => (string)GetValue(ShiftVerdictTextProperty);
+            set => SetValue(ShiftVerdictTextProperty, value);
+        }
+
+        public string ShiftVerdictBrush
+        {
+            get => (string)GetValue(ShiftVerdictBrushProperty);
+            set => SetValue(ShiftVerdictBrushProperty, value);
+        }
+
         public ObservableCollection<AiVerdictCandidateItem> Candidates
         {
             get => (ObservableCollection<AiVerdictCandidateItem>)GetValue(CandidatesProperty);
@@ -324,6 +418,10 @@ namespace remeLog.Views
         /// <param name="canChangeDayStatus">Результат ИИ сохранён в БД — статус дня менять можно.</param>
         /// <param name="alreadyReviewedHint">Текст предупреждения о перезаписи существующей проверки ("" — нет).</param>
         /// <param name="flaggedPreview">Строки, которые ИИ отметит проблемными при эскалации.</param>
+        /// <param name="shiftReportIssues">Вопросы к суточному отчёту мастера — отдельный блок, без действий.</param>
+        /// <param name="shiftReportSummary">Построчная сводка проверки отчёта — видна всегда, даже без вопросов.</param>
+        /// <param name="shiftCausedEscalation">Рамка отчёта желтеет: причина эскалации — суточный отчёт.</param>
+        /// <param name="dataCausedEscalation">Вердикт заголовка данных: причина эскалации — записи.</param>
         public AiVerdictDialogWindow(
             string machine,
             System.DateTime shiftDate,
@@ -335,7 +433,11 @@ namespace remeLog.Views
             IReadOnlyList<string> unmatched,
             bool canChangeDayStatus,
             string alreadyReviewedHint = "",
-            IReadOnlyList<string>? flaggedPreview = null)
+            IReadOnlyList<string>? flaggedPreview = null,
+            IReadOnlyList<string>? shiftReportIssues = null,
+            IReadOnlyList<string>? shiftReportSummary = null,
+            bool shiftCausedEscalation = false,
+            bool dataCausedEscalation = false)
         {
             InitializeComponent();
 
@@ -348,6 +450,19 @@ namespace remeLog.Views
             Explanation = string.IsNullOrWhiteSpace(explanation) ? "Без объяснения." : explanation;
             Signals = new ObservableCollection<string>(signals ?? Array.Empty<string>());
             HasSignals = Signals.Count > 0;
+            var shiftIssues = shiftReportIssues ?? Array.Empty<string>();
+            ShiftReportIssues = new ObservableCollection<string>(shiftIssues);
+            HasShiftReportIssues = ShiftReportIssues.Count > 0;
+            var shiftSummary = shiftReportSummary ?? Array.Empty<string>();
+            ShiftReportSummary = new ObservableCollection<string>(shiftSummary);
+            HasShiftReportSummary = ShiftReportSummary.Count > 0;
+            ShiftCausedEscalation = shiftCausedEscalation;
+
+            // Общие выводы в заголовках блоков — в палитре вердикта (оранжевый/зелёный).
+            DataVerdictText = dataCausedEscalation ? "требует проверки" : "в порядке";
+            DataVerdictBrush = dataCausedEscalation ? "#E65100" : "#2E7D32";
+            ShiftVerdictText = shiftCausedEscalation ? "требует проверки" : "в порядке";
+            ShiftVerdictBrush = shiftCausedEscalation ? "#E65100" : "#2E7D32";
 
             var items = new ObservableCollection<AiVerdictCandidateItem>();
             foreach (var (part, reason) in matched)

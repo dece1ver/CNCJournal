@@ -1,5 +1,7 @@
 ﻿using libeLog.Extensions;
+using remeLog.Infrastructure.Types;
 using remeLog.Models;
+using static remeLog.Infrastructure.Extensions.Part;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -15,6 +17,16 @@ using System.Threading.Tasks;
 namespace remeLog.Infrastructure
 {
     public record AiHealthResult(bool Server, bool Ollama, string? Error = null);
+
+    /// <summary>
+    /// Тип обновления прогресса анализа. Очередь и размышления идут одним каналом,
+    /// но с разной семантикой: очередь ЗАМЕНЯЕТ текст (транзитный статус), а приход
+    /// первого чанка размышлений ОЧИЩАЕТ поле — иначе «позиция 2» склеивается
+    /// с началом thinking («...позиция 2Хорошо, давайте...»).
+    /// </summary>
+    public enum AiProgressKind { Queue, Thinking }
+
+    public record AiProgress(AiProgressKind Kind, string Text);
 
     public class AiServiceClient
     {
@@ -59,14 +71,15 @@ namespace remeLog.Infrastructure
 
         public async Task<AiAnalysisResult> AnalyzeAsync(
             string machine, DateTime shiftDate, IEnumerable<Part> parts,
-            IProgress<string>? thinkingProgress = null,
+            IProgress<AiProgress>? thinkingProgress = null,
             CancellationToken ct = default)
         {
             var partList = parts.ToList();
             var partsHistories = await LoadPartsHistoriesAsync(
                 machine, shiftDate, partList, ct);
             var promptProfile = await GetPromptProfileCachedAsync(machine, ct);
-            var request = BuildRequest(machine, shiftDate, partList, partsHistories, promptProfile);
+            var shiftReports = BuildShiftReports(machine, shiftDate, partList);
+            var request = BuildRequest(machine, shiftDate, partList, partsHistories, promptProfile, shiftReports);
 
             return AppSettings.Instance.AiThinkingEnabled
                 ? await AnalyzeWithStreamAsync(request, thinkingProgress, ct)
@@ -129,11 +142,11 @@ namespace remeLog.Infrastructure
         }
 
         private async Task<AiAnalysisResult> AnalyzeSimpleAsync(
-            object request, IProgress<string>? thinkingProgress, CancellationToken ct)
+            object request, IProgress<AiProgress>? thinkingProgress, CancellationToken ct)
         {
             try
             {
-                thinkingProgress?.Report("думает (немного)");
+                thinkingProgress?.Report(new AiProgress(AiProgressKind.Thinking, "думает (немного)"));
                 var response = await _http.PostAsJsonAsync(
                     $"{GetUrl()}/api/analysis", request, ct);
                 response.EnsureSuccessStatusCode();
@@ -154,7 +167,7 @@ namespace remeLog.Infrastructure
 
         private async Task<AiAnalysisResult> AnalyzeWithStreamAsync(
             object request,
-            IProgress<string>? thinkingProgress,
+            IProgress<AiProgress>? thinkingProgress,
             CancellationToken ct)
         {
             try
@@ -201,13 +214,14 @@ namespace remeLog.Infrastructure
                             case "queue":
                                 var queueInfo = JsonSerializer.Deserialize<QueueInfo>(data);
                                 if (queueInfo != null)
-                                    thinkingProgress?.Report($"Анализ в очереди: позиция {queueInfo.Position}");
+                                    thinkingProgress?.Report(new AiProgress(AiProgressKind.Queue,
+                                        $"Анализ в очереди: позиция {queueInfo.Position}"));
                                 break;
 
                             case "thinking":
                                 var thought = JsonSerializer.Deserialize<string>(data);
                                 if (!string.IsNullOrWhiteSpace(thought))
-                                    thinkingProgress?.Report(thought);
+                                    thinkingProgress?.Report(new AiProgress(AiProgressKind.Thinking, thought));
                                 break;
 
                             case "result":
@@ -330,7 +344,8 @@ namespace remeLog.Infrastructure
         private static object BuildRequest(
                 string machine, DateTime shiftDate, IEnumerable<Part> parts,
                 Dictionary<(string PartName, string Order, int Setup), PartsHistorySummary> partsHistories,
-                string? promptProfile = null)
+                string? promptProfile = null,
+                List<object>? shiftReports = null)
         {
             var partList = parts.ToList();
             var partContexts = partList.Select(p => BuildPartContext(p, partsHistories)).ToList();
@@ -342,12 +357,61 @@ namespace remeLog.Infrastructure
                 shiftDate = shiftDate.ToString("yyyy-MM-dd"),
                 signals = daySignals,
                 parts = partContexts,
+                shiftReports = shiftReports ?? new List<object>(),
+                downtimeReasons = AppSettings.Instance.UnspecifiedDowntimesReasons,
                 model = AppSettings.AiModel,
                 promptProfile = string.IsNullOrWhiteSpace(promptProfile) ? null : promptProfile.Trim(),
                 // Единственный источник истины «думать или нет» — сервер уважает его
                 // на обоих эндпоинтах; выбор /stream — только транспорт (SSE).
                 enableThinking = AppSettings.Instance.AiThinkingEnabled,
             };
+        }
+
+        /// <summary>
+        /// Снимки суточных отчётов мастера (cnc_shifts, день + ночь) + свежие значения,
+        /// пересчитанные по текущим parts теми же формулами, что рисует DailyReportWindow.
+        /// Сервер сверяет снимок со свежим значением (R4) и применяет остальные правила.
+        /// Ошибка чтения БД — отчёт помечается отсутствующим, сервер эскалирует (hard).
+        /// </summary>
+        private static List<object> BuildShiftReports(
+            string machine, DateTime shiftDate, List<Part> partList)
+        {
+            var reports = new List<object>();
+            foreach (var shiftType in new[] { ShiftType.Day, ShiftType.Night })
+            {
+                var shiftName = new Shift(shiftType).Name;
+                string master = string.Empty;
+                double stored = 0;
+                string reason = string.Empty;
+                string comment = string.Empty;
+                bool exists = false;
+
+                var read = Database.ReadShiftInfo(new ShiftInfo(shiftDate, shiftType, machine));
+                if (read.IsOk && read.Value is { Count: 1 })
+                {
+                    var shift = read.Value[0];
+                    master = shift.Master ?? string.Empty;
+                    stored = shift.UnspecifiedDowntimes;
+                    reason = shift.DowntimesComment ?? string.Empty;
+                    comment = shift.CommonComment ?? string.Empty;
+                    exists = true;
+                }
+
+                reports.Add(new
+                {
+                    shift = shiftName,
+                    shiftMinutes = (int)shiftType,
+                    reportExists = exists,
+                    master = master,
+                    storedUnspecifiedDowntimes = stored,
+                    freshUnspecifiedDowntimes = partList.UnspecifiedDowntimes(shiftDate, shiftDate, shiftType),
+                    downtimeReason = reason,
+                    masterComment = comment,
+                    hasParts = partList.Any(p => p.Shift == shiftName),
+                    partialSetupRatio = partList.PartialSetupRatio(shiftDate, shiftDate, shiftType),
+                });
+            }
+            return reports;
         }
 
         /// <summary>
@@ -626,7 +690,7 @@ namespace remeLog.Infrastructure
     }
 
 
-    public record QueueInfo(int Position);
+    public record QueueInfo([property: JsonPropertyName("position")] int Position);
 
     /// <summary>
     /// Результат фоновой проверки одной записи (verify-part). Ok=true по умолчанию:

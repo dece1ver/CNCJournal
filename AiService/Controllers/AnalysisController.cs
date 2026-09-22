@@ -40,6 +40,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
+        string? promptVersion = null;
         try
         {
             RequestShaper.Shape(request);
@@ -50,12 +51,29 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                     request.Machine, request.ShiftDate, string.Join(" | ", mastering.RemovedSignals));
 
             var hardRules = HardRuleEvaluator.Evaluate(request);
+            var shiftRules = ShiftReportRuleEvaluator.Evaluate(request);
 
-            var promptBuild = promptBuilder.Build(request, hardRules);
+            var promptBuild = promptBuilder.Build(request, hardRules, shiftRules);
+            promptVersion = promptBuild.Version;
             var thinkCapture = new StringBuilder();
 
             var (raw, thinking) = await ollama.GenerateAsync(promptBuild.Prompt, think: false, thinkingProgress: null, ct: ct, model: request.Model);
             var llmResult = ParseResponse(raw);
+            // Отчётные эхо из общего signals — в shift-вопросы, до пост-фильтра.
+            var (dataSignals, shiftEchoes) = ShiftReportRuleEvaluator.SplitShiftEchoes(llmResult.Signals);
+            llmResult.Signals = dataSignals;
+            var modelShiftIssues = ShiftReportRuleEvaluator.CleanModelIssues(
+                llmResult.ShiftReportIssues.Concat(shiftEchoes));
+            // Требования комментария при самодостаточной причине простоя режутся
+            // здесь же — до всех downstream-решений (reset, requiresReview, merge).
+            (modelShiftIssues, var droppedCommentDemands) =
+                ShiftReportRuleEvaluator.DropSelfSufficientCommentDemands(request, modelShiftIssues);
+            (modelShiftIssues, var droppedReasonDemands) =
+                ShiftReportRuleEvaluator.DropUnneededReasonDemands(request, modelShiftIssues);
+            // Выдумки про отчёт, которого нет («устарел», «мастер не указан»),
+            // режутся здесь же — триггер ReportExists тот же, что у иконок главной.
+            (modelShiftIssues, var droppedNoReport) =
+                ShiftReportRuleEvaluator.DropIssuesWithoutReport(request, modelShiftIssues);
             MergeAutoExcludes(llmResult, mastering.AutoExcludes);
             var notDowngraded = SoftSignalMatcher.GetNotDowngraded(
                 hardRules.SoftSignals, llmResult.DowngradedSignals);
@@ -63,9 +81,18 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             var (filteredSignals, reset, removedSignals) = FalsePositiveFilter.Apply(
                 request, hardRules, notDowngraded, llmResult.Signals);
             llmResult.Signals = filteredSignals;
+            removedSignals.AddRange(droppedCommentDemands
+                .Select(d => (d, "причина простоя самодостаточна, комментарий не требуется")));
+            removedSignals.AddRange(droppedReasonDemands
+                .Select(d => (d, "причина простоя не требуется (порог 10%) или уже указана")));
+            removedSignals.AddRange(droppedNoReport
+                .Select(d => (d, "отчёта нет — проверять нечего")));
             LogFilteredSignals(request, removedSignals, reset);
 
-            if (reset)
+            // Сброс пост-фильтра не действует при вопросах к отчёту мастера:
+            // детерминированные hard и несогласия модели (S1) фильтр не рассматривает.
+            var resetEffective = reset && !shiftRules.MustEscalate && modelShiftIssues.Count == 0;
+            if (resetEffective)
             {
                 llmResult.RequiresReview = false;
                 llmResult.Explanation = "";
@@ -77,19 +104,21 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             // модель зациклилась на повторе одной фразы, съела весь NumPredict до
             // JSON) ВСЕГДА форсирует эскалацию — сбой системы должен привлечь
             // внимание аналитика, а не молча выглядеть как «Всё в порядке».
-            var requiresReview = reset ? false
-                : hardRules.MustEscalate || notDowngraded.Count > 0
+            var requiresReview = resetEffective ? false
+                : hardRules.MustEscalate || shiftRules.MustEscalate || modelShiftIssues.Count > 0 || notDowngraded.Count > 0
                     || llmResult.RequiresReview || llmResult.HasError;
 
             logger.LogDebug(
                 "ДИАГНОСТИКА {Machine} {Date}: " +
                 "hardRules.MustEscalate={MustEscalate}, hardRules.HardSignals=[{HardSignals}], " +
                 "hardRules.SoftSignals=[{SoftSignals}], notDowngraded=[{NotDowngraded}], " +
+                "shiftRules.HardSignals=[{ShiftHard}], shiftRules.SoftSignals=[{ShiftSoft}], " +
                 "llmResult.RequiresReview={LlmRR}, llmResult.HasError={LlmErr}, llmResult.Error={LlmErrMsg}, " +
                 "llmResult.DowngradedSignals=[{LlmDowngraded}], llmResult.ExcludeFromReports={ExcludeCount} [{ExcludeList}] → итоговый requiresReview={Final}",
                 request.Machine, request.ShiftDate,
                 hardRules.MustEscalate, string.Join(" | ", hardRules.HardSignals),
                 string.Join(" | ", hardRules.SoftSignals), string.Join(" | ", notDowngraded),
+                string.Join(" | ", shiftRules.HardSignals), string.Join(" | ", shiftRules.SoftSignals),
                 llmResult.RequiresReview, llmResult.HasError, llmResult.Error ?? "(нет)",
                 string.Join(" | ", llmResult.DowngradedSignals),
                 llmResult.SuggestExcludeFromReports.Count, string.Join(" | ", llmResult.SuggestExcludeFromReports),
@@ -98,12 +127,11 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             var result = new AnalyzeResponse
             {
                 RequiresReview = requiresReview,
-                Confidence = hardRules.MustEscalate
-                    ? Math.Max(llmResult.Confidence, 0.85)
-                    : llmResult.Confidence,
-                Explanation = EnsureExplanation(llmResult, hardRules, notDowngraded),
+                Confidence = ShiftReportRuleEvaluator.ComputeConfidence(
+                    hardRules.MustEscalate, shiftRules.MustEscalate, llmResult.HasError, llmResult.Confidence),
+                Explanation = EnsureExplanation(llmResult, hardRules, shiftRules, modelShiftIssues, notDowngraded),
                 SuggestedReason = string.IsNullOrWhiteSpace(llmResult.SuggestedReason)
-                    ? FallbackReason(hardRules, notDowngraded, llmResult.HasError)
+                    ? FallbackReason(hardRules, shiftRules, modelShiftIssues, notDowngraded, llmResult.HasError)
                     : llmResult.SuggestedReason,
                 Error = llmResult.Error,
                 SuggestExcludeFromReports = FilterExcludeSuggestions(llmResult.SuggestExcludeFromReports, request),
@@ -111,20 +139,48 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 PromptVersion = promptBuild.Version,
             };
 
+            result.ShiftReportIssues = ShiftReportRuleEvaluator.MergeIssues(shiftRules, modelShiftIssues);
+            result.ShiftReportSummary = ShiftReportRuleEvaluator.Summarize(request, shiftRules);
+            // В общий Signals — только выжившие модельные вопросы: срезанные дедупом
+            // дубли иначе остаются видимыми диалогу (Except их не находит).
+            var shiftSurvivors = ShiftReportRuleEvaluator.ModelSurvivors(shiftRules, result.ShiftReportIssues);
+
             result.Signals = [.. llmResult.Signals
                 .Concat(request.Signals)
                 .Concat(CollectPartSignals(request, hardRules, notDowngraded))
                 .Concat(hardRules.HardSignals)
+                .Concat(shiftRules.HardSignals)
+                .Concat(shiftRules.SoftSignals)
+                .Concat(shiftSurvivors)
                 .Concat(notDowngraded)
                 .Distinct()];
 
-            result.FlaggedParts = CollectFlaggedPartKeys(hardRules, notDowngraded);
+            // Вердикт модели зажигает «Данные», только если она назвала проблемы
+            // по данным (почищенные сигналы непусты). Формула эскалации не меняется.
+            var llmDataCaused = ShiftReportRuleEvaluator.LlmDataCaused(llmResult.RequiresReview, llmResult.Signals);
+            var (dataCaused, shiftCaused) = ShiftReportRuleEvaluator.EscalationCauses(
+                hardRules, notDowngraded, llmDataCaused, llmResult.HasError,
+                resetEffective, shiftRules, modelShiftIssues);
+            result.EscalatedByData = dataCaused;
+            result.EscalatedByShiftReport = shiftCaused;
+
+            if (ShiftReportRuleEvaluator.ShiftOnlyExplanation(dataCaused, shiftCaused) is { } cleanExplanation)
+                result.Explanation = cleanExplanation;
+
+            // Чистый отчёт мастера фиксируем прямо в объяснении: блок «Отчёт мастера»
+            // в UI виден всегда, и пакетное окно (там только Explanation) тоже показывает
+            // факт проверки. Только когда клиент реально прислал отчёты — иначе враньё.
+            if (result.ShiftReportIssues.Count == 0 && request.ShiftReports.Count > 0)
+                result.Explanation = (result.Explanation + " Отчёт мастера проверен, замечаний нет.").Trim();
+
+            result.FlaggedParts = CollectFlaggedPartKeys(hardRules, notDowngraded, request, llmResult.Signals);
 
             logger.LogInformation(
-                "Анализ: {Machine} {Date} → RequiresReview={R} (hard={H}, softNotDowngraded={S}), Confidence={C:F2}, FlaggedParts={F}",
+                "Анализ: {Machine} {Date} → RequiresReview={R} (hard={H}, softNotDowngraded={S}, shiftHard={SH}, shiftSoft={SS}), Confidence={C:F2}, FlaggedParts={F}",
                 request.Machine, request.ShiftDate, result.RequiresReview,
-                hardRules.HardSignals.Count, notDowngraded.Count, result.Confidence,
-                result.FlaggedParts.Count);
+                hardRules.HardSignals.Count, notDowngraded.Count,
+                shiftRules.HardSignals.Count, shiftRules.SoftSignals.Count,
+                result.Confidence, result.FlaggedParts.Count);
 
             if (hardRules.SoftSignals.Count > 0)
             {
@@ -161,6 +217,15 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
             await requestLog.WriteAsync(request, result, "analyze");
             return Ok(result);
+        }
+        catch (DegenerateGenerationException ex)
+        {
+            // Петля в рассуждении (в т.ч. после ретрая): fail-safe эскалация,
+            // как при HasError — сбой системы должен привлечь внимание аналитика.
+            logger.LogWarning(ex, "Вырожденная генерация {Machine} {Date}", request.Machine, request.ShiftDate);
+            var degResult = DegenerateEscalation(ex, promptVersion);
+            await requestLog.WriteAsync(request, degResult, "analyze");
+            return Ok(degResult);
         }
         catch (TaskCanceledException ex)
         {
@@ -303,7 +368,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 request.Machine, request.ShiftDate, string.Join(" | ", mastering.RemovedSignals));
 
         var hardRules = HardRuleEvaluator.Evaluate(request);
-        var promptBuild = promptBuilder.Build(request, hardRules);
+        var shiftRules = ShiftReportRuleEvaluator.Evaluate(request);
+        var promptBuild = promptBuilder.Build(request, hardRules, shiftRules);
 
         logger.LogDebug("Промпт построен, символов: {Len}", promptBuild.Prompt.Length);
 
@@ -315,11 +381,11 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 FullMode = System.Threading.Channels.BoundedChannelFullMode.Wait,
             });
 
-        var lastThought = "";
+        // Дедупликации по равенству дельт здесь нет сознательно: повторяющаяся
+        // дельта (например, одиночный пробел между словами) — валидная часть
+        // потока, её пропуск склеивал слова в UI. Дубликатов от Ollama не бывает.
         var progress = new Progress<string>(thought =>
         {
-            if (thought == lastThought) return;
-            lastThought = thought;
             logger.LogDebug("Think: {T}", thought[..Math.Min(50, thought.Length)]);
             channel.Writer.TryWrite(thought);
         });
@@ -366,6 +432,14 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             await drainTask;
             logger.LogInformation("Drain завершён");
         }
+        catch (DegenerateGenerationException ex)
+        {
+            logger.LogWarning(ex, "Вырожденная генерация {Machine} {Date}", request.Machine, request.ShiftDate);
+            var degResult = DegenerateEscalation(ex, promptBuild.Version);
+            await requestLog.WriteAsync(request, degResult, "stream");
+            await Send("result", JsonSerializer.Serialize(degResult, _camelCase));
+            return;
+        }
         catch (OperationCanceledException ex)
         {
             logger.LogWarning("Отменён: {Machine} {Date}", request.Machine, request.ShiftDate);
@@ -385,8 +459,23 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         }
 
         var llmResult = ParseResponse(raw);
-        MergeAutoExcludes(llmResult, mastering.AutoExcludes);
-        CheckThinkingConsistency(request, thinking, llmResult);
+        // Отчётные эхо из общего signals — в shift-вопросы, до пост-фильтра.
+        var (dataSignals, shiftEchoes) = ShiftReportRuleEvaluator.SplitShiftEchoes(llmResult.Signals);
+        llmResult.Signals = dataSignals;
+        var modelShiftIssues = ShiftReportRuleEvaluator.CleanModelIssues(
+            llmResult.ShiftReportIssues.Concat(shiftEchoes));
+        // Требования комментария при самодостаточной причине простоя режутся
+        // здесь же — до всех downstream-решений (reset, requiresReview, merge).
+        (modelShiftIssues, var droppedCommentDemands) =
+            ShiftReportRuleEvaluator.DropSelfSufficientCommentDemands(request, modelShiftIssues);
+            (modelShiftIssues, var droppedReasonDemands) =
+                ShiftReportRuleEvaluator.DropUnneededReasonDemands(request, modelShiftIssues);
+            // Выдумки про отчёт, которого нет («устарел», «мастер не указан»),
+            // режутся здесь же — триггер ReportExists тот же, что у иконок главной.
+            (modelShiftIssues, var droppedNoReport) =
+                ShiftReportRuleEvaluator.DropIssuesWithoutReport(request, modelShiftIssues);
+            MergeAutoExcludes(llmResult, mastering.AutoExcludes);
+            CheckThinkingConsistency(request, thinking, llmResult);
 
         logger.LogDebug("ParseResponse: RequiresReview={R}, Error={E}, ExcludeFromReports={ExcludeCount} [{ExcludeList}]",
             llmResult.RequiresReview, llmResult.Error ?? "(нет)",
@@ -398,9 +487,17 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         var (filteredSignals, reset, removedSignals) = FalsePositiveFilter.Apply(
             request, hardRules, notDowngraded, llmResult.Signals);
         llmResult.Signals = filteredSignals;
-        LogFilteredSignals(request, removedSignals, reset);
+        removedSignals.AddRange(droppedCommentDemands
+            .Select(d => (d, "причина простоя самодостаточна, комментарий не требуется")));
+            removedSignals.AddRange(droppedReasonDemands
+                .Select(d => (d, "причина простоя не требуется (порог 10%) или уже указана")));
+            removedSignals.AddRange(droppedNoReport
+                .Select(d => (d, "отчёта нет — проверять нечего")));
+            LogFilteredSignals(request, removedSignals, reset);
 
-        if (reset)
+            // Сброс пост-фильтра не действует при вопросах к отчёту мастера — см. Analyze().
+        var resetEffective = reset && !shiftRules.MustEscalate && modelShiftIssues.Count == 0;
+        if (resetEffective)
         {
             llmResult.RequiresReview = false;
             llmResult.Explanation = "";
@@ -408,18 +505,18 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         }
 
         // llmResult.HasError форсирует эскалацию — см. комментарий в Analyze().
-        var requiresReview = reset ? false
-            : hardRules.MustEscalate || notDowngraded.Count > 0
+        var requiresReview = resetEffective ? false
+            : hardRules.MustEscalate || shiftRules.MustEscalate || modelShiftIssues.Count > 0 || notDowngraded.Count > 0
                 || llmResult.RequiresReview || llmResult.HasError;
 
         var result = new AnalyzeResponse
         {
             RequiresReview = requiresReview,
-            Confidence = hardRules.MustEscalate
-                ? Math.Max(llmResult.Confidence, 0.85) : llmResult.Confidence,
-            Explanation = EnsureExplanation(llmResult, hardRules, notDowngraded),
+            Confidence = ShiftReportRuleEvaluator.ComputeConfidence(
+                hardRules.MustEscalate, shiftRules.MustEscalate, llmResult.HasError, llmResult.Confidence),
+            Explanation = EnsureExplanation(llmResult, hardRules, shiftRules, modelShiftIssues, notDowngraded),
             SuggestedReason = string.IsNullOrWhiteSpace(llmResult.SuggestedReason)
-                ? FallbackReason(hardRules, notDowngraded, llmResult.HasError) : llmResult.SuggestedReason,
+                ? FallbackReason(hardRules, shiftRules, modelShiftIssues, notDowngraded, llmResult.HasError) : llmResult.SuggestedReason,
             ThinkingProcess = thinking,
             SuggestExcludeFromReports = FilterExcludeSuggestions(llmResult.SuggestExcludeFromReports, request),
             DowngradedSignals = llmResult.DowngradedSignals,
@@ -437,23 +534,59 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             .Where(e => !hardPartNames.Contains(e.Split('§')[0]))];
         }
 
+        result.ShiftReportIssues = ShiftReportRuleEvaluator.MergeIssues(shiftRules, modelShiftIssues);
+        result.ShiftReportSummary = ShiftReportRuleEvaluator.Summarize(request, shiftRules);
+        // В общий Signals — только выжившие модельные вопросы (см. Analyze()).
+        var shiftSurvivors = ShiftReportRuleEvaluator.ModelSurvivors(shiftRules, result.ShiftReportIssues);
+
         result.Signals = [.. llmResult.Signals
         .Concat(request.Signals)
         .Concat(CollectPartSignals(request, hardRules, notDowngraded))
         .Concat(hardRules.HardSignals)
+        .Concat(shiftRules.HardSignals)
+        .Concat(shiftRules.SoftSignals)
+        .Concat(shiftSurvivors)
         .Concat(notDowngraded)
         .Distinct()];
 
-        result.FlaggedParts = CollectFlaggedPartKeys(hardRules, notDowngraded);
+        var llmDataCaused = ShiftReportRuleEvaluator.LlmDataCaused(llmResult.RequiresReview, llmResult.Signals);
+        var (dataCaused, shiftCaused) = ShiftReportRuleEvaluator.EscalationCauses(
+            hardRules, notDowngraded, llmDataCaused, llmResult.HasError,
+            resetEffective, shiftRules, modelShiftIssues);
+        result.EscalatedByData = dataCaused;
+        result.EscalatedByShiftReport = shiftCaused;
+
+        if (ShiftReportRuleEvaluator.ShiftOnlyExplanation(dataCaused, shiftCaused) is { } cleanExplanation)
+            result.Explanation = cleanExplanation;
+
+        if (result.ShiftReportIssues.Count == 0 && request.ShiftReports.Count > 0)
+            result.Explanation = (result.Explanation + " Отчёт мастера проверен, замечаний нет.").Trim();
+
+        result.FlaggedParts = CollectFlaggedPartKeys(hardRules, notDowngraded, request, llmResult.Signals);
 
         logger.LogInformation(
-            "Stream-анализ завершён: {Machine} {Date} → RequiresReview={R}, Confidence={C:F2}, FlaggedParts={F}",
+            "Stream-анализ завершён: {Machine} {Date} → RequiresReview={R}, Confidence={C:F2}, FlaggedParts={F}, ShiftIssues={SI}",
             request.Machine, request.ShiftDate, result.RequiresReview, result.Confidence,
-            result.FlaggedParts.Count);
+            result.FlaggedParts.Count, result.ShiftReportIssues.Count);
 
         await requestLog.WriteAsync(request, result, "stream");
         await Send("result", JsonSerializer.Serialize(result, _camelCase));
     }
+
+    /// <summary>
+    /// Fail-safe вердикт при вырожденной генерации (петля в reasoning, в т.ч.
+    /// после ретрая): день уходит на проверку, как при HasError. Confidence 1.0 —
+    /// система уверена, что человеку надо посмотреть, а не в содержании вердикта.
+    /// </summary>
+    private static AnalyzeResponse DegenerateEscalation(DegenerateGenerationException ex, string? promptVersion) => new()
+    {
+        RequiresReview = true,
+        Confidence = 1.0,
+        Explanation = "Автоматическая эскалация: модель зациклилась при рассуждении.",
+        SuggestedReason = "Сбой анализа — требуется ручная проверка",
+        Error = ex.Message,
+        PromptVersion = promptVersion,
+    };
 
     /// <summary>
     /// Добавляет авто-предложения исключения (детерминированно подтверждённое
@@ -533,43 +666,59 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 request.Machine, request.ShiftDate);
     }
 
+    /// <summary>
+    /// Объяснение — только про данные записей. Детали по суточному отчёту живут
+    /// в отдельном UI-блоке (ShiftReportIssues/ShiftReportSummary), сюда добавляется
+    /// лишь одна фраза-ссылка, чтобы вердикт «требует проверки» не висел без пояснения.
+    /// </summary>
     private static string EnsureExplanation(
-    AnalyzeResponse llmResult, HardRuleResult hardRules, List<string> notDowngraded)
+    AnalyzeResponse llmResult, HardRuleResult hardRules, ShiftReportRuleResult shiftRules, List<string> modelShiftIssues, List<string> notDowngraded)
     {
+        string explanation;
         if (hardRules.MustEscalate)
         {
-            var hardBase = "Эскалация по жёстким правилам: "
-                + string.Join("; ", hardRules.HardSignals) + ".";
-            if (!string.IsNullOrWhiteSpace(llmResult.Explanation)
+            // Только счётчик: сами правила уже лежат в signals буллетами ниже,
+            // дублировать их текстом не нужно.
+            var hardBase = $"Эскалация по жёстким правилам ({hardRules.HardSignals.Count}).";
+            explanation = !string.IsNullOrWhiteSpace(llmResult.Explanation)
                 && !llmResult.Explanation.Contains("отсутствует")
                 && !llmResult.Explanation.Contains("нет объяснения")
-                && !llmResult.Explanation.Contains("не объяснен"))
-            {
-                return hardBase + " " + llmResult.Explanation;
-            }
-            return hardBase;
+                && !llmResult.Explanation.Contains("не объяснен")
+                && !ExplanationHygiene.EnumeratesRules(llmResult.Explanation)
+                ? hardBase + " " + llmResult.Explanation
+                : hardBase;
         }
-
-        if (notDowngraded.Count > 0)
+        else if (notDowngraded.Count > 0)
         {
-            var softBase = "Эскалация: объяснение мастера не подтверждено — "
-                + string.Join("; ", notDowngraded) + ".";
-            return string.IsNullOrWhiteSpace(llmResult.Explanation)
-                ? softBase
-                : softBase + " " + llmResult.Explanation;
+            var softBase = "Эскалация: объяснение мастера не подтверждено "
+                + $"({notDowngraded.Count}).";
+            explanation = !string.IsNullOrWhiteSpace(llmResult.Explanation)
+                && !ExplanationHygiene.EnumeratesRules(llmResult.Explanation)
+                ? softBase + " " + llmResult.Explanation
+                : softBase;
+        }
+        else if (!string.IsNullOrWhiteSpace(llmResult.Explanation))
+        {
+            explanation = llmResult.Explanation;
+        }
+        else
+        {
+            explanation = llmResult.HasError
+                ? "Не удалось получить объяснение от модели (ошибка разбора ответа)."
+                : "Явных отклонений не обнаружено.";
         }
 
-        if (!string.IsNullOrWhiteSpace(llmResult.Explanation))
-            return llmResult.Explanation;
+        if ((shiftRules.MustEscalate || modelShiftIssues.Count > 0)
+            && !explanation.Contains("отчёту мастера"))
+            explanation = (explanation + " Есть вопросы к суточному отчёту мастера.").Trim();
 
-        return llmResult.HasError
-            ? "Не удалось получить объяснение от модели (ошибка разбора ответа)."
-            : "Явных отклонений не обнаружено.";
+        return explanation;
     }
 
-    private static string FallbackReason(HardRuleResult hardRules, List<string> notDowngraded, bool hasError = false)
+    private static string FallbackReason(HardRuleResult hardRules, ShiftReportRuleResult shiftRules, List<string> modelShiftIssues, List<string> notDowngraded, bool hasError = false)
     {
         if (hardRules.MustEscalate) return hardRules.HardSignals.FirstOrDefault() ?? "Требует проверки";
+        if (shiftRules.MustEscalate) return shiftRules.HardSignals.FirstOrDefault() ?? "Требует проверки";
         if (hasError) return "Сбой анализа — требуется ручная проверка";
         if (notDowngraded.Count > 0)
         {
@@ -585,6 +734,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             }
             return "Объяснение мастера не подтверждено";
         }
+        if (modelShiftIssues.Count > 0) return modelShiftIssues[0];
         return "Без замечаний";
     }
 
@@ -593,6 +743,9 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
     /// наладка не считается при б/н или КПД=0, изготовление — при б/и, КПД=0 или
     /// штучной партии (пороги регламента). Если у строки нет ни одной участвующей
     /// категории, предложение исключить её бессмысленно и только отвлекает аналитика.
+    /// Триггерные причины («освоение», «работа ученика») без подтверждающих отметок —
+    /// выдумка модели: галка по умолчанию стоит, неверное основание превратилось бы
+    /// в неверное исключение из К1 (см. <see cref="ExcludeTriggerValidator"/>).
     /// </summary>
     private static List<string> FilterExcludeSuggestions(List<string> entries, AnalyzeRequest request)
     {
@@ -603,11 +756,11 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             var seg = e.Split('§');
             if (seg.Length < 3) return true; // нераспознанный формат — не трогаем
 
-            var part = request.Parts.FirstOrDefault(p =>
-                p.PartName == seg[0]
-                && p.Setup.ToString() == seg[1]
-                && p.Order == seg[2]);
-            return part == null || AffectsReports(part);
+            var part = ExcludeTriggerValidator.FindPart(request.Parts, seg[0], seg[1], seg[2]);
+            if (part == null) return true; // консервативно: клиент покажет непривязанной
+            if (!AffectsReports(part)) return false;
+            var reason = string.Join("§", seg.Skip(3));
+            return ExcludeTriggerValidator.HasGrounds(part, reason);
         })];
     }
 
@@ -649,17 +802,32 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
     /// <summary>
     /// Ключи строк, которые ИИ предлагает отметить проблемными (флаги СГТ):
-    /// все детали с hard-сигналами + детали, чьи soft-сигналы модель не понизила.
+    /// все детали с hard-сигналами + детали, чьи soft-сигналы модель не понизила,
+    /// + детали, явно названные в уцелевших сигналах модели (иначе вердикт
+    /// «про Гильзу» не подсвечивает ни одну строку — кейс 22.09.2026 Mazak).
     /// Пониженные soft-сигналы считаются объяснёнными — их детали не флагуются.
+    /// Несопоставленные имена (галлюцинации) игнорируются; одно имя на
+    /// нескольких установках флагуются все строки — лишнее аналитик снимет.
     /// </summary>
     public static List<string> CollectFlaggedPartKeys(
-        HardRuleResult hardRules, List<string> notDowngraded)
+        HardRuleResult hardRules, List<string> notDowngraded,
+        AnalyzeRequest request, IEnumerable<string> modelSignals)
     {
         var surviving = notDowngraded.ToHashSet();
+        var namedKeys = modelSignals
+            .SelectMany(s =>
+            {
+                var lower = s.ToLowerInvariant();
+                return request.Parts
+                    .Where(p => p.PartName.Trim().Length > 0
+                        && lower.Contains(p.PartName.Trim().ToLowerInvariant()))
+                    .Select(HardRuleEvaluator.PartKey);
+            });
         return [.. hardRules.HardFlaggedPartKeys
             .Concat(hardRules.SoftFlagged
                 .Where(t => surviving.Contains(t.Signal))
                 .Select(t => t.PartKey))
+            .Concat(namedKeys)
             .Distinct()];
     }
 
@@ -681,6 +849,9 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                     : 0.5,
                 Signals = root.TryGetProperty("signals", out var sg) && sg.ValueKind == JsonValueKind.Array
                     ? [.. sg.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => s.Length > 0)]
+                    : [],
+                ShiftReportIssues = root.TryGetProperty("shift_report_issues", out var sri) && sri.ValueKind == JsonValueKind.Array
+                    ? [.. sri.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => s.Length > 0)]
                     : [],
                 DowngradedSignals = root.TryGetProperty("downgraded_signals", out var ds) && ds.ValueKind == JsonValueKind.Array
                     ? [.. ds.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => s.Length > 0)]

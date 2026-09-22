@@ -109,13 +109,29 @@
                             <Border Grid.Column="1" Background="{DynamicResource Areopag.LineSoft}" Width="1"/>
                             <DockPanel Grid.Column="2" Margin="4 0 0 0">
                                 <TextBlock DockPanel.Dock="Top"
-                                           Text="Объяснение"
+                                           Text="Объяснение по данным"
                                            FontSize="11" Foreground="{DynamicResource Areopag.Text3}"
                                            Margin="0 0 0 2"/>
                                 <ScrollViewer MaxHeight="160"
                                               VerticalScrollBarVisibility="Auto">
-                                    <TextBlock Text="{Binding Explanation}"
-                                               FontSize="13" TextWrapping="Wrap"/>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Explanation}"
+                                                   FontSize="13" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding ShiftReportNote}"
+                                                   FontSize="12" TextWrapping="Wrap" Margin="0 4 0 0"
+                                                   Visibility="{Binding HasShiftReportNote, Converter={StaticResource VisibilityConverter}}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource Areopag.Text3}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding ShiftCausedEscalation}" Value="True">
+                                                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Warn}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
                                 </ScrollViewer>
                             </DockPanel>
                         </Grid>

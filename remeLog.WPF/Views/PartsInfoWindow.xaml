@@ -1137,7 +1137,7 @@
                         Command="{Binding OpenDailyReportWindowCommand}" CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:PartsInfoWindow}}"
                         Style="{StaticResource Areopag.PrimaryButton}" FontFamily="{DynamicResource Areopag.FontMono}">
                     <Button.Content>
-                        <TextBlock Text="Сформировать отчет за смену" TextWrapping="Wrap" TextAlignment="Center" />
+                        <TextBlock Text="Сформировать отчет за смену" TextWrapping="Wrap" TextAlignment="Center"/>
                     </Button.Content>
                     <Button.Resources>
                         <Style TargetType="Border">
@@ -1255,7 +1255,7 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="160"/>
+                                <ColumnDefinition Width="200"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <!-- Фиксированная высота: панель не прыгает, когда в момент
@@ -1435,7 +1435,7 @@
                             <!-- Результат AI -->
                             <StackPanel x:Name="AiResultPanel" Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="3" 
                                         Margin="4 -1 0 0" Orientation="Horizontal">
-                                <Grid Width="156">
+                                <Grid Width="196">
                                     <CheckBox Content="Сильно много думать" DockPanel.Dock="Left" Visibility="Collapsed"
                                               IsChecked="{Binding AiThinkingEnabled}"
                                               ToolTip="Включить режим рассуждений (медленнее, иногда точнее и можно почитать мысли)"

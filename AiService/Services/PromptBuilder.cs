@@ -187,7 +187,7 @@ public class PromptBuilder
         return false;
     }
 
-    public PromptBuildResult Build(AnalyzeRequest req, HardRuleResult hardRules)
+    public PromptBuildResult Build(AnalyzeRequest req, HardRuleResult hardRules, ShiftReportRuleResult shiftRules)
     {
         var (systemPrompt, promptVersion) = ResolveSystemPrompt(req.PromptProfile);
 
@@ -217,6 +217,8 @@ public class PromptBuilder
                 sb.AppendLine($" ⚠ {sig}");
         }
 
+        AppendShiftReports(sb, req);
+
         sb.AppendLine();
 
         foreach (var p in req.Parts)
@@ -225,12 +227,21 @@ public class PromptBuilder
         sb.AppendLine();
         sb.AppendLine("════════════════════════════════════════");
 
-        if (hardRules.HardSignals.Count > 0)
+        if (hardRules.HardSignals.Count > 0 || shiftRules.HardSignals.Count > 0)
         {
             sb.AppendLine("СИСТЕМА УЖЕ ОПРЕДЕЛИЛА: requires_review = true (правила ниже неотменяемы).");
-            sb.AppendLine("Сработавшие жёсткие правила:");
-            foreach (var r in hardRules.HardSignals)
-                sb.AppendLine($" • {r}");
+            if (hardRules.HardSignals.Count > 0)
+            {
+                sb.AppendLine("Сработавшие жёсткие правила:");
+                foreach (var r in hardRules.HardSignals)
+                    sb.AppendLine($" • {r}");
+            }
+            if (shiftRules.HardSignals.Count > 0)
+            {
+                sb.AppendLine("Сработавшие жёсткие правила по отчёту мастера:");
+                foreach (var r in shiftRules.HardSignals)
+                    sb.AppendLine($" • {r}");
+            }
             sb.AppendLine("Поле requires_review в ответе ОБЯЗАНО быть true.");
             sb.AppendLine("Поле confidence ОБЯЗАНО быть в диапазоне 0.85-1.0.");
         }
@@ -257,8 +268,9 @@ public class PromptBuilder
           "signals": ["краткие описания необъяснённых проблем, если есть"],
           "downgraded_signals": ["soft-сигналы из списка выше, которые ты решил НЕ эскалировать — если таких нет, пустой массив"],
           "suggest_exclude_from_reports": ["PartName§SetupNumber§Order§Причина для деталей с адекватно объяснённой разовой проблемой ИЛИ подтверждённым «Освоением» с КПД наладки < 100% — если таких нет, пустой массив. Причина — 3-10 слов КОНКРЕТНО про эту деталь, НЕ общий вывод по суткам; для освоения укажи, что КПД ниже 100% может негативно повлиять на К1 оператора"],
-          "explanation": "1-2 предложения — ОБЯЗАТЕЛЬНОЕ непустое поле",
-          "suggested_reason": "краткая причина в 3-7 слов — ОБЯЗАТЕЛЬНОЕ непустое поле"
+          "shift_report_issues": ["Смена День/Ночь: в чём несоответствие отчёта мастера (см. 2.8) — если таких нет, пустой массив"],
+          "explanation": "1-2 предложения, ОБЩИЙ вывод без перечисления проблем из списков — ОБЯЗАТЕЛЬНОЕ непустое поле",
+          "suggested_reason": "краткая ОБЩАЯ причина в 3-7 слов без деталей — ОБЯЗАТЕЛЬНОЕ непустое поле"
         }
         """);
 
@@ -328,6 +340,40 @@ public class PromptBuilder
 
     private static string OverrideBy(PartContext p) =>
         string.IsNullOrWhiteSpace(p.ReasonOverrideBy) ? "" : $" ({p.ReasonOverrideBy.Trim()})";
+
+    /// <summary>
+    /// Блоки суточных отчётов мастера (2.8 промпта): свежие значения простоя,
+    /// причина и комментарий — материал для семантической проверки релевантности (S1).
+    /// Структурные нарушения модель не решает (см. hard-блок выше), ей нужны только факты.
+    /// </summary>
+    private static void AppendShiftReports(StringBuilder sb, AnalyzeRequest req)
+    {
+        if (req.ShiftReports.Count == 0) return;
+
+        static string Safe(string s) => (s ?? "").Trim().Replace("\r", "").Replace("\n", " / ");
+
+        sb.AppendLine();
+        sb.AppendLine("Отчёт мастера за смену:");
+        foreach (var r in req.ShiftReports)
+        {
+            if (!r.ReportExists || r.ShiftMinutes <= 0)
+            {
+                // Отсутствие и устаревание — разные вещи: строки в cnc_shifts нет,
+                // поэтому «устарел» и «мастер не указан» про эту смену писать нечего.
+                sb.AppendLine($" ▸ Смена: {r.Shift} — отчёта нет, проверять нечего");
+                continue;
+            }
+
+            var ratio = r.FreshUnspecifiedDowntimes / r.ShiftMinutes;
+            var idle = r.FreshUnspecifiedDowntimes >= r.ShiftMinutes ? " [простой целиком]" : "";
+            var master = string.IsNullOrWhiteSpace(r.Master) ? "не указан" : $"«{Safe(r.Master)}»";
+            var reason = string.IsNullOrWhiteSpace(r.DowntimeReason) ? "—" : $"«{Safe(r.DowntimeReason)}»";
+            var comment = string.IsNullOrWhiteSpace(r.MasterComment) ? "—" : $"«{Safe(r.MasterComment)}»";
+            sb.AppendLine($" ▸ Смена: {r.Shift} | Мастер: {master}{idle}");
+            sb.AppendLine($"   Простой: {r.FreshUnspecifiedDowntimes:0}мин ({ratio:0%} смены {r.ShiftMinutes}мин) | " +
+                          $"Причина: {reason} | Комментарий: {comment}");
+        }
+    }
 
     private static void AppendPartBlock(StringBuilder sb, PartContext p)
     {
