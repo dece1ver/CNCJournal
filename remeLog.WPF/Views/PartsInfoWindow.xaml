@@ -1436,9 +1436,10 @@
                             <StackPanel x:Name="AiResultPanel" Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="3" 
                                         Margin="4 -1 0 0" Orientation="Horizontal">
                                 <Grid Width="196">
-                                    <CheckBox Content="Сильно много думать" DockPanel.Dock="Left" Visibility="Collapsed"
+                                    <CheckBox Content="Агент" DockPanel.Dock="Left"
                                               IsChecked="{Binding AiThinkingEnabled}"
-                                              ToolTip="Включить режим рассуждений (медленнее, иногда точнее и можно почитать мысли)"
+                                              Visibility="{Binding AiInProgress, Converter={StaticResource InvertedVisibilityConverter}}"
+                                              ToolTip="Агентский режим (вкл) / обычный thinking-режим (выкл)"
                                               VerticalAlignment="Center"
                                               Margin="-1 0 0 0"/>
                                     <ProgressBar BorderThickness="0" Height="2" IsIndeterminate="True" Visibility="{Binding AiInProgress, Converter={StaticResource VisibilityConverter}}"/>

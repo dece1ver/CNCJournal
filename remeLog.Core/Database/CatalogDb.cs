@@ -205,6 +205,32 @@ namespace remeLog.Infrastructure
         }
 
         /// <summary>
+        /// Серийность станка с явным дефолтом на случай сбоя БД. В отличие от
+        /// GetMachineSerialStatus (дефолт false для отчётов), здесь дефолт true:
+        /// для ИИ-контура сбой не должен тихо выключать проверку КПД изготовления.
+        /// Используется только AiServiceClient (флаг isSerialMachine в запросе).
+        /// </summary>
+        public async static Task<bool> GetMachineSerialStatusOrDefault(
+            string machine, bool defaultValue, CancellationToken ct = default)
+        {
+            if (DomainSettings.DemoMode) return await Task.FromResult(defaultValue);
+            try
+            {
+                await using var conn = await DbHelper.OpenConnectionAsync(DomainSettings.ConnectionString);
+                return await conn.QueryFirstOrDefaultAsync<bool>(
+                    new CommandDefinition(
+                        "SELECT IsSerial FROM cnc_machines WHERE Name = @Machine",
+                        new { Machine = machine },
+                        cancellationToken: ct));
+            }
+            catch (Exception ex)
+            {
+                Log.WriteError(ex, null);
+                return defaultValue;
+            }
+        }
+
+        /// <summary>
         /// Профиль промпта ИИ-анализа для станка (cnc_machines.AiPromptProfile).
         /// NULL/пусто — базовый промпт AiService.
         /// </summary>

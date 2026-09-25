@@ -13,15 +13,31 @@ public static class FalsePositiveFilter
         "б/н",
         "отсутств",
         "не выполнен",
+        // Формы «выполнена/выполнено/выполнены» отдельно: «не выполнен» их не покрывает,
+        // а именно так модель формулирует запрещённую категорию «наладка не выполнена
+        // при наличии заказа» (A/B, Integrex i200 2026-09-21). Позитивное «выполнено N шт»
+        // сюда не входит — отсева по нему нет (см. тесты).
+        "не выполнена",
+        "не выполнено",
+        "не выполнены",
         "не проведен",
         "не была",
         "не было",
         "нулев",
+        // Расплывчатое «вне нормы» без чисел (пилот 24.09: «КПД наладки вне нормы»
+        // про б/н-деталь). Числовые претензии с реальными значениями не задевает:
+        // их ловит IsNormBandKpdClaim только внутри диапазона, а тут маркера нет.
+        "вне нормы",
         "0 мин",
         "0мин",
         "наладка без",
         "наладка не",
         "наладки не",
+        // Перефразировки «факта нет» (кейс QTS350 2026-09-24 v14:
+        // «план наладки=86мин при наличии заказа, но факта нет»).
+        "факта нет",
+        "факт 0",
+        "без факта",
     ];
 
     private static readonly string[] ProductionKeywords =
@@ -35,6 +51,9 @@ public static class FalsePositiveFilter
         "изготовление без",
         "изготовление не",
         "изготовления не",
+        "факта нет",
+        "факт 0",
+        "без факта",
     ];
 
     // «КПД [частичной] наладки 74%» / «КПД изготовления 87%» / «Аномалия наладки 200%» —
@@ -58,6 +77,18 @@ public static class FalsePositiveFilter
     private static readonly Regex DowntimeClaim = new(
         @"просто\w*[^0-9%]{0,40}?(?<val>\d+(?:[.,]\d+)?)\s*%",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Страж противоречия (зеркало «пустого вердикта» в контроллере): модель заявила
+    /// необъяснённые проблемы (signals непуст), но requires_review=false. По определению
+    /// формата signals — это необъяснённые аномалии, вердикт обязан быть true;
+    /// иначе — пропущенная эскалация (пилот 24.09.2026, Goodway 01.06: 67% + пустая
+    /// детализация при «Разовом изменении» с вердиктом False). Fail-safe в сторону
+    /// эскалации, как HasError: лучше лишний разбор, чем пропуск.
+    /// Вызывается в контроллере ПОСЛЕ Apply (по почищенным сигналам), в обоих эндпоинтах.
+    /// </summary>
+    public static bool IsIncoherentOk(bool requiresReview, List<string> filteredSignals) =>
+        !requiresReview && filteredSignals.Count > 0;
 
     /// <summary>
     /// Удаляет из ответа LLM сигналы-галлюцинации, которые модель стабильно
@@ -145,6 +176,9 @@ public static class FalsePositiveFilter
                 IsZeroKpdOnNoNormBezMl(signal, request.Parts) ? "КПД 0% при отсутствии норматива («Без М/Л»)" :
                 !hasNonSmallBatchShtuchnaya && IsSmallBatchThresholdClaim(signal) ? "пороги штучной партии пересчитаны моделью" :
                 IsK1ExcludeEcho(signal) ? "эхо exclude-подсказки про К1" :
+                IsNonSerialProductionKpdClaim(signal, request) ? "КПД изготовления не оценивается (несерийный станок)" :
+                IsRefutedDrugoeClaim(signal, request.Parts) ? "«Другое» с детализацией — объяснено" :
+                IsMisaddressedReasonDemand(signal, request.Parts) ? "требование подтверждения невыбранной причины" :
                 hasConfirmedMastering && IsUnconfirmedMasteringClaim(signal) ? "освоение подтверждено детерминированно" :
                 IsNoOrderPlan0Claim(signal, request.Parts) ? "plan=0 без заказа — норма" :
                 (string?)null;
@@ -185,11 +219,18 @@ public static class FalsePositiveFilter
         || (p.ProductionRatio == null && p.FinishedCount <= 0);
 
     /// <summary>
-    /// Сигнал о «наладки не было» — халлюцинация, только когда либо ни одна деталь
-    /// в сигнале не названа явно (день-уровневый сигнал, старое поведение), либо
-    /// ВСЕ явно названные детали действительно б/н. Раньше проверка была день-уровневой
-    /// (hasNoSetupPart без привязки к конкретной детали) — если сутки содержали хотя бы
-    /// одну б/н-деталь, сигнал про СОВСЕМ ДРУГУЮ деталь с реальной наладкой тоже гасился
+    /// Сигнал о «наладки не было» — халлюцинация, когда ни одна деталь в сигнале
+    /// не названа явно (день-уровневый сигнал, старое поведение) либо когда
+    /// привязка двусмысленна и неверна при любом прочтении: среди названных есть
+    /// б/н-строка (про неё претензия запрещена — такой категории нет), а остальные
+    /// имеют факт > 0 (про них претензия фактически ложна). Кейс QTS350 2026-09-24:
+    /// «Отсутствие наладки при наличии заказа (Кольцо…, уст 1)» матчит ДВЕ строки —
+    /// б/н с планом 86 и нормальную с фактом 70; чистый All(IsNoSetup) из-за второй
+    /// не срабатывал. Однозначная ссылка на строку с фактом НЕ трогается
+    /// (консервативно: «не выполнена» может значить «не завершена»).
+    /// Раньше проверка была день-уровневой (hasNoSetupPart без привязки
+    /// к конкретной детали) — если сутки содержали хотя бы одну б/н-деталь, сигнал
+    /// про СОВСЕМ ДРУГУЮ деталь с реальной наладкой тоже гасился
     /// (кейс 2026-06-30 Rontek HTC650M: «кулачки» наладились 56 мин при плане 0, но два
     /// других изделия того же дня были б/н — сигнал про «кулачки» ошибочно съеден).
     /// </summary>
@@ -200,7 +241,8 @@ public static class FalsePositiveFilter
             return false;
 
         var named = NamedParts(lower, parts);
-        return named.Count == 0 || named.All(IsNoSetup);
+        return named.Count == 0
+            || (named.Any(IsNoSetup) && named.All(p => IsNoSetup(p) || p.SetupTimeFact > 0));
     }
 
     private static bool IsNoProductionHallucination(string signal, List<PartContext> parts)
@@ -210,13 +252,38 @@ public static class FalsePositiveFilter
             return false;
 
         var named = NamedParts(lower, parts);
-        return named.Count == 0 || named.All(IsNoProduction);
+        return named.Count == 0
+            || (named.Any(IsNoProduction)
+                && named.All(p => IsNoProduction(p) || p.ProductionTimeFact > 0 || p.FinishedCount > 0));
     }
 
-    /// <summary> Детали, чьё имя явно упомянуто в (уже lower-cased) тексте сигнала. </summary>
-    private static List<PartContext> NamedParts(string lowerSignal, List<PartContext> parts) =>
-        parts.Where(p => p.PartName.Trim().Length > 0
+    /// <summary>
+    /// Детали, чьё имя явно упомянуто в (уже lower-cased) тексте сигнала.
+    /// Короткое имя внутри длинного («Кольцо АРМ2-49.3-01-041» внутри
+    /// «Кольцо АРМ2-49.3-01-041 расточка кулачков») — артефакт подстроки, а не
+    /// второе упоминание: убираем его, только если вне длинных вхождений его
+    /// в сигнале нет. Иначе generic-совпадение тянет за собой чужие строки и
+    /// ломает проверки All() (кейс QTS350 2026-09-24: «plan=0 при наличии
+    /// заказа» для Без М/Л-строки не срезался из-за строк с заказом).
+    /// </summary>
+    private static List<PartContext> NamedParts(string lowerSignal, List<PartContext> parts)
+    {
+        var matched = parts.Where(p => p.PartName.Trim().Length > 0
             && lowerSignal.Contains(p.PartName.Trim().ToLowerInvariant())).ToList();
+        if (matched.Count < 2) return matched;
+        var names = matched.Select(p => p.PartName.Trim().ToLowerInvariant()).ToList();
+        return matched.Where((p, i) =>
+        {
+            var name = names[i];
+            foreach (var other in names)
+            {
+                if (other.Length <= name.Length || !other.Contains(name)) continue;
+                // Короткое имя встречается только внутри длинного — не упоминание.
+                if (!lowerSignal.Replace(other, "").Contains(name)) return false;
+            }
+            return true;
+        }).ToList();
+    }
 
     private static bool IsPartialSetupClaim(string signal)
     {
@@ -358,7 +425,206 @@ public static class FalsePositiveFilter
             out value);
 
     /// <summary>
-    /// Жалоба на plan=0 / отсутствие норматива, когда все явно названные строки
+    /// Несерийный станок (AnalyzeRequest.IsSerialMachine == false): ЛЮБАЯ претензия
+    /// к КПД изготовления — с числами и без («КПД изготовления 44%», «вне нормы») —
+    /// показатель не оценивается ни в одном контуре. Состояния б/и, машинное время,
+    /// нормативы и противоречия данных не задеваются: в них нет связки КПД+изготовление.
+    /// </summary>
+    private static bool IsNonSerialProductionKpdClaim(string signal, AnalyzeRequest request)
+    {
+        if (request.IsSerialMachine != false) return false;
+        var lower = signal.ToLowerInvariant();
+        if (!lower.Contains(ProductionMarker) || !lower.Contains("кпд")) return false;
+        return lower.Contains('%') || lower.Contains("норм");
+    }
+
+    /// <summary>
+    /// Жалоба «Другое без детализации/подтверждения», когда у названной детали
+    /// детализация ЕСТЬ. Модель не видит... точнее, видит (комментарии приложены
+    /// с v9), но стабильно пишет «без детализации» про непустой комментарий
+    /// (пилот 25.09, QTS350 23.09: «без подтверждения освоения» при детальном
+    /// «Другом» про вмятины). Сверка фактом: причина «Другое» + непустая
+    /// детализация своей категории = объяснено. Безымянная жалоба режется, только
+    /// если ВСЕ «Другое»-строки дня с детализацией (иначе может относиться
+    /// к строке без неё); жалоба без единой «Другое»-строки в дне — галлюцинация.
+    /// Сюда же — перепутанный адресат: «без подтверждения ОСВОЕНИЯ», когда
+    /// у названной детали причина наладки выбрана, НЕ «Освоение», и детализация
+    /// есть (освоение тут ни при чём, требовать его подтверждения не с чего).
+    /// </summary>
+    private static readonly string[] DrugoeMarkers = ["другое", "другой", "другого"];
+
+    private static readonly string[] UnexplainedMarkers =
+    [
+        "без подтвержден", "без детализац", "без уточнен", "без объяснен",
+        "без конкретик", "не подтвержден", "не детализирован", "не объяснен",
+        "требует уточнения", "требует уточнить", "требует детализац",
+        "не указан", "отсутств", "нужда", "необходимо",
+    ];
+
+    /// <summary>
+    /// Требование подтвердить причину, которую НИКТО не выбирал, при наличии
+    /// у строк детализированной другой причины («КПД наладки=21% без подтверждения
+    /// освоения/заготовок», когда выбрано детальное «Другое» — пилот 25.09,
+    /// QTS350 23.09, флип туда-обратно на том же входе). Требование направлено
+    /// не по адресу: подтверждать нечего. Снимает флипы, делая выходы инвариантными.
+    /// Границы (чтобы не съесть легитимное):
+    ///  • «Другое» и нормативные причины здесь не разбираются (у них свои правила);
+    ///  • причина востребована хоть одной строкой в нужном поле → сохраняем;
+    ///  • строка без причины вообще → сохраняем (требование может относиться к ней);
+    ///  • привязка — по числу КПД из сигнала (±1.5 п.п.), затем по имени, иначе весь день,
+    ///    но тогда все строки обязаны быть с детализированными чужими причинами.
+    /// </summary>
+    private static readonly (string Stem, bool Setup)[] ReasonStems =
+    [
+        ("освоен", true), ("типовой", true),
+        ("заготов", false), ("штучн", false), ("разов", false),
+        ("ученик", true), ("ученик", false),
+        ("неопытн", true), ("неопытн", false),
+        ("доработ", true), ("доработ", false),
+        ("не по техпроцесс", true), ("не по техпроцесс", false),
+    ];
+
+    private static bool IsMisaddressedReasonDemand(string signal, List<PartContext> parts)
+    {
+        var lower = signal.ToLowerInvariant();
+        if (!UnexplainedMarkers.Any(m => lower.Contains(m))) return false;
+
+        var setupSide = lower.Contains(SetupMarker);
+        var prodSide = lower.Contains(ProductionMarker);
+        bool? setupOnly = setupSide && !prodSide ? true
+            : prodSide && !setupSide ? false
+            : (bool?)null;
+
+        var hits = ReasonStems
+            .Where(s => lower.Contains(s.Stem)
+                && (setupOnly == null || s.Setup == setupOnly.Value))
+            .ToList();
+        if (hits.Count == 0) return false;
+
+        var scope = ScopeByKpdNumber(lower, parts, setupOnly)
+            ?? (NamedParts(lower, parts) is { Count: > 0 } named ? named : parts);
+        if (scope.Count == 0) return false;
+
+        return scope.All(p =>
+        {
+            List<(string Reason, string Detail)> fields = setupOnly == true
+                ? [(p.MasterSetupComment, p.MasterSetupDetail)]
+                : setupOnly == false
+                    ? [(p.MasterMachiningComment, p.MasterMachiningDetail)]
+                    : [(p.MasterSetupComment, p.MasterSetupDetail),
+                       (p.MasterMachiningComment, p.MasterMachiningDetail)];
+            // Востребованную причину выбрали — требование может относиться к ней.
+            if (fields.Any(f => hits.Any(h => MatchesStem(f.Item1, h, setupOnly)))) return false;
+            // Иначе: детализированная чужая причина есть — требование не по адресу.
+            return fields.Any(f => !string.IsNullOrWhiteSpace(f.Item1)
+                && !string.IsNullOrWhiteSpace(EffectiveDetailFor(f, p)));
+        });
+    }
+
+    private static bool MatchesStem(string reasonText, (string Stem, bool Setup) hit, bool? setupOnly)
+    {
+        if (string.IsNullOrWhiteSpace(reasonText)) return false;
+        var r = reasonText.ToLowerInvariant();
+        if (!r.Contains(hit.Stem)) return false;
+        // Категория stem должна соответствовать стороне проверки.
+        return setupOnly == null || hit.Setup == setupOnly.Value;
+    }
+
+    private static string EffectiveDetailFor((string Reason, string Detail) field, PartContext p)
+    {
+        if (!string.IsNullOrWhiteSpace(field.Detail)) return field.Detail;
+        // Архивное поле — только когда оба новых пусты (как в промпте).
+        return string.IsNullOrWhiteSpace(p.MasterSetupDetail)
+            && string.IsNullOrWhiteSpace(p.MasterMachiningDetail)
+            ? p.MasterComment ?? "" : "";
+    }
+
+    /// <summary>
+    /// Строки, чьё КПД совпадает с числами из сигнала (±1.5 п.п., категория та же).
+    /// Пусто — числа ни к чему не привязались (не Sommerfeld-привязка, а null).
+    /// </summary>
+    private static List<PartContext>? ScopeByKpdNumber(
+        string lowerSignal, List<PartContext> parts, bool? setupOnly)
+    {
+        var matches = KpdClaim.Matches(lowerSignal);
+        // KpdClaim работает с исходным регистром; lower уже lower — ок.
+        var found = false;
+        var scope = new List<PartContext>();
+        foreach (Match m in matches)
+        {
+            if (!TryParsePercent(m.Groups["val"].Value, out var val)) continue;
+            var isSetup = m.Groups["cat"].Value.StartsWith("наладк", StringComparison.OrdinalIgnoreCase)
+                || m.Groups["partial"].Success;
+            if (setupOnly != null && isSetup != setupOnly.Value) continue;
+            found = true;
+            scope.AddRange(parts.Where(p =>
+            {
+                var r = isSetup ? p.SetupRatio : p.ProductionRatio;
+                return r.HasValue && Math.Abs(r.Value * 100 - val) <= 1.5;
+            }));
+        }
+        if (!found) return null;
+        return scope.Distinct().ToList();
+    }
+
+    private static bool IsRefutedDrugoeClaim(string signal, List<PartContext> parts)
+    {
+        var lower = signal.ToLowerInvariant();
+        var mentionsDrugoe = DrugoeMarkers.Any(m => lower.Contains(m));
+        var claimsUnexplained = UnexplainedMarkers.Any(m => lower.Contains(m));
+        if (!claimsUnexplained) return false;
+
+        // Перепутанный адресат (пилот 25.09, QTS350 23.09): «без подтверждения
+        // освоения», а у названной детали причина наладки выбрана, не «Освоение»,
+        // и детализация есть. Без названных деталей не срабатывает.
+        // HasDetail объявлен ниже — local function, вызов выше допустим.
+        if (lower.Contains("освоен"))
+        {
+            var namedHere = NamedParts(lower, parts);
+            if (namedHere.Count > 0
+                && namedHere.All(p => !string.IsNullOrWhiteSpace(p.MasterSetupComment)
+                    && !p.MasterSetupComment.Trim().Equals("Освоение", StringComparison.OrdinalIgnoreCase)
+                    && HasDetail(p, true)))
+                return true;
+        }
+
+        if (!mentionsDrugoe) return false;
+
+        var setupSide = lower.Contains(SetupMarker);
+        var prodSide = lower.Contains(ProductionMarker);
+
+        static bool IsDrugoe(PartContext p, bool setup) =>
+            (setup ? p.MasterSetupComment : p.MasterMachiningComment)
+                .Trim().Equals("Другое", StringComparison.OrdinalIgnoreCase);
+
+        static bool HasDetail(PartContext p, bool setup)
+        {
+            var detail = setup ? p.MasterSetupDetail : p.MasterMachiningDetail;
+            if (!string.IsNullOrWhiteSpace(detail)) return true;
+            // Архивное поле — только когда оба новых пусты (как в промпте).
+            return string.IsNullOrWhiteSpace(p.MasterSetupDetail)
+                && string.IsNullOrWhiteSpace(p.MasterMachiningDetail)
+                && !string.IsNullOrWhiteSpace(p.MasterComment);
+        }
+
+        var named = NamedParts(lower, parts);
+        var scope = named.Count > 0 ? named : parts;
+        // Категория из текста сигнала; без неё и при обеих — смотрим обе стороны.
+        bool? setupOnly = setupSide && !prodSide ? true
+            : prodSide && !setupSide ? false
+            : (bool?)null;
+        var candidates = scope.Where(p =>
+            setupOnly == true ? IsDrugoe(p, true)
+            : setupOnly == false ? IsDrugoe(p, false)
+            : IsDrugoe(p, true) || IsDrugoe(p, false)).ToList();
+        // Жалоба мимо всех «Другое»-строк — не о чем говорить.
+        if (candidates.Count == 0) return true;
+
+        return candidates.All(p =>
+            setupOnly == true ? HasDetail(p, true)
+            : setupOnly == false ? HasDetail(p, false)
+            : HasDetail(p, true) || HasDetail(p, false));
+    }
     /// без заказа (Order пустой или «Без М/Л» — зеркало hasOrder из HardRule) и
     /// план там действительно нулевой: норма, объяснений не требует.
     /// Безымянная жалоба режется, только если без заказа весь день, — иначе

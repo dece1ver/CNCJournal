@@ -187,6 +187,43 @@ public class PromptBuilder
         return false;
     }
 
+    /// <summary>
+    /// Системный скелет агентского контура: тощий system_prompt.agent.txt + суффикс @agent
+    /// в версии (точность в ai_day_reviews считается раздельно). Вызывается только
+    /// из AgentLoopService, штатный Build не затрагивается.
+    /// </summary>
+    public PromptBuildResult BuildAgentSystem()
+    {
+        var (content, version, exists) = GetPrompt("system_prompt.agent.txt", allowEmbeddedFallback: true);
+        if (!exists)
+            throw new FileNotFoundException("Не найден промпт 'system_prompt.agent.txt' (ни файл, ни embedded resource).");
+        return new PromptBuildResult(content, $"{version}@agent");
+    }
+
+    /// <summary>
+    /// Правила понижения soft-сигналов (аудит 25.09: в агентском пути их не было —
+    /// модель решала вслепую). Пусто, если soft-сигналов нет.
+    /// </summary>
+    public string GetSoftPrompt(IReadOnlyList<string> softSignals)
+    {
+        if (softSignals.Count == 0) return "";
+        var (softPrompt, _, softExists) = GetPrompt("soft_signal_explanation.txt", allowEmbeddedFallback: true);
+        return softExists ? softPrompt : "";
+    }
+
+    /// <summary>
+    /// Текст блока «Отчёт мастера за смену» для агентского user-сообщения —
+    /// те же строки фактов, что видит обычная модель (см. AppendShiftReports).
+    /// Агент судит только релевантность (S1), структуру решают hard-правила.
+    /// Только чтение, штатный Build не затрагивается.
+    /// </summary>
+    public static string RenderShiftReports(AnalyzeRequest req)
+    {
+        var sb = new StringBuilder();
+        AppendShiftReports(sb, req);
+        return sb.ToString();
+    }
+
     public PromptBuildResult Build(AnalyzeRequest req, HardRuleResult hardRules, ShiftReportRuleResult shiftRules)
     {
         var (systemPrompt, promptVersion) = ResolveSystemPrompt(req.PromptProfile);
@@ -205,7 +242,8 @@ public class PromptBuilder
         }
 
         sb.AppendLine();
-        sb.AppendLine($"Станок: {req.Machine}");
+        sb.AppendLine($"Станок: {req.Machine}" +
+                      (req.IsSerialMachine == false ? " [несерийный — КПД изготовления не оценивается]" : ""));
         sb.AppendLine($"Дата: {req.ShiftDate}");
         sb.AppendLine($"Записей: {req.Parts.Count}");
 

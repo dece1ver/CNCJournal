@@ -18,8 +18,8 @@ public class RequestLog(IConfiguration configuration, ILogger<RequestLog> logger
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    public Task WriteAsync(AnalyzeRequest request, AnalyzeResponse response, string endpoint) =>
-        WriteCoreAsync(request.Machine, request.ShiftDate, response.PromptVersion, request, response, endpoint);
+    public Task WriteAsync(AnalyzeRequest request, AnalyzeResponse response, string endpoint, AgentTrace? agentTrace = null) =>
+        WriteCoreAsync(request.Machine, request.ShiftDate, response.PromptVersion, request, response, endpoint, agentTrace: agentTrace);
 
     // Префикс "verify_" в имени файла отделяет проверки строк от дневных анализов,
     // чтобы tools/ai-replay и ручной разбор не смешивали разноформатные логи.
@@ -80,7 +80,7 @@ public class RequestLog(IConfiguration configuration, ILogger<RequestLog> logger
 
     private async Task WriteCoreAsync(
         string machine, string shiftDate, string? promptVersion,
-        object request, object response, string endpoint, string filePrefix = "")
+        object request, object response, string endpoint, string filePrefix = "", AgentTrace? agentTrace = null)
     {
         try
         {
@@ -105,6 +105,7 @@ public class RequestLog(IConfiguration configuration, ILogger<RequestLog> logger
                 promptVersion,
                 request,
                 response,
+                agentTrace,
             };
 
             await File.WriteAllTextAsync(

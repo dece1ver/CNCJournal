@@ -171,7 +171,8 @@ namespace remeLog.ViewModels
             }
             ChipFilters = new ObservableCollection<FilterChip>();
             ChipFilters.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasChipFilters));
-            AiThinkingEnabled = true;
+            // Режим из настроек (вкл — агент, выкл — thinking), не форсируем.
+            AiThinkingEnabled = AppSettings.Instance.AiThinkingEnabled;
             OnPropertyChanged(nameof(HasErrors));
             UpdateHasErrors();
             _ = Init();
@@ -507,7 +508,7 @@ namespace remeLog.ViewModels
         }
 
         private bool _AiThinkingEnabled = false;
-        /// <summary> Использовать размышление в модели. </summary>
+        /// <summary> Режим ИИ-анализа: вкл — агентский контур, выкл — обычный thinking-режим. </summary>
         public bool AiThinkingEnabled
         {
             get => _AiThinkingEnabled;
@@ -992,8 +993,9 @@ namespace remeLog.ViewModels
             }
         }
 
-        /// <summary> Панель видна, если открыта или есть сохранённые мысли. </summary>
-        public bool IsThoughtPanelVisible => AiThinkingEnabled && (IsThoughtPanelOpen || HasThinkingThoughts);
+        /// <summary> Панель видна, если открыта или есть содержимое: размышления модели
+        /// либо след шагов агента — оба копятся в ThinkingThoughts. </summary>
+        public bool IsThoughtPanelVisible => IsThoughtPanelOpen || HasThinkingThoughts;
 
 
         private bool _CompactView = false;
@@ -2961,6 +2963,16 @@ namespace remeLog.ViewModels
                     Status = update.Text;
                     thinkingStarted = false;
                 }
+                else if (update.Kind == AiProgressKind.Tool)
+                {
+                    // Шаг агента — отдельной строкой, видно что делает и что проверяет.
+                    // Флаг взводим: следующие чанки мыслей должны дописаться, а не
+                    // заменить след (иначе первая же мысль сотрёт его).
+                    // Завершающий перенос: мысли начнутся с новой строки, а не встык.
+                    ThinkingThoughts += (ThinkingThoughts.Length > 0 ? "\n" : "") + "⚙ " + update.Text + "\n";
+                    thinkingStarted = true;
+                    Status = update.Text;
+                }
                 else
                 {
                     ThinkingThoughts = thinkingStarted ? ThinkingThoughts + update.Text : update.Text;
@@ -2984,6 +2996,12 @@ namespace remeLog.ViewModels
 
                 AiResult = result;
 
+                // Агентский вердикт пишется в БД наравне со штатным: этап сравнения
+                // завершён (1012 дней, recall ~99.8%), аналитики работают от одного
+                // вердикта. Трассируемость — суффикс @agent в версии промпта + тег.
+                // Теневой режим удалён 25.09.2026 (isAgentResult оставлен только для статуса).
+                var isAgentResult = result.PromptVersion?.EndsWith("@agent") == true;
+
                 if (CurrentDayReview != null && !result.HasError)
                 {
                     var saveResult = await Database.SaveAiAnalysisAsync(
@@ -3004,7 +3022,7 @@ namespace remeLog.ViewModels
                         return;
                     }
                 }
-                Status = "ИИ подумал";
+                Status = isAgentResult ? "ИИ (агент) подумал" : "ИИ подумал";
                 await ShowAiVerdictAsync(result, machine, canChangeDayStatus: true);
             }
             catch (OperationCanceledException)
@@ -3265,10 +3283,12 @@ namespace remeLog.ViewModels
             return true;
         }
 
-        /// <summary> Аудиторский тег принятого вердикта: модель и промпт — для разбора расхождений. </summary>
+        /// <summary> Аудиторский тег принятого вердикта: модель и промпт — для разбора расхождений.
+        /// Агентский путь помечается (суффикс @agent в версии промпта). </summary>
         private void AppendAiAuditTag(AiAnalysisResult result)
         {
-            var tag = $"[ИИ {AppSettings.AiModel}/{result.PromptVersion}]";
+            var agentMark = result.PromptVersion?.EndsWith("@agent") == true ? " агент" : "";
+            var tag = $"[ИИ {AppSettings.AiModel}/{result.PromptVersion}{agentMark}]";
             if ((AiFeedbackText ?? string.Empty).Contains("[ИИ")) return;
             AiFeedbackText = string.IsNullOrWhiteSpace(AiFeedbackText)
                 ? tag

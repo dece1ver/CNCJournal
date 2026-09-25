@@ -1,0 +1,437 @@
+using AiService.Models;
+using AiService.Services;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace AiService.Tests;
+
+/// <summary>
+/// Агентский цикл (стадия 1: каркас, прод не затрагивается).
+/// Chat-клиент — заглушка: проверяются ветки «финал сразу», «один tool-раунд»,
+/// «лимит итераций → fallback», «сбой → fallback», плюс загрузка скелета промпта.
+/// </summary>
+public class AgentLoopServiceTests
+{
+    private sealed class StubChat(Func<IReadOnlyList<ChatMessage>, ChatResult> next) : IAgentChatClient
+    {
+        public List<IReadOnlyList<ChatMessage>> SeenMessages { get; } = [];
+        public List<bool> SeenThink { get; } = [];
+        public int Calls { get; private set; }
+
+        public Task<ChatResult> ChatAsync(
+            IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool> tools,
+            string? format, bool think, CancellationToken ct,
+            string? model = null, double? temperature = null,
+            IProgress<string>? thinkingProgress = null)
+        {
+            Calls++;
+            SeenMessages.Add(messages);
+            SeenThink.Add(think);
+            return Task.FromResult(next(messages));
+        }
+    }
+
+    private static IConfiguration Config(params (string Key, string Value)[] values)
+    {
+        var dict = values.ToDictionary(v => v.Key, v => (string?)v.Value);
+        return new ConfigurationBuilder().AddInMemoryCollection(dict!).Build();
+    }
+
+    private static AnalyzeRequest Request() => new()
+    {
+        Machine = "Станок1",
+        ShiftDate = "2026-09-23",
+        Parts =
+        [
+            new PartContext
+            {
+                PartName = "Корпус",
+                Order = "З1",
+                Setup = 1,
+                MasterSetupComment = "Освоение",
+                SetupRatio = 0.45,
+                SetupTimePlan = 100,
+                SetupTimeFact = 200,
+            },
+        ],
+    };
+
+    private static AgentLoopService Service(StubChat stub, IConfiguration? config = null) =>
+        new(stub,
+            new PromptBuilder(NullLogger<PromptBuilder>.Instance),
+            config ?? Config(),
+            NullLogger<AgentLoopService>.Instance);
+
+    private static readonly HardRuleResult NoHard = new([], []);
+    private static readonly ShiftReportRuleResult NoShift = new([], []);
+
+    [Fact]
+    public async Task FinalWithoutTools_ReturnsJson()
+    {
+        var stub = new StubChat(_ => new ChatResult
+        {
+            Content = """{"requires_review":false}""",
+        });
+        var outcome = await Service(stub).AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.Equal("""{"requires_review":false}""", outcome.FinalJson);
+        Assert.False(outcome.Trace.FellBack);
+        Assert.Equal(1, outcome.Trace.IterationsUsed);
+        Assert.Empty(outcome.Trace.Rounds);
+        Assert.EndsWith("@agent", outcome.Trace.PromptVersion);
+    }
+
+    [Fact]
+    public async Task OneToolRound_ExecutesAndReturnsFinal()
+    {
+        var calls = 0;
+        var stub = new StubChat(_ => ++calls == 1
+            ? new ChatResult
+            {
+                Content = "",
+                ToolCalls =
+                [
+                    new AgentToolCall
+                    {
+                        Id = "c1",
+                        Name = "get_reason_semantics",
+                        Arguments = """{"reason":"Освоение","category":"setup"}""",
+                    },
+                ],
+            }
+            : new ChatResult { Content = """{"requires_review":true}""" });
+
+        var outcome = await Service(stub).AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.Equal("""{"requires_review":true}""", outcome.FinalJson);
+        Assert.False(outcome.Trace.FellBack);
+        Assert.Single(outcome.Trace.Rounds);
+        Assert.Equal("get_reason_semantics", outcome.Trace.Rounds[0].Name);
+        // Второй раунд видит assistant-запрос и результат tool в истории сообщений.
+        Assert.Equal(4, stub.SeenMessages[1].Count);
+        Assert.Equal("tool", stub.SeenMessages[1][3].Role);
+        Assert.Contains("ЛЮБУЮ аномалию наладки", stub.SeenMessages[1][3].Content);
+    }
+
+    [Fact]
+    public async Task AlwaysTools_FallsBackByLimit()
+    {
+        var stub = new StubChat(_ => new ChatResult
+        {
+            ToolCalls = [new AgentToolCall { Id = "c", Name = "get_shift_report", Arguments = "{}" }],
+        });
+        var svc = Service(stub, Config(("Agent:MaxIterations", "2")));
+
+        var outcome = await svc.AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.Null(outcome.FinalJson);
+        Assert.True(outcome.Trace.FellBack);
+        Assert.Contains("Лимит итераций (2)", outcome.Trace.FallbackReason);
+        Assert.Equal(2, stub.Calls);
+    }
+
+    [Fact]
+    public async Task ChatThrows_FallsBack()
+    {
+        var stub = new StubChat(_ => throw new InvalidOperationException("бум"));
+        var outcome = await Service(stub).AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.Null(outcome.FinalJson);
+        Assert.True(outcome.Trace.FellBack);
+        Assert.Contains("бум", outcome.Trace.FallbackReason);
+    }
+
+    [Fact]
+    public async Task UnknownToolName_ReturnsErrorResult_Continues()
+    {
+        // Неизвестный tool — не падение цикла: исполнитель возвращает подсказку,
+        // модель получает её следующим сообщением.
+        var calls = 0;
+        var stub = new StubChat(msgs =>
+        {
+            if (++calls == 1)
+                return new ChatResult
+                {
+                    ToolCalls = [new AgentToolCall { Id = "c", Name = "no_such_tool", Arguments = "{}" }],
+                };
+            return new ChatResult { Content = """{"requires_review":false}""" };
+        });
+
+        var outcome = await Service(stub).AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.False(outcome.Trace.FellBack);
+        Assert.Equal("no_such_tool", outcome.Trace.Rounds[0].Name);
+        Assert.Contains("Неизвестный инструмент", stub.SeenMessages[1][3].Content);
+    }
+
+    [Fact]
+    public async Task Progress_ReportsRoundsAndTools()
+    {
+        var calls = 0;
+        var stub = new StubChat(_ => ++calls == 1
+            ? new ChatResult
+            {
+                ToolCalls =
+                [
+                    new AgentToolCall
+                    {
+                        Id = "c1",
+                        Name = "get_part_history",
+                        Arguments = """{"partName":"Корпус"}""",
+                    },
+                ],
+            }
+            : new ChatResult { Content = """{"requires_review":false}""" });
+
+        var steps = new List<string>();
+        var progress = new Progress<string>(s => steps.Add(s));
+        var outcome = await Service(stub).AnalyzeAsync(
+            Request(), NoHard, NoShift, CancellationToken.None, progress);
+
+        Assert.False(outcome.Trace.FellBack);
+        Assert.Contains(steps, s => s.Contains("Раунд 1"));
+        Assert.Contains(steps, s => s.Contains("Корпус"));
+        Assert.Contains(steps, s => s.Contains("Вердикт"));
+    }
+
+    [Fact]
+    public void DescribeCall_Humanizes()
+    {
+        Assert.Contains("Освоение", AgentLoopService.DescribeCall(
+            "get_reason_semantics", """{"reason":"Освоение","category":"setup"}"""));
+        Assert.Contains("отчёты мастера", AgentLoopService.DescribeCall(
+            "get_shift_report", "{}").ToLowerInvariant());
+    }
+
+    [Fact]
+    public async Task ThinkingFlag_PassedToChat_AndCharsAccumulated()
+    {
+        var stub = new StubChat(_ => new ChatResult
+        {
+            Content = """{"requires_review":false}""",
+            Thinking = new string('д', 100),
+        });
+        var svc = Service(stub, Config(("Agent:Thinking", "true")));
+
+        var outcome = await svc.AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.True(stub.SeenThink[0]);
+        Assert.Equal(100, outcome.Trace.ThinkingChars);
+        Assert.Contains("д", outcome.Trace.ThinkingExcerpt);
+    }
+
+    [Fact]
+    public async Task ThinkingFlag_DefaultOff()
+    {
+        var stub = new StubChat(_ => new ChatResult { Content = """{"requires_review":false}""" });
+
+        await Service(stub).AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.False(stub.SeenThink[0]);
+    }
+
+    [Fact]
+    public async Task ThinkingAuto_SkippedOnHard_UsedOtherwise()
+    {
+        // "auto": hard-эскалация — вердикт предрешён, thinking не платим.
+        var stubHard = new StubChat(_ => new ChatResult { Content = """{"requires_review":true}""" });
+        var hard = new HardRuleResult(["[Д] hard"], []);
+        await Service(stubHard, Config(("Agent:Thinking", "auto")))
+            .AnalyzeAsync(Request(), hard, NoShift, CancellationToken.None);
+        Assert.False(stubHard.SeenThink[0]);
+
+        var stubClean = new StubChat(_ => new ChatResult { Content = """{"requires_review":false}""" });
+        await Service(stubClean, Config(("Agent:Thinking", "auto")))
+            .AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+        Assert.True(stubClean.SeenThink[0]);
+    }
+
+    [Fact]
+    public async Task ThinkingProgress_ForwardedToChat()
+    {
+        IProgress<string>? seen = null;
+        var stub = new StubChat(_ => new ChatResult { Content = """{"requires_review":false}""" });
+        // Заглушка ниже не принимает thinkingProgress — проверяем через обёртку.
+        var fwd = new ForwardStub(stub, p => seen = p);
+        var svc = new AgentLoopService(fwd,
+            new PromptBuilder(NullLogger<PromptBuilder>.Instance),
+            Config(("Agent:Thinking", "true")),
+            NullLogger<AgentLoopService>.Instance);
+
+        var think = new Progress<string>(_ => { });
+        await svc.AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None, null, think);
+
+        Assert.Same(think, seen);
+    }
+
+    private sealed class VerifierStub(
+        string baseJson,
+        string[] verifierJsons,
+        List<string> seenPrompts) : IAgentChatClient
+    {
+        public Task<ChatResult> ChatAsync(
+            IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool> tools,
+            string? format, bool think, CancellationToken ct,
+            string? model = null, double? temperature = null,
+            IProgress<string>? thinkingProgress = null)
+        {
+            // Первый вызов без tools и короткий — это верифаер (у базового есть tools).
+            if (tools.Count == 0)
+            {
+                seenPrompts.Add(messages.Last().Content ?? "");
+                var next = verifierJsons[seenPrompts.Count - 1];
+                return Task.FromResult(new ChatResult { Content = next });
+            }
+            return Task.FromResult(new ChatResult { Content = baseJson });
+        }
+    }
+
+    [Fact]
+    public async Task VerifyFalse_FalseBase_TrueVerifier_Escalates()
+    {
+        var seen = new List<string>();
+        var stub = new VerifierStub(
+            """{"requires_review":false,"signals":[],"explanation":"ok"}""",
+            ["""{"requires_review":true,"signals":["КПД наладки 40% без объяснения"],"explanation":"плохо"}"""],
+            seen);
+        var svc = new AgentLoopService(stub,
+            new PromptBuilder(NullLogger<PromptBuilder>.Instance),
+            Config(("Agent:VerifyFalse", "true"), ("Agent:VerifyRounds", "1")),
+            NullLogger<AgentLoopService>.Instance);
+
+        var outcome = await svc.AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.Single(outcome.VerifierJsons);
+        Assert.Contains("40%", outcome.VerifierJsons[0]);
+        Assert.Single(seen);
+    }
+
+    [Fact]
+    public async Task VerifyFalse_DisabledByDefault_NoExtraCalls()
+    {
+        var calls = 0;
+        var stub = new StubChat(_ =>
+        {
+            calls++;
+            return new ChatResult { Content = """{"requires_review":false}""" };
+        });
+
+        await Service(stub).AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task VerifyFalse_TrueBase_Skipped()
+    {
+        // Базовый True не перепроверяем — лишняя эскалация приемлема.
+        var seen = new List<string>();
+        var stub = new VerifierStub(
+            """{"requires_review":true,"signals":["x"],"explanation":"плохо"}""",
+            [],
+            seen);
+        var svc = new AgentLoopService(stub,
+            new PromptBuilder(NullLogger<PromptBuilder>.Instance),
+            Config(("Agent:VerifyFalse", "true")),
+            NullLogger<AgentLoopService>.Instance);
+
+        var outcome = await svc.AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.Empty(outcome.VerifierJsons);
+        Assert.Empty(seen);
+    }
+
+    private sealed class ForwardStub(StubChat inner, Action<IProgress<string>?> capture) : IAgentChatClient
+    {
+        public Task<ChatResult> ChatAsync(
+            IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool> tools,
+            string? format, bool think, CancellationToken ct,
+            string? model = null, double? temperature = null,
+            IProgress<string>? thinkingProgress = null)
+        {
+            capture(thinkingProgress);
+            return inner.ChatAsync(messages, tools, format, think, ct, model, temperature, thinkingProgress);
+        }
+    }
+
+    [Fact]
+    public void BuildAgentSystem_LoadsSkeletonWithSuffix()
+    {
+        var pb = new PromptBuilder(NullLogger<PromptBuilder>.Instance);
+        var built = pb.BuildAgentSystem();
+
+        Assert.EndsWith("@agent", built.Version);
+        Assert.Contains("TOOLS", built.Prompt);
+        Assert.Contains("get_reason_semantics", built.Prompt);
+    }
+
+    [Fact]
+    public async Task UserMessage_NonSerial_MarksAndHidesProductionKpd()
+    {
+        // Несерийный станок: маркер в шапке + скрытые числа изготовления.
+        var stub = new StubChat(_ => new ChatResult { Content = """{"requires_review":false}""" });
+        var req = Request();
+        req.IsSerialMachine = false;
+        req.Parts[0].ProductionRatio = 0.44;
+        req.Parts[0].FinishedCount = 5;
+
+        await Service(stub).AnalyzeAsync(req, NoHard, NoShift, CancellationToken.None);
+
+        var user = stub.SeenMessages[0][1].Content ?? "";
+        Assert.Contains("[несерийный", user);
+        Assert.Contains("не оценивается", user);
+        Assert.DoesNotContain("КПД изготовления=", user);
+    }
+
+    [Fact]
+    public async Task UserMessage_ContainsCommentsAndDowntimes()
+    {
+        // Аудит 25.09: модель судила релевантность текстов, которых не видела.
+        var stub = new StubChat(_ => new ChatResult { Content = """{"requires_review":false}""" });
+        var req = Request();
+        req.Parts[0].OperatorComment = "уборка станка";
+        req.Parts[0].MasterSetupDetail = "замена сверла";
+        req.Parts[0].SpecifiedDowntimesComment = "простой по вине цеха";
+
+        await Service(stub).AnalyzeAsync(req, NoHard, NoShift, CancellationToken.None);
+
+        var user = stub.SeenMessages[0][1].Content ?? "";
+        Assert.Contains("уборка станка", user);
+        Assert.Contains("замена сверла", user);
+        Assert.Contains("по вине цеха", user);
+    }
+
+    [Fact]
+    public async Task SystemMessage_WithSoftSignals_AppendsSoftRules()
+    {
+        // Аудит 25.09: soft-правила в агентском пути отсутствовали.
+        var stub = new StubChat(_ => new ChatResult { Content = """{"requires_review":false}""" });
+        var hard = new HardRuleResult([], ["[Д] soft-сигнал"]);
+
+        await Service(stub).AnalyzeAsync(Request(), hard, NoShift, CancellationToken.None);
+
+        var system = stub.SeenMessages[0][0].Content ?? "";
+        Assert.Contains("SOFT", system);
+    }
+
+    [Fact]
+    public async Task UserMessage_ContainsHardSignals_AndNoKpdFrameForBn()
+    {
+        // A/B кейс Mazak QTS200ML 2026-09-21: агент не видел hard-сигналы.
+        // A/B кейс Goodway 2026-09-23: рендер «КПД=б/н» провоцировал б/н-галлюцинацию.
+        var stub = new StubChat(_ => new ChatResult { Content = """{"requires_review":true}""" });
+        var hard = new HardRuleResult(
+            ["[Д] Причина требует пересмотра технологии: «Некорректные нормативы»"], []);
+        var req = Request();
+        req.Parts[0].NoSetupHappened = true;
+        req.Parts[0].SetupRatio = null;
+
+        await Service(stub).AnalyzeAsync(req, hard, NoShift, CancellationToken.None);
+
+        var user = stub.SeenMessages[0][1].Content ?? "";
+        Assert.Contains("HARD: [Д] Причина требует пересмотра", user);
+        Assert.Contains(@"""наладкиНеБыло"":true", user);
+        Assert.Contains(@"""кпдНаладки"":null", user);
+        Assert.DoesNotContain("б/н", user);
+    }
+}

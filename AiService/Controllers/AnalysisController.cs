@@ -1,4 +1,4 @@
-﻿using AiService.Models;
+using AiService.Models;
 using AiService.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
@@ -9,7 +9,7 @@ namespace AiService.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilder, RequestLog requestLog, ILogger<AnalysisController> logger) : ControllerBase
+public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilder, RequestLog requestLog, AgentLoopService agent, ILogger<AnalysisController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions _camelCase = new()
     {
@@ -57,13 +57,57 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             promptVersion = promptBuild.Version;
             var thinkCapture = new StringBuilder();
 
-            var (raw, thinking) = await ollama.GenerateAsync(promptBuild.Prompt, think: false, thinkingProgress: null, ct: ct, model: request.Model);
+            // Агентский контур (стадия 1): подменяется ТОЛЬКО источник сырого ответа
+            // модели. Весь downstream (парсинг, фильтры, склейка) — общий, без изменений.
+            // Agent:Enabled=false (дефолт) → всегда штатный путь, поведение 1:1 как раньше.
+            string raw;
+            AgentTrace? agentTrace = null;
+            AgentLoopOutcome? agentOutcome = null;
+            var useAgent = request.UseAgent && agent.Enabled;
+            if (request.UseAgent && !agent.Enabled)
+                logger.LogDebug("Клиент просил агента ({Machine} {Date}), но Agent:Enabled=false — штатный путь",
+                    request.Machine, request.ShiftDate);
+            if (useAgent)
+            {
+                var outcome = await agent.AnalyzeAsync(request, hardRules, shiftRules, ct);
+                agentTrace = outcome.Trace;
+                agentOutcome = outcome;
+                if (!outcome.Trace.FellBack && !string.IsNullOrWhiteSpace(outcome.FinalJson))
+                {
+                    raw = outcome.FinalJson;
+                    promptVersion = outcome.Trace.PromptVersion ?? promptVersion;
+                    logger.LogInformation(
+                        "Агент {Machine} {Date}: финал за {N} итераций, tools {T}",
+                        request.Machine, request.ShiftDate,
+                        outcome.Trace.IterationsUsed, outcome.Trace.Rounds.Count);
+                }
+                else
+                {
+                    logger.LogInformation(
+                        "Агент {Machine} {Date}: fallback ({Reason}), штатный путь",
+                        request.Machine, request.ShiftDate, outcome.Trace.FallbackReason);
+                    (raw, _) = await ollama.GenerateAsync(promptBuild.Prompt, think: false, thinkingProgress: null, ct: ct, model: request.Model);
+                }
+            }
+            else
+            {
+                (raw, _) = await ollama.GenerateAsync(promptBuild.Prompt, think: false, thinkingProgress: null, ct: ct, model: request.Model);
+            }
             var llmResult = ParseResponse(raw);
+            if (agentOutcome is { Trace.FellBack: false })
+                agentOutcome.Trace.BaseSignals = [.. llmResult.Signals];
+            MergeVerifierOpinions(agentOutcome, llmResult, request);
             // Отчётные эхо из общего signals — в shift-вопросы, до пост-фильтра.
             var (dataSignals, shiftEchoes) = ShiftReportRuleEvaluator.SplitShiftEchoes(llmResult.Signals);
             llmResult.Signals = dataSignals;
             var modelShiftIssues = ShiftReportRuleEvaluator.CleanModelIssues(
                 llmResult.ShiftReportIssues.Concat(shiftEchoes));
+            // Вердикт «релевантно» — одобрение отчёта, ошибочно положенное в проблемы.
+            (modelShiftIssues, var droppedRelevanceVerdicts) =
+                ShiftReportRuleEvaluator.DropRelevanceVerdicts(modelShiftIssues);
+            // Жалоба на связь простоя с КПД — механизм учёта их не связывает никогда.
+            (modelShiftIssues, var droppedKpdLink) =
+                ShiftReportRuleEvaluator.DropKpdDowntimeLinkComplaints(modelShiftIssues);
             // Требования комментария при самодостаточной причине простоя режутся
             // здесь же — до всех downstream-решений (reset, requiresReview, merge).
             (modelShiftIssues, var droppedCommentDemands) =
@@ -74,6 +118,14 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             // режутся здесь же — триггер ReportExists тот же, что у иконок главной.
             (modelShiftIssues, var droppedNoReport) =
                 ShiftReportRuleEvaluator.DropIssuesWithoutReport(request, modelShiftIssues);
+            // Фактически неверное «причина неизвестна» при причине из закрытого
+            // списка — сверка фактом, а не мнением (пилот 24.09.2026 SKT21 22.09).
+            (modelShiftIssues, var droppedUnknownReasons) =
+                ShiftReportRuleEvaluator.DropUnknownReasonComplaints(request, modelShiftIssues);
+            // Вопрос без привязки к смене («Смена День/Ночь:» буквально) —
+            // отнести не к чему, аналитику с ним делать нечего (там же).
+            (modelShiftIssues, var droppedUnscoped) =
+                ShiftReportRuleEvaluator.DropUnscopedShiftIssues(modelShiftIssues);
             MergeAutoExcludes(llmResult, mastering.AutoExcludes);
             var notDowngraded = SoftSignalMatcher.GetNotDowngraded(
                 hardRules.SoftSignals, llmResult.DowngradedSignals);
@@ -81,22 +133,52 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             var (filteredSignals, reset, removedSignals) = FalsePositiveFilter.Apply(
                 request, hardRules, notDowngraded, llmResult.Signals);
             llmResult.Signals = filteredSignals;
+            removedSignals.AddRange(droppedRelevanceVerdicts
+                .Select(d => (d, "вердикт «релевантно» — одобрение, а не проблема")));
+            removedSignals.AddRange(droppedKpdLink
+                .Select(d => (d, "простой и КПД не связаны — жалоба неверна")));
             removedSignals.AddRange(droppedCommentDemands
                 .Select(d => (d, "причина простоя самодостаточна, комментарий не требуется")));
             removedSignals.AddRange(droppedReasonDemands
                 .Select(d => (d, "причина простоя не требуется (порог 10%) или уже указана")));
             removedSignals.AddRange(droppedNoReport
                 .Select(d => (d, "отчёта нет — проверять нечего")));
+            removedSignals.AddRange(droppedUnknownReasons
+                .Select(d => (d, "причина есть в закрытом списке — жалоба неверна")));
+            removedSignals.AddRange(droppedUnscoped
+                .Select(d => (d, "вопрос без привязки к смене — отнести не к чему")));
             LogFilteredSignals(request, removedSignals, reset);
 
             // Сброс пост-фильтра не действует при вопросах к отчёту мастера:
             // детерминированные hard и несогласия модели (S1) фильтр не рассматривает.
-            var resetEffective = reset && !shiftRules.MustEscalate && modelShiftIssues.Count == 0;
+            // Плюс «пустой вердикт»: requires_review=true, но модель не назвала НИ ОДНОГО
+            // основания (сигналы и shift-вопросы пусты, hard/soft/клиентских нет) —
+            // аналитику разбирать нечего (пилот 24.09, thinking-прогон SKT21 22.09).
+            // Сбой парсинга (HasError) под сброс не попадает — он эскалирует всегда.
+            var emptyModelVerdict = !llmResult.HasError && llmResult.RequiresReview
+                && llmResult.Signals.Count == 0 && modelShiftIssues.Count == 0
+                && !hardRules.MustEscalate && !shiftRules.MustEscalate && notDowngraded.Count == 0
+                && request.Signals.Count == 0 && !request.Parts.Any(p => p.Signals.Count > 0);
+            if (emptyModelVerdict)
+                logger.LogInformation(
+                    "Пустой вердикт модели ({Machine} {Date}): requires_review без оснований — сброшен",
+                    request.Machine, request.ShiftDate);
+            var resetEffective = (reset || emptyModelVerdict)
+                && !shiftRules.MustEscalate && modelShiftIssues.Count == 0;
             if (resetEffective)
             {
                 llmResult.RequiresReview = false;
                 llmResult.Explanation = "";
                 llmResult.SuggestedReason = "";
+            }
+            // Зеркало: модель заявила необъяснённые проблемы, но вердикт False —
+            // принудительно True (fail-safe; пилот 24.09.2026, Goodway 01.06).
+            else if (FalsePositiveFilter.IsIncoherentOk(llmResult.RequiresReview, llmResult.Signals))
+            {
+                logger.LogInformation(
+                    "Противоречивый вердикт модели ({Machine} {Date}): signals непуст при requires_review=false — поднят в True",
+                    request.Machine, request.ShiftDate);
+                llmResult.RequiresReview = true;
             }
 
             // llmResult.HasError (сбой парсинга/вырожденная генерация модели — см.
@@ -136,7 +218,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 Error = llmResult.Error,
                 SuggestExcludeFromReports = FilterExcludeSuggestions(llmResult.SuggestExcludeFromReports, request),
                 DowngradedSignals = llmResult.DowngradedSignals,
-                PromptVersion = promptBuild.Version,
+                PromptVersion = promptVersion,
             };
 
             result.ShiftReportIssues = ShiftReportRuleEvaluator.MergeIssues(shiftRules, modelShiftIssues);
@@ -215,7 +297,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                     })];
             }
 
-            await requestLog.WriteAsync(request, result, "analyze");
+            await requestLog.WriteAsync(request, result, "analyze", agentTrace);
             return Ok(result);
         }
         catch (DegenerateGenerationException ex)
@@ -372,8 +454,120 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         var promptBuild = promptBuilder.Build(request, hardRules, shiftRules);
 
         logger.LogDebug("Промпт построен, символов: {Len}", promptBuild.Prompt.Length);
+        string? promptVersion = promptBuild.Version;
 
-        var channel = System.Threading.Channels.Channel.CreateBounded<string>(
+        // Агентский контур в stream-транспорте: цикл с SSE-событиями "tool"
+        // («что агент делает»: раунды и вызовы инструментов). Весь downstream ниже —
+        // общий: сырой финал агента парсится и фильтруется как обычный ответ модели.
+        // Fallback/отмена/ошибка — в обычный thinking-путь (RunThinkingPathAsync).
+        string raw;
+        string? thinking;
+        AgentTrace? agentTrace = null;
+        AgentLoopOutcome? agentOutcome = null;
+        var useAgent = request.UseAgent && agent.Enabled;
+        if (request.UseAgent && !agent.Enabled)
+            logger.LogDebug("Клиент просил агента ({Machine} {Date}), но Agent:Enabled=false — thinking-путь",
+                request.Machine, request.ShiftDate);
+
+        if (useAgent)
+        {
+            var toolChannel = System.Threading.Channels.Channel.CreateBounded<string>(
+                new System.Threading.Channels.BoundedChannelOptions(32)
+                {
+                    SingleReader = true,
+                    SingleWriter = true,
+                    FullMode = System.Threading.Channels.BoundedChannelFullMode.Wait,
+                });
+            // Синхронный прогресс: Progress<T> постит в пул потоков, и финальное
+            // «Вердикт получен.» терялось (канал закрывался раньше колбэка).
+            var toolProgress = new SyncProgress(step => toolChannel.Writer.TryWrite(step));
+            var drainToolsTask = Task.Run(async () =>
+            {
+                await foreach (var step in toolChannel.Reader.ReadAllAsync(ct))
+                    await Send("tool", JsonSerializer.Serialize(step));
+            }, ct);
+
+            // Живые мысли агента — теми же SSE "thinking", что в thinking-режиме:
+            // UI складывает их в панель хода без различий.
+            var thinkChannel = System.Threading.Channels.Channel.CreateBounded<string>(
+                new System.Threading.Channels.BoundedChannelOptions(128)
+                {
+                    SingleReader = true,
+                    SingleWriter = true,
+                    FullMode = System.Threading.Channels.BoundedChannelFullMode.Wait,
+                });
+            var thinkProgress = new SyncProgress(t => thinkChannel.Writer.TryWrite(t));
+            var drainThinkTask = Task.Run(async () =>
+            {
+                await foreach (var thought in thinkChannel.Reader.ReadAllAsync(ct))
+                    await Send("thinking", JsonSerializer.Serialize(thought));
+            }, ct);
+
+            AgentLoopOutcome outcome;
+            try
+            {
+                outcome = await agent.AnalyzeAsync(request, hardRules, shiftRules, ct, toolProgress, thinkProgress);
+                agentOutcome = outcome;
+            }
+            catch (OperationCanceledException ex)
+            {
+                toolChannel.Writer.Complete();
+                thinkChannel.Writer.Complete();
+                await drainToolsTask;
+                await drainThinkTask;
+                logger.LogWarning("Агент отменён: {Machine} {Date}", request.Machine, request.ShiftDate);
+                await requestLog.WriteFailureAsync(request.Machine, request.ShiftDate, "stream", request.Model, request.EnableThinking, 0, ex);
+                return;
+            }
+            catch (Exception ex)
+            {
+                toolChannel.Writer.Complete();
+                thinkChannel.Writer.Complete();
+                await drainToolsTask;
+                await drainThinkTask;
+                logger.LogError(ex, "Агент: {Machine} {Date}", request.Machine, request.ShiftDate);
+                await Send("error", JsonSerializer.Serialize(ex.Message));
+                return;
+            }
+
+            toolChannel.Writer.Complete();
+            thinkChannel.Writer.Complete();
+            await drainToolsTask;
+            await drainThinkTask;
+            agentTrace = outcome.Trace;
+
+            if (!outcome.Trace.FellBack && !string.IsNullOrWhiteSpace(outcome.FinalJson))
+            {
+                raw = outcome.FinalJson;
+                thinking = null;
+                promptVersion = outcome.Trace.PromptVersion ?? promptVersion;
+                logger.LogInformation(
+                    "Агент {Machine} {Date}: финал за {N} итераций, tools {T}",
+                    request.Machine, request.ShiftDate,
+                    outcome.Trace.IterationsUsed, outcome.Trace.Rounds.Count);
+            }
+            else
+            {
+                logger.LogInformation(
+                    "Агент {Machine} {Date}: fallback ({Reason}), thinking-путь",
+                    request.Machine, request.ShiftDate, outcome.Trace.FallbackReason);
+                var thought = await RunThinkingPathAsync();
+                if (thought == null) return;
+                (raw, thinking) = thought.Value;
+            }
+        }
+        else
+        {
+            var thought = await RunThinkingPathAsync();
+            if (thought == null) return;
+            (raw, thinking) = thought.Value;
+        }
+
+        // Обычный thinking-путь (SSE: очередь/размышления). Null = ответ уже отправлен
+        // (вырожденная генерация/отмена/ошибка) — дальше не идём.
+        async Task<(string Raw, string? Thinking)?> RunThinkingPathAsync()
+        {
+            var channel = System.Threading.Channels.Channel.CreateBounded<string>(
             new System.Threading.Channels.BoundedChannelOptions(32)
             {
                 SingleReader = true,
@@ -435,35 +629,47 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         catch (DegenerateGenerationException ex)
         {
             logger.LogWarning(ex, "Вырожденная генерация {Machine} {Date}", request.Machine, request.ShiftDate);
-            var degResult = DegenerateEscalation(ex, promptBuild.Version);
+            var degResult = DegenerateEscalation(ex, promptVersion);
             await requestLog.WriteAsync(request, degResult, "stream");
             await Send("result", JsonSerializer.Serialize(degResult, _camelCase));
-            return;
+            return null;
         }
         catch (OperationCanceledException ex)
         {
             logger.LogWarning("Отменён: {Machine} {Date}", request.Machine, request.ShiftDate);
             await requestLog.WriteFailureAsync(request.Machine, request.ShiftDate, "stream", request.Model, request.EnableThinking, sw.ElapsedMilliseconds, ex);
-            return;
+            return null;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Ошибка: {Machine} {Date}", request.Machine, request.ShiftDate);
             await requestLog.WriteFailureAsync(request.Machine, request.ShiftDate, "stream", request.Model, request.EnableThinking, sw.ElapsedMilliseconds, ex);
             await Send("error", JsonSerializer.Serialize(ex.Message));
-            return;
+            return null;
         }
         finally
         {
             ollama.LeaveQueue();
         }
 
+        return (raw, thinking);
+        }
+
         var llmResult = ParseResponse(raw);
+        if (agentOutcome is { Trace.FellBack: false })
+            agentOutcome.Trace.BaseSignals = [.. llmResult.Signals];
+        MergeVerifierOpinions(agentOutcome, llmResult, request);
         // Отчётные эхо из общего signals — в shift-вопросы, до пост-фильтра.
         var (dataSignals, shiftEchoes) = ShiftReportRuleEvaluator.SplitShiftEchoes(llmResult.Signals);
         llmResult.Signals = dataSignals;
         var modelShiftIssues = ShiftReportRuleEvaluator.CleanModelIssues(
             llmResult.ShiftReportIssues.Concat(shiftEchoes));
+        // Вердикт «релевантно» — одобрение отчёта, ошибочно положенное в проблемы.
+        (modelShiftIssues, var droppedRelevanceVerdicts) =
+            ShiftReportRuleEvaluator.DropRelevanceVerdicts(modelShiftIssues);
+        // Жалоба на связь простоя с КПД — механизм учёта их не связывает никогда.
+        (modelShiftIssues, var droppedKpdLink) =
+            ShiftReportRuleEvaluator.DropKpdDowntimeLinkComplaints(modelShiftIssues);
         // Требования комментария при самодостаточной причине простоя режутся
         // здесь же — до всех downstream-решений (reset, requiresReview, merge).
         (modelShiftIssues, var droppedCommentDemands) =
@@ -474,8 +680,18 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             // режутся здесь же — триггер ReportExists тот же, что у иконок главной.
             (modelShiftIssues, var droppedNoReport) =
                 ShiftReportRuleEvaluator.DropIssuesWithoutReport(request, modelShiftIssues);
+            // Фактически неверное «причина неизвестна» при причине из закрытого
+            // списка — сверка фактом, а не мнением (пилот 24.09.2026 SKT21 22.09).
+            (modelShiftIssues, var droppedUnknownReasons) =
+                ShiftReportRuleEvaluator.DropUnknownReasonComplaints(request, modelShiftIssues);
+            // Вопрос без привязки к смене («Смена День/Ночь:» буквально) —
+            // отнести не к чему, аналитику с ним делать нечего (там же).
+            (modelShiftIssues, var droppedUnscoped) =
+                ShiftReportRuleEvaluator.DropUnscopedShiftIssues(modelShiftIssues);
             MergeAutoExcludes(llmResult, mastering.AutoExcludes);
-            CheckThinkingConsistency(request, thinking, llmResult);
+            // В агентском пути thinking живёт в трассе (excerpt), а не в переменной —
+            // без этого рассинхрон «в мыслях False, в JSON True» (флипы) не виден в логах.
+            CheckThinkingConsistency(request, agentTrace?.ThinkingExcerpt ?? thinking, llmResult);
 
         logger.LogDebug("ParseResponse: RequiresReview={R}, Error={E}, ExcludeFromReports={ExcludeCount} [{ExcludeList}]",
             llmResult.RequiresReview, llmResult.Error ?? "(нет)",
@@ -487,21 +703,47 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         var (filteredSignals, reset, removedSignals) = FalsePositiveFilter.Apply(
             request, hardRules, notDowngraded, llmResult.Signals);
         llmResult.Signals = filteredSignals;
+        removedSignals.AddRange(droppedRelevanceVerdicts
+            .Select(d => (d, "вердикт «релевантно» — одобрение, а не проблема")));
+        removedSignals.AddRange(droppedKpdLink
+            .Select(d => (d, "простой и КПД не связаны — жалоба неверна")));
         removedSignals.AddRange(droppedCommentDemands
             .Select(d => (d, "причина простоя самодостаточна, комментарий не требуется")));
             removedSignals.AddRange(droppedReasonDemands
                 .Select(d => (d, "причина простоя не требуется (порог 10%) или уже указана")));
             removedSignals.AddRange(droppedNoReport
                 .Select(d => (d, "отчёта нет — проверять нечего")));
+            removedSignals.AddRange(droppedUnknownReasons
+                .Select(d => (d, "причина есть в закрытом списке — жалоба неверна")));
+            removedSignals.AddRange(droppedUnscoped
+                .Select(d => (d, "вопрос без привязки к смене — отнести не к чему")));
             LogFilteredSignals(request, removedSignals, reset);
 
             // Сброс пост-фильтра не действует при вопросах к отчёту мастера — см. Analyze().
-        var resetEffective = reset && !shiftRules.MustEscalate && modelShiftIssues.Count == 0;
+            // Плюс «пустой вердикт» (там же): requires_review без единого основания.
+            var emptyModelVerdict = !llmResult.HasError && llmResult.RequiresReview
+                && llmResult.Signals.Count == 0 && modelShiftIssues.Count == 0
+                && !hardRules.MustEscalate && !shiftRules.MustEscalate && notDowngraded.Count == 0
+                && request.Signals.Count == 0 && !request.Parts.Any(p => p.Signals.Count > 0);
+            if (emptyModelVerdict)
+                logger.LogInformation(
+                    "Пустой вердикт модели ({Machine} {Date}): requires_review без оснований — сброшен",
+                    request.Machine, request.ShiftDate);
+        var resetEffective = (reset || emptyModelVerdict) && !shiftRules.MustEscalate && modelShiftIssues.Count == 0;
         if (resetEffective)
         {
             llmResult.RequiresReview = false;
             llmResult.Explanation = "";
             llmResult.SuggestedReason = "";
+        }
+        // Зеркало: модель заявила необъяснённые проблемы, но вердикт False —
+        // принудительно True (fail-safe; пилот 24.09.2026, Goodway 01.06).
+        else if (FalsePositiveFilter.IsIncoherentOk(llmResult.RequiresReview, llmResult.Signals))
+        {
+            logger.LogInformation(
+                "Противоречивый вердикт модели ({Machine} {Date}): signals непуст при requires_review=false — поднят в True",
+                request.Machine, request.ShiftDate);
+            llmResult.RequiresReview = true;
         }
 
         // llmResult.HasError форсирует эскалацию — см. комментарий в Analyze().
@@ -521,7 +763,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             SuggestExcludeFromReports = FilterExcludeSuggestions(llmResult.SuggestExcludeFromReports, request),
             DowngradedSignals = llmResult.DowngradedSignals,
             Error = llmResult.Error,
-            PromptVersion = promptBuild.Version,
+            PromptVersion = promptVersion,
         };
 
         if (hardRules.MustEscalate && result.SuggestExcludeFromReports.Count > 0)
@@ -569,8 +811,15 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             request.Machine, request.ShiftDate, result.RequiresReview, result.Confidence,
             result.FlaggedParts.Count, result.ShiftReportIssues.Count);
 
-        await requestLog.WriteAsync(request, result, "stream");
+        await requestLog.WriteAsync(request, result, "stream", agentTrace);
         await Send("result", JsonSerializer.Serialize(result, _camelCase));
+    }
+
+    /// <summary> Синхронный IProgress: вызывает колбэк в потоке рапорта,
+    /// без постановки в пул (у Progress&lt;T&gt; финальные события терялись). </summary>
+    private sealed class SyncProgress(Action<string> onNext) : IProgress<string>
+    {
+        public void Report(string value) => onNext(value);
     }
 
     /// <summary>
@@ -753,6 +1002,11 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
         return [.. entries.Where(e =>
         {
+            // Форматный мусор («Уст.1» вместо цифры, голая причина вместо конкретики)
+            // режем до привязки: иначе запись проходит как «непривязанная» мимо всех
+            // содержательных проверок (кейс пилота 25.09, QTS350 23.09).
+            if (!ExcludeTriggerValidator.IsWellFormedExcludeEntry(e)) return false;
+
             var seg = e.Split('§');
             if (seg.Length < 3) return true; // нераспознанный формат — не трогаем
 
@@ -760,6 +1014,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             if (part == null) return true; // консервативно: клиент покажет непривязанной
             if (!AffectsReports(part)) return false;
             var reason = string.Join("§", seg.Skip(3));
+            if (!ExcludeTriggerValidator.HasGroundedReason(part, reason)) return false;
             return ExcludeTriggerValidator.HasGrounds(part, reason);
         })];
     }
@@ -829,6 +1084,32 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 .Select(t => t.PartKey))
             .Concat(namedKeys)
             .Distinct()];
+    }
+
+    /// <summary>
+    /// Вторые мнения агента в общий downstream: True-несогласия верифаеров сливаются
+    /// ДО фильтров — выдуманные сигналы режутся там же, где у базового вердикта,
+    /// а пустой итог обработают штатные reset/empty-правила. Base True не трогаем.
+    /// </summary>
+    private void MergeVerifierOpinions(AgentLoopOutcome? outcome, AnalyzeResponse llmResult, AnalyzeRequest request)
+    {
+        if (outcome == null || outcome.VerifierJsons.Count == 0) return;
+
+        foreach (var vj in outcome.VerifierJsons)
+        {
+            var vr = ParseResponse(vj);
+            if (!vr.RequiresReview || vr.HasError) continue;
+            llmResult.Signals.AddRange(vr.Signals);
+            llmResult.ShiftReportIssues.AddRange(vr.ShiftReportIssues);
+            if (!llmResult.RequiresReview)
+            {
+                llmResult.RequiresReview = true;
+                llmResult.Explanation =
+                    (llmResult.Explanation + " Второе мнение выявило основания для проверки.").Trim();
+                logger.LogInformation("Второе мнение подняло вердикт ({Machine} {Date})",
+                    request.Machine, request.ShiftDate);
+            }
+        }
     }
 
     /// <summary> Пробуем спарсить JSON из ответа модели, обрабатываем типичные огрехи </summary>

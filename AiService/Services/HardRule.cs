@@ -34,12 +34,21 @@ public static class HardRuleEvaluator
     // Фиксированные строки из комбобокса MasterSetupComment/MasterMachiningComment,
     // которые однозначно требуют эскалации — это работа технологов/нормировщиков,
     // которые подключаются именно после эскалации.
-    private static readonly HashSet<string> EscalationReasons = new(StringComparer.OrdinalIgnoreCase)
+    // internal: читается AgentTools (hard-факты на несерийных станках разбираются как обычно).
+    internal static readonly HashSet<string> EscalationReasons = new(StringComparer.OrdinalIgnoreCase)
     {
         "Изготовление не по техпроцессу",
         "Некорректные нормативы",
         "Отсутствие нормативов",
+        // «Некорректное заполнение» — данные недостоверны, требуют исправления:
+        // эскалация безусловна (пилот агента 24.09.2026, SKT21 №104 23.09 — модель
+        // сняла эскалацию дня с такой причиной). Формулировка сигнала своя
+        // (не «пересмотр технологии», а исправление данных), см. ниже.
+        "Некорректное заполнение",
     };
+
+    private const string MissingNormativesReason = "Отсутствие нормативов";
+    private const string BadFillReason = "Некорректное заполнение";
 
     // Причины из комбобокса MasterMachiningComment, при наличии которых и непустого
     // MasterComment правило "машинное время >= норматива" понижается до soft — решает
@@ -66,6 +75,10 @@ public static class HardRuleEvaluator
         var hardKeys = new List<string>();
         var softFlagged = new List<(string Signal, string PartKey)>();
 
+        // Несерийный станок (cnc_machines.IsSerial=false, флаг от клиента):
+        // КПД изготовления не оценивается НИ В ОДНОМ контуре. null = серийный.
+        var checkProductionKpd = req.IsSerialMachine != false;
+
         foreach (var p in req.Parts)
         {
             var key = PartKey(p);
@@ -91,9 +104,13 @@ public static class HardRuleEvaluator
             if (!string.IsNullOrWhiteSpace(p.MasterSetupComment)
                 && EscalationReasons.Contains(p.MasterSetupComment))
             {
-                if (p.MasterSetupComment.Equals("Отсутствие нормативов", StringComparison.OrdinalIgnoreCase)
+                if (p.MasterSetupComment.Equals(MissingNormativesReason, StringComparison.OrdinalIgnoreCase)
                     && !hasOrder)
                 { }
+                else if (p.MasterSetupComment.Equals(BadFillReason, StringComparison.OrdinalIgnoreCase))
+                {
+                    AddHard($"[{p.PartName}] Причина отклонения в наладке: «{BadFillReason}» — данные недостоверны, требуют исправления");
+                }
                 else
                 {
                     AddHard($"[{p.PartName}] Причина отклонения в наладке требует пересмотра технологии: «{p.MasterSetupComment}»");
@@ -103,9 +120,13 @@ public static class HardRuleEvaluator
             if (!string.IsNullOrWhiteSpace(p.MasterMachiningComment)
                 && EscalationReasons.Contains(p.MasterMachiningComment))
             {
-                if (p.MasterMachiningComment.Equals("Отсутствие нормативов", StringComparison.OrdinalIgnoreCase)
+                if (p.MasterMachiningComment.Equals(MissingNormativesReason, StringComparison.OrdinalIgnoreCase)
                     && !hasOrder)
                 { }
+                else if (p.MasterMachiningComment.Equals(BadFillReason, StringComparison.OrdinalIgnoreCase))
+                {
+                    AddHard($"[{p.PartName}] Причина отклонения в изготовлении: «{BadFillReason}» — данные недостоверны, требуют исправления");
+                }
                 else
                 {
                     AddHard($"[{p.PartName}] Причина отклонения в изготовлении требует пересмотра технологии: «{p.MasterMachiningComment}»");
@@ -130,10 +151,12 @@ public static class HardRuleEvaluator
 
             // Правило 3: КПД изготовления < 70% без объяснения мастера
             // null (= "б/и") не считается, доработка освобождена.
+            // Несерийный станок: правило отключено целиком (см. checkProductionKpd).
             // Без норматива (SingleProductionTimePlan=0) ProductionRatio считается как 0/факт = 0%,
             // что не является реальным КПД — но это исключение только для "Без М/Л" (!hasOrder).
             // При реальном заказе отсутствие норматива само по себе проблема, эскалация должна идти.
-            if (p.ProductionRatio is { } pr && pr < 0.7
+            if (checkProductionKpd
+                && p.ProductionRatio is { } pr && pr < 0.7
                 && (p.SingleProductionTimePlan > 0 || hasOrder)
                 && !p.NoProductionHappened
                 && !isReworkMachining
@@ -157,7 +180,9 @@ public static class HardRuleEvaluator
             }
 
             // Изготовление: КПД = 0 при наличии деталей и заказа — противоречие данных.
-            if (p.ProductionRatio is 0
+            // Несерийный станок: отключено вместе с остальными КПД-проверками изготовления.
+            if (checkProductionKpd
+                && p.ProductionRatio is 0
                 && p.FinishedCount > 0
                 && hasOrder
                 && !isReworkMachining)
@@ -231,10 +256,25 @@ public static class HardRuleEvaluator
         if ((l.Contains("укладыва") || l.Contains("уложиться")) && l.Contains("норматив"))
             return false;
 
-        return l.Contains("норматив") || l.Contains("не соответствует")
+        if (l.Contains("норматив") || l.Contains("не соответствует")
             || l.Contains("некорректн") || l.Contains("режимы не")
             || l.Contains("программа не соответ") || l.Contains("скорректировать")
             // жалоба числами без слова «норматив»: «время наладки на 1 шт 320 мин»
-            || l.Contains("на 1 шт") || l.Contains("на 1шт");
+            || l.Contains("на 1 шт") || l.Contains("на 1шт"))
+            return true;
+
+        // Явное требование оператора проверить нормативы/технологию (пилот 24.09.2026):
+        // слово «технология/техпроцесс» + дефект. Голое «требуется проверка» без
+        // привязки к нормативам/технологии — не триггер (слишком широко).
+        // Зеркало — AiServiceClient.OperatorMentionsNormativeIssue, держать в синхроне.
+        if (l.Contains("технолог") || l.Contains("техпроцесс") || l.Contains("техпроцес"))
+        {
+            return l.Contains("некорректн") || l.Contains("не соответств")
+                || l.Contains("провер") || l.Contains("требу") || l.Contains("нужн")
+                || l.Contains("неверн") || l.Contains("неправильн") || l.Contains("скорректир")
+                || l.Contains("сомнева") || l.Contains("ошиб");
+        }
+
+        return false;
     }
 }

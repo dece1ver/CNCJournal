@@ -25,6 +25,22 @@ public class AnalyzeRequest
     public string? Model { get; set; }
 
     /// <summary>
+    /// Клиент просит агентский контур (чекбокс «Агент» в remeLog).
+    /// Действует только вместе с серверным Agent:Enabled (см. AnalysisController);
+    /// старые клиенты поле не шлют → false → штатный путь. Обратная совместимость
+    /// в обе стороны: неизвестное поле игнорируется.
+    /// </summary>
+    public bool UseAgent { get; set; } = false;
+
+    /// <summary>
+    /// Станок серийный (cnc_machines.IsSerial) — null/true = серийный (проверяем всё).
+    /// false = несерийный: КПД изготовления не оценивается НИ В ОДНОМ контуре
+    /// (HardRule, фильтры, оба промпта). Остальное (наладка, нормативы, отчёты) — в силе.
+    /// Старые клиенты поле не шлют → null → старое поведение.
+    /// </summary>
+    public bool? IsSerialMachine { get; set; }
+
+    /// <summary>
     /// Профиль промпта: выбирает prompts/system_prompt.{profile}.txt.
     /// Определяется клиентом remeLog из cnc_machines.AiPromptProfile.
     /// Пусто/null или отсутствующий файл — используется system_prompt.txt.

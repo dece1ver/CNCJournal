@@ -56,6 +56,134 @@ public class HardRuleFlaggedTests
     }
 
     [Fact]
+    public void Evaluate_BadFillReason_HardWithDataMessage()
+    {
+        // «Некорректное заполнение» — данные недостоверны: безусловная эскалация
+        // с формулировкой про исправление данных, а не про технологию
+        // (пилот агента 24.09.2026, SKT21 №104 23.09 — модель сняла такой день).
+        var req = Request(new PartContext
+        {
+            PartName = "Седло",
+            Order = "З1",
+            Setup = 2,
+            SetupTimePlan = 29,
+            SetupTimeFact = 0,
+            SingleProductionTimePlan = 7,
+            MasterSetupComment = "Некорректное заполнение",
+        });
+
+        var result = HardRuleEvaluator.Evaluate(req);
+
+        Assert.True(result.MustEscalate);
+        Assert.Contains(result.HardSignals, s => s.Contains("недостоверны"));
+        Assert.DoesNotContain(result.HardSignals, s => s.Contains("пересмотра технологии"));
+        Assert.Contains("Седло§2§З1", result.HardFlaggedPartKeys);
+    }
+
+    private static PartContext LowKpdPart() => new()
+    {
+        PartName = "Деталь",
+        Order = "З1",
+        Setup = 1,
+        SetupTimePlan = 0,
+        SetupTimeFact = 50,
+        SingleProductionTimePlan = 5,
+        ProductionTimeFact = 100,
+        ProductionRatio = 0.4,
+        FinishedCount = 10,
+    };
+
+    [Fact]
+    public void Evaluate_NonSerial_SkipsProductionKpd()
+    {
+        // Несерийный станок: КПД изготовления не оценивается ни в одном контуре.
+        var req = Request(LowKpdPart());
+        req.IsSerialMachine = false;
+
+        var result = HardRuleEvaluator.Evaluate(req);
+
+        Assert.DoesNotContain(result.HardSignals, s => s.Contains("изготовления"));
+    }
+
+    [Fact]
+    public void Evaluate_NonSerial_KeepsSetupAndNormatives()
+    {
+        // Остальное в силе: наладка, plan=0, машинное время — как обычно.
+        var req = Request(LowKpdPart());
+        req.IsSerialMachine = false;
+
+        var result = HardRuleEvaluator.Evaluate(req);
+
+        Assert.Contains(result.HardSignals, s => s.Contains("наладки"));
+    }
+
+    [Fact]
+    public void Evaluate_SerialOrUnknown_Unchanged()
+    {
+        // Серийный и неизвестный (null/старый клиент): обе КПД-проверки на месте.
+        foreach (bool? flag in new bool?[] { true, null })
+        {
+            var req = Request(LowKpdPart());
+            req.IsSerialMachine = flag;
+
+            var result = HardRuleEvaluator.Evaluate(req);
+
+            Assert.Contains(result.HardSignals, s => s.Contains("КПД изготовления 40%"));
+            Assert.Contains(result.HardSignals, s => s.Contains("норматив наладки"));
+        }
+    }
+
+    private static PartContext OperatorPart(string operatorComment) => new()
+    {
+        PartName = "Деталь",
+        Order = "З1",
+        Setup = 1,
+        SetupTimePlan = 60,
+        SetupTimeFact = 50,
+        SetupRatio = 1.2,
+        SingleProductionTimePlan = 5,
+        ProductionTimeFact = 100,
+        ProductionRatio = 1,
+        FinishedCount = 10,
+        OperatorComment = operatorComment,
+    };
+
+    [Fact]
+    public void Evaluate_OperatorTechnologyDemand_Hard()
+    {
+        // Явное требование оператора проверить технологию — hard без объяснений мастера.
+        var result = HardRuleEvaluator.Evaluate(Request(OperatorPart("требуется проверка технологии")));
+
+        Assert.True(result.MustEscalate);
+        Assert.Contains(result.HardSignals,
+            s => s.Contains("Оператор сообщает о некорректном нормативе"));
+    }
+
+    [Fact]
+    public void Evaluate_OperatorTechnologyDoubt_SoftWithMasterReason()
+    {
+        // Та же жалоба, но мастер дал причину — soft на верификацию модели.
+        var part = OperatorPart("технология неверная, надо проверить");
+        part.MasterMachiningComment = "Другое";
+        part.MasterMachiningDetail = "смотрели с технологом";
+
+        var result = HardRuleEvaluator.Evaluate(Request(part));
+
+        Assert.False(result.MustEscalate);
+        Assert.Single(result.SoftSignals);
+    }
+
+    [Fact]
+    public void Evaluate_BareTechnologyMention_NoSignal()
+    {
+        // Голое «технология» без дефекта — не жалоба (не расширяем слишком широко).
+        var result = HardRuleEvaluator.Evaluate(Request(OperatorPart("работали по технологии")));
+
+        Assert.False(result.MustEscalate);
+        Assert.Empty(result.SoftSignals);
+    }
+
+    [Fact]
     public void Evaluate_CleanPart_NoKeys()
     {
         var req = Request(new PartContext

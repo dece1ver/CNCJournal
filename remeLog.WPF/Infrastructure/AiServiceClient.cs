@@ -23,8 +23,9 @@ namespace remeLog.Infrastructure
     /// но с разной семантикой: очередь ЗАМЕНЯЕТ текст (транзитный статус), а приход
     /// первого чанка размышлений ОЧИЩАЕТ поле — иначе «позиция 2» склеивается
     /// с началом thinking («...позиция 2Хорошо, давайте...»).
+    /// Tool — шаги агентского контура («что агент делает»): добавляются строками.
     /// </summary>
-    public enum AiProgressKind { Queue, Thinking }
+    public enum AiProgressKind { Queue, Thinking, Tool }
 
     public record AiProgress(AiProgressKind Kind, string Text);
 
@@ -78,12 +79,14 @@ namespace remeLog.Infrastructure
             var partsHistories = await LoadPartsHistoriesAsync(
                 machine, shiftDate, partList, ct);
             var promptProfile = await GetPromptProfileCachedAsync(machine, ct);
+            var isSerial = await GetSerialCachedAsync(machine, ct);
             var shiftReports = BuildShiftReports(machine, shiftDate, partList);
-            var request = BuildRequest(machine, shiftDate, partList, partsHistories, promptProfile, shiftReports);
+            // Чекбокс «Агент»: вкл — агентский контур, выкл — обычный thinking-режим.
+            // Оба идут через /stream (SSE): thinking чанки либо tool-события.
+            var useAgent = AppSettings.Instance.AiThinkingEnabled;
+            var request = BuildRequest(machine, shiftDate, partList, partsHistories, promptProfile, shiftReports, useAgent, isSerial);
 
-            return AppSettings.Instance.AiThinkingEnabled
-                ? await AnalyzeWithStreamAsync(request, thinkingProgress, ct)
-                : await AnalyzeSimpleAsync(request, thinkingProgress, ct);
+            return await AnalyzeWithStreamAsync(request, thinkingProgress, ct);
         }
 
         /// <summary>
@@ -97,7 +100,14 @@ namespace remeLog.Infrastructure
         {
             try
             {
-                var anomalies = part.GetAiCheckAnomalies();
+                var isSerial = await GetSerialCachedAsync(machine, ct);
+                // Несерийный станок: аномалии КПД изготовления не поднимаем вообще —
+                // проверять нечего ни модели verify-part, ни человеку в подсказке.
+                var anomalies = part.GetAiCheckAnomalies()
+                    .Where(a => isSerial
+                        || a.Field != nameof(Part.MasterMachiningDetail)
+                        || !a.Description.StartsWith("КПД изготовления"))
+                    .ToList();
                 if (anomalies.Count == 0)
                     return new AiVerifyResult { Ok = true };
 
@@ -224,6 +234,13 @@ namespace remeLog.Infrastructure
                                     thinkingProgress?.Report(new AiProgress(AiProgressKind.Thinking, thought));
                                 break;
 
+                            case "tool":
+                                // Шаг агентского контура («Проверяет причину…», «Смотрит историю…»).
+                                var step = JsonSerializer.Deserialize<string>(data);
+                                if (!string.IsNullOrWhiteSpace(step))
+                                    thinkingProgress?.Report(new AiProgress(AiProgressKind.Tool, step));
+                                break;
+
                             case "result":
                                 finalResult = JsonSerializer.Deserialize<AiAnalysisResult>(data);
                                 break;
@@ -345,10 +362,12 @@ namespace remeLog.Infrastructure
                 string machine, DateTime shiftDate, IEnumerable<Part> parts,
                 Dictionary<(string PartName, string Order, int Setup), PartsHistorySummary> partsHistories,
                 string? promptProfile = null,
-                List<object>? shiftReports = null)
+                List<object>? shiftReports = null,
+                bool useAgent = false,
+                bool isSerialMachine = true)
         {
             var partList = parts.ToList();
-            var partContexts = partList.Select(p => BuildPartContext(p, partsHistories)).ToList();
+            var partContexts = partList.Select(p => BuildPartContext(p, partsHistories, isSerialMachine: isSerialMachine)).ToList();
             var daySignals = DetectDaySignals(partList);
 
             return new
@@ -363,7 +382,12 @@ namespace remeLog.Infrastructure
                 promptProfile = string.IsNullOrWhiteSpace(promptProfile) ? null : promptProfile.Trim(),
                 // Единственный источник истины «думать или нет» — сервер уважает его
                 // на обоих эндпоинтах; выбор /stream — только транспорт (SSE).
-                enableThinking = AppSettings.Instance.AiThinkingEnabled,
+                // Агентский путь идёт без thinking (ответ целиком), thinking-режим — всегда с ним.
+                enableThinking = !useAgent,
+                // Агентский контур: действует только вместе с серверным Agent:Enabled.
+                useAgent = useAgent,
+                // Несерийный станок: КПД изготовления не оценивается ни в одном контуре.
+                isSerialMachine = isSerialMachine,
             };
         }
 
@@ -434,6 +458,27 @@ namespace remeLog.Infrastructure
 
 
 
+        /// <summary>
+        /// Серийность станка из cnc_machines.IsSerial с кэшем на 5 минут
+        /// (копия паттерна GetPromptProfileCachedAsync). Дефолт true (серийный):
+        /// сбой БД не должен тихо выключать проверку КПД изготовления.
+        /// null не возвращаем — сервер трактует отсутствие флага как серийный.
+        /// </summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (bool Serial, DateTime LoadedAt)>
+            _serialCache = new();
+
+        private static async Task<bool> GetSerialCachedAsync(string machine, CancellationToken ct)
+        {
+            if (_serialCache.TryGetValue(machine, out var cached)
+                && (DateTime.UtcNow - cached.LoadedAt) < TimeSpan.FromMinutes(5))
+                return cached.Serial;
+
+            // Дефолт true — в CatalogDb.GetMachineSerialStatusOrDefault.
+            var serial = await Database.GetMachineSerialStatusOrDefault(machine, defaultValue: true, ct);
+            _serialCache[machine] = (serial, DateTime.UtcNow);
+            return serial;
+        }
+
         /// <param name="useEffectiveReasons">
         /// true (дневной анализ) — в причины уходит эффективное значение: переопределение СГТ,
         /// если оно есть. false (verify-part, фича AiMasterCheck) — уходит ОТМЕТКА МАСТЕРА:
@@ -444,7 +489,8 @@ namespace remeLog.Infrastructure
         private static object BuildPartContext(
             Part p,
             Dictionary<(string PartName, string Order, int Setup), PartsHistorySummary> partsHistories,
-            bool useEffectiveReasons = true)
+            bool useEffectiveReasons = true,
+            bool isSerialMachine = true)
         {
             var setupReason = useEffectiveReasons ? p.EffectiveSetupReason : p.MasterSetupComment;
             var machiningReason = useEffectiveReasons ? p.EffectiveMachiningReason : p.MasterMachiningComment;
@@ -535,14 +581,14 @@ namespace remeLog.Infrastructure
                 noSetupHappened = noSetup,
                 noProductionHappened = noProduction,
 
-                signals = DetectPartSignals(p, noSetup, noProduction, manualComment),
+                signals = DetectPartSignals(p, noSetup, noProduction, manualComment, isSerialMachine),
 
                 partsHistory = partsHistoryObj,
             };
         }
 
         private static List<string> DetectPartSignals(
-            Part p, bool noSetup, bool noProduction, string manualComment)
+            Part p, bool noSetup, bool noProduction, string manualComment, bool isSerialMachine = true)
         {
             var s = new List<string>();
             var machMins = p.MachiningTime.TotalMinutes;
@@ -584,15 +630,28 @@ namespace remeLog.Infrastructure
                 && !OperatorMentionsExcusableReason(manualComment))
                 s.Add($"КПД наладки {sr:0%} без объяснения мастера");
 
-            // КПД изготовления < 70% без объяснения мастера
+            // КПД наладки > 200% без объяснения — норматив завышен?
+            // Зеркало изготовления >120% (единственный предел без сигнала — агентский
+            // промпт с v15 пределы не проверяет, нарушения приходят только сигналами).
+            // Наладка оценивается и на несерийных — флага isSerialMachine нет.
+            if (IsValidRatio(sr) && sr > 2.0 && p.SetupTimeFact > 0
+                && string.IsNullOrWhiteSpace(p.EffectiveSetupReason))
+                s.Add($"КПД наладки {sr:0%} > 200% — возможно норматив завышен");
+
+            // КПД изготовления < 70% без объяснения мастера.
+            // Несерийный станок: КПД изготовления не оценивается — пропускаем
+            // (остальное: нормативы, машинное время, противоречия — в силе).
             var pr = p.ProductionRatio;
-            if (IsValidRatio(pr) && pr < 0.695 && p.FinishedCount > 0 && (p.SingleProductionTimePlan > 0 || hasOrder)
+            if (isSerialMachine
+                && IsValidRatio(pr) && pr < 0.695 && p.FinishedCount > 0 && (p.SingleProductionTimePlan > 0 || hasOrder)
                 && string.IsNullOrWhiteSpace(p.EffectiveMachiningReason)
                 && !OperatorMentionsExcusableReason(manualComment))
                 s.Add($"КПД изготовления {pr:0%} без объяснения мастера");
 
             // КПД изготовления > 120% без объяснения — норматив занижен?
-            if (IsValidRatio(pr) && pr > 1.2 && p.FinishedCount > 0
+            // Несерийный станок: см. выше.
+            if (isSerialMachine
+                && IsValidRatio(pr) && pr > 1.2 && p.FinishedCount > 0
                 && string.IsNullOrWhiteSpace(p.EffectiveMachiningReason))
                 s.Add($"КПД изготовления {pr:0%} > 120% — возможно норматив занижен");
 
@@ -667,11 +726,23 @@ namespace remeLog.Infrastructure
             if ((l.Contains("укладыва") || l.Contains("уложиться")) && l.Contains("норматив"))
                 return false;
 
-            return l.Contains("норматив") || l.Contains("не соответствует")
+            if (l.Contains("норматив") || l.Contains("не соответствует")
                 || l.Contains("некорректн") || l.Contains("режимы не")
                 || l.Contains("программа не соответ") || l.Contains("скорректировать")
                 // жалоба числами без слова «норматив»: «время наладки на 1 шт 320 мин»
-                || l.Contains("на 1 шт") || l.Contains("на 1шт");
+                || l.Contains("на 1 шт") || l.Contains("на 1шт"))
+                return true;
+
+            // Зеркало HardRuleEvaluator.OperatorMentionsNormativeIssue — держать в синхроне.
+            if (l.Contains("технолог") || l.Contains("техпроцесс") || l.Contains("техпроцес"))
+            {
+                return l.Contains("некорректн") || l.Contains("не соответств")
+                    || l.Contains("провер") || l.Contains("требу") || l.Contains("нужн")
+                    || l.Contains("неверн") || l.Contains("неправильн") || l.Contains("скорректир")
+                    || l.Contains("сомнева") || l.Contains("ошиб");
+            }
+
+            return false;
         }
 
         private static bool OperatorMentionsExcusableReason(string manual)

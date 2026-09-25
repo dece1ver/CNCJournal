@@ -1,4 +1,5 @@
 
+using AiService.Models;
 using AiService.Services;
 
 namespace AiService
@@ -16,8 +17,12 @@ namespace AiService
             builder.Logging.AddProvider(new FileLoggerProvider(Path.Combine(AppContext.BaseDirectory, "logs")));
             builder.Services.AddControllers();
             builder.Services.AddSingleton<OllamaService>();
+            // IAgentChatClient резолвится в тот же OllamaService (очередь к GPU общая).
+            builder.Services.AddSingleton<IAgentChatClient>(sp => sp.GetRequiredService<OllamaService>());
             builder.Services.AddSingleton<PromptBuilder>();
             builder.Services.AddSingleton<RequestLog>();
+            // Агентский контур дневного анализа (стадия 1: каркас, выключен флагом Agent:Enabled).
+            builder.Services.AddSingleton<AgentLoopService>();
 
             builder.Host.UseWindowsService();
 

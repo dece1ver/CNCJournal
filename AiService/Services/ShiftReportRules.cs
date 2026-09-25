@@ -122,6 +122,74 @@ public static class ShiftReportRuleEvaluator
     }
 
     /// <summary>
+    /// Предрешение по смене для агентского контура: механику, которую модель
+    /// стабильно нарушает (кейсы A/B и пилота 24.09.2026: «требует детализации»
+    /// при простое целиком + причина, при простое 3% без причины), решает код
+    /// и сообщает итог как факт — как HARD-сигналы, которые модель соблюдает
+    /// идеально. Модели остаётся только genuine семантика (шаг 4 скелета v5):
+    /// релевантность пары (причина + комментарий), где она реально требуется.
+    /// Держать в синхроне с секцией ОТЧЁТ МАСТЕРА в system_prompt.agent.txt.
+    /// </summary>
+    public record ShiftPreverdict(string Shift, bool NeedsModel, string Note);
+
+    public static List<ShiftPreverdict> AgentPreverdicts(AnalyzeRequest req, ShiftReportRuleResult shiftRules)
+    {
+        var result = new List<ShiftPreverdict>();
+        if (req.ShiftReports.Count == 0) return result;
+
+        var knownReasons = req.DowntimeReasons
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Select(r => r.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var rep in req.ShiftReports)
+        {
+            ShiftPreverdict Clear(string note) => new(rep.Shift, false, note);
+
+            // Структурное нарушение уже в HARD — модели там делать нечего.
+            if (shiftRules.HardSignals.Any(h => h.StartsWith($"[{rep.Shift}]", StringComparison.OrdinalIgnoreCase)))
+            {
+                result.Add(Clear("структурное нарушение — см. HARD выше"));
+                continue;
+            }
+
+            if (!rep.ReportExists || rep.ShiftMinutes <= 0)
+            {
+                result.Add(Clear("отчёта нет — проверять нечего"));
+                continue;
+            }
+
+            var reason = rep.DowntimeReason?.Trim() ?? string.Empty;
+            var ratio = (double)rep.FreshUnspecifiedDowntimes / rep.ShiftMinutes;
+
+            // Простой целиком + причина из списка + записей нет: такой причине
+            // добавить нечего, пустой комментарий — норма (шаг 2 скелета).
+            if (rep.FreshUnspecifiedDowntimes >= rep.ShiftMinutes
+                && !string.IsNullOrWhiteSpace(reason)
+                && knownReasons.Contains(reason)
+                && !rep.HasParts)
+            {
+                result.Add(Clear("простой целиком + причина из списка, записей нет"));
+                continue;
+            }
+
+            // Причина при |доле| ≤10% не требуется вообще — кроме «Другое»,
+            // которому детализация нужна всегда (шаг 3 скелета).
+            if (Math.Abs(ratio) <= DowntimeReasonRatioThreshold
+                && !OtherReason.Equals(reason, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add(Clear("простой в пределах 10% — причина не требуется"));
+                continue;
+            }
+
+            result.Add(new ShiftPreverdict(rep.Shift, true,
+                "оцени релевантность пары (причина + комментарий) простою этой смены"));
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Чистит сырые shift_report_issues от модели: trim, пустые выкидываются,
     /// дубли схлопываются. Непустой итог (S1) эскалирует день — см. контроллер.
     /// </summary>
@@ -132,6 +200,60 @@ public static class ShiftReportRuleEvaluator
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Select(s => s.Trim())
             .Distinct()];
+    }
+
+    /// <summary>
+    /// Вердикт «релевантно» — не проблема: модель одобрила отчёт (причина из списка
+    /// называет что и почему), но положила одобрение в массив проблем (кейс QTS350
+    /// 2026-09-24: «Смена День: Отсутствие оператора — релевантно…» в issues
+    /// и дублем в signals). Такие записи режутся детерминированно — в issues им
+    /// не место по определению. Отрицание («нерелевантно», «не релевантно») —
+    /// настоящая жалоба, сохраняется.
+    /// </summary>
+    public static (List<string> Kept, List<string> Dropped) DropRelevanceVerdicts(
+        List<string> modelIssues)
+    {
+        var kept = new List<string>();
+        var dropped = new List<string>();
+        foreach (var issue in modelIssues)
+        {
+            var lower = issue.ToLowerInvariant();
+            if (lower.Contains("релевант")
+                && !lower.Contains("нерелевант")
+                && !lower.Contains("не релевант"))
+                dropped.Add(issue);
+            else
+                kept.Add(issue);
+        }
+        return (kept, dropped);
+    }
+
+    /// <summary>
+    /// Жалоба на связь простоя с КПД («простой не объясняет КПД», «КПД не объяснён
+    /// простоем» — кейс QTS350 2026-09-24 v14: «отсутствие оператора (72% простой)
+    /// не объясняет КПД наладки >200%»). По механизму учёта простой и КПД не связаны
+    /// никогда: простой — неотмеченное время, КПД — по отмеченному. Такая жалоба
+    /// неверна по построению, независимо от чисел (там и 123% было названо >200%).
+    /// Легитимные жалобы без связки (нет причины, комментарий не о простое,
+    /// «нерелевантно») слова «кпд» рядом с простоем не содержат — сохраняются.
+    /// </summary>
+    public static (List<string> Kept, List<string> Dropped) DropKpdDowntimeLinkComplaints(
+        List<string> modelIssues)
+    {
+        var kept = new List<string>();
+        var dropped = new List<string>();
+        foreach (var issue in modelIssues)
+        {
+            var lower = issue.ToLowerInvariant();
+            if (lower.Contains("кпд")
+                && (lower.Contains("просто") || lower.Contains("смен"))
+                && (lower.Contains("объясн") || lower.Contains("связан")
+                    || lower.Contains("коррел") || lower.Contains("влия")))
+                dropped.Add(issue);
+            else
+                kept.Add(issue);
+        }
+        return (kept, dropped);
     }
 
     /// <summary>
@@ -176,8 +298,16 @@ public static class ShiftReportRuleEvaluator
     private static bool IsShiftReportEcho(string signal)
     {
         var lower = signal.ToLowerInvariant();
-        // Прямые маркеры отчёта/мастера/смены...
+        // Префикс «Смена День/Ночь:» — формат shift_report_issues по OUTPUT-контракту:
+        // в общем signals такой строке не место, чья бы она ни была (кейс QTS350
+        // 2026-09-24 — модель продублировала вопрос из shift_report_issues в signals).
+        if (lower.StartsWith("смена день") || lower.StartsWith("смена ночь")
+            || lower.StartsWith("смена день/ночь"))
+            return true;
+        // Прямые маркеры отчёта/мастера/смены (включая косвенные падежи:
+        // «некорректного отчёта мастера», кейс пилота 24.09.2026 SKT21 22.09)...
         if (lower.Contains("отчёт мастера") || lower.Contains("отчет мастера")
+            || lower.Contains("отчёта мастера") || lower.Contains("отчета мастера")
             || (lower.Contains("смен") && lower.Contains("мастер"))
             || (lower.Contains("суточн") && lower.Contains("отч")))
             return true;
@@ -320,6 +450,100 @@ public static class ShiftReportRuleEvaluator
             || lower.Contains("требу")
             || lower.Contains("нуж")
             || lower.Contains("пуст");
+    }
+
+    private static readonly string[] UnknownReasonMarkers =
+    [
+        "не входит в список",
+        "неизвестн",
+        "нет в списке",
+        "вне списка",
+        "не из списка",
+        "отсутствует в списке",
+    ];
+
+    /// <summary>
+    /// Режет фактически неверные жалобы «причина неизвестна/не из списка», когда
+    /// названная причина ЕСТЬ в закрытом списке (req.DowntimeReasons) или выбрана
+    /// в отчёте какой-либо смены. Модель приходит к такому выводу, спросив
+    /// get_reason_semantics про причину ПРОСТОЯ (её нет в каталоге отклонений —
+    /// и быть не должно, см. AgentTools); код сверяет факт напрямую.
+    /// Пилот 24.09.2026, SKT21 22.09: «Отсутствие оператора» объявлено неизвестным.
+    /// Безымянная жалоба («причина неизвестна» без названия) — сохраняется:
+    /// сверить не с чем.
+    /// </summary>
+    public static (List<string> Kept, List<string> Dropped) DropUnknownReasonComplaints(
+        AnalyzeRequest req, List<string> modelIssues)
+    {
+        var kept = new List<string>();
+        var dropped = new List<string>();
+        if (modelIssues.Count == 0) return (kept, dropped);
+
+        var known = req.DowntimeReasons
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Select(r => r.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var rep in req.ShiftReports)
+        {
+            if (!string.IsNullOrWhiteSpace(rep.DowntimeReason))
+                known.Add(rep.DowntimeReason.Trim());
+        }
+        if (known.Count == 0)
+        {
+            kept.AddRange(modelIssues);
+            return (kept, dropped);
+        }
+
+        foreach (var issue in modelIssues)
+        {
+            var lower = issue.ToLowerInvariant();
+            if (lower.Contains("причин")
+                && UnknownReasonMarkers.Any(m => lower.Contains(m))
+                && known.Any(k => k.Length > 0 && lower.Contains(k.ToLowerInvariant())))
+            {
+                dropped.Add(issue);
+                continue;
+            }
+            kept.Add(issue);
+        }
+        return (kept, dropped);
+    }
+
+    private static readonly string[] DualShiftMarkers =
+    [
+        "день/ночь",
+        "ночь/день",
+        "день и ночь",
+        "ночь и день",
+        "обе смены",
+        "обеих сменах",
+        "обоих сменах",
+    ];
+
+    /// <summary>
+    /// Режет вопросы без привязки к смене: модель копирует шаблон формата
+    /// «Смена День/Ночь:» буквально, не выбрав смену (пилот 24.09.2026, SKT21 22.09:
+    /// «Смена День/Ночь: простой объясняет только простои…» — пересказ граничного
+    /// правила как находка). Такую жалобу нельзя отнести ни к одной смене —
+    /// аналитику с ней делать нечего. Одиночные теги не задеваются; вопросы
+    /// вообще без смены, но с конкретикой, сохраняются как раньше.
+    /// </summary>
+    public static (List<string> Kept, List<string> Dropped) DropUnscopedShiftIssues(
+        List<string> modelIssues)
+    {
+        var kept = new List<string>();
+        var dropped = new List<string>();
+        foreach (var issue in modelIssues)
+        {
+            var lower = issue.ToLowerInvariant();
+            if (ShiftTag(issue) == null && DualShiftMarkers.Any(m => lower.Contains(m)))
+            {
+                dropped.Add(issue);
+                continue;
+            }
+            kept.Add(issue);
+        }
+        return (kept, dropped);
     }
 
     /// <summary>

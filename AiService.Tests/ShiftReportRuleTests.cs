@@ -778,4 +778,155 @@ public class ShiftReportRuleTests
         Assert.DoesNotContain(merged, m => m.StartsWith("Смена Ночь:"));
         Assert.Contains(merged, m => m.Contains("день закрывать нельзя"));
     }
+
+    [Fact]
+    public void Preverdict_FullIdleWithReason_NoRecords_Clear()
+    {
+        // Пилот 24.09.2026: ночь целиком + «Отсутствие оператора» + записей нет —
+        // модель требовала комментарий, хотя такой причине добавить нечего.
+        var night = Day(stored: 630, fresh: 630, reason: "Отсутствие оператора",
+            comment: "", hasParts: false);
+        night.Shift = "Ночь";
+        night.ShiftMinutes = 630;
+        var req = Request(night);
+        var det = ShiftReportRuleEvaluator.Evaluate(req);
+        Assert.False(det.MustEscalate);
+
+        var pv = ShiftReportRuleEvaluator.AgentPreverdicts(req, det);
+
+        var n = Assert.Single(pv);
+        Assert.False(n.NeedsModel);
+    }
+
+    [Fact]
+    public void Preverdict_SmallIdle_Clear()
+    {
+        // Простой 3% без причины — причина не требуется (порог 10%).
+        var req = Request(Day(stored: 22, fresh: 22));
+        var det = ShiftReportRuleEvaluator.Evaluate(req);
+
+        var pv = ShiftReportRuleEvaluator.AgentPreverdicts(req, det);
+
+        Assert.False(Assert.Single(pv).NeedsModel);
+    }
+
+    [Fact]
+    public void Preverdict_LargeIdleWithReason_NeedsModel()
+    {
+        // Простой 61% с причиной из списка: релевантность пары — за моделью.
+        var req = Request(Day(stored: 403, fresh: 403, reason: "Отсутствие оператора"));
+        var det = ShiftReportRuleEvaluator.Evaluate(req);
+        Assert.False(det.MustEscalate);
+
+        var pv = ShiftReportRuleEvaluator.AgentPreverdicts(req, det);
+
+        Assert.True(Assert.Single(pv).NeedsModel);
+    }
+
+    [Fact]
+    public void Preverdict_HardShift_Clear()
+    {
+        // Структурное нарушение уже в HARD — модели там делать нечего.
+        var req = Request(Day(exists: false));
+        var det = ShiftReportRuleEvaluator.Evaluate(req);
+        Assert.True(det.MustEscalate);
+
+        var pv = ShiftReportRuleEvaluator.AgentPreverdicts(req, det);
+
+        Assert.False(Assert.Single(pv).NeedsModel);
+    }
+
+    [Fact]
+    public void DropUnknownReason_KnownReasonInList_Dropped()
+    {
+        // Пилот 24.09.2026 (SKT21 22.09): модель объявила «Отсутствие оператора»
+        // неизвестной причиной, хотя она в закрытом списке. Жалоба неверна фактом.
+        var req = Request(Day(stored: 403, fresh: 403, reason: "Отсутствие оператора"));
+
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropUnknownReasonComplaints(
+            req, ["Причина 'Отсутствие оператора' не входит в список известных причин, что может быть признаком неполного или некорректного отчёта мастера"]);
+
+        Assert.Empty(kept);
+        Assert.Single(dropped);
+    }
+
+    [Fact]
+    public void DropUnknownReason_TrulyUnknown_Kept()
+    {
+        // Претензия про причину, которой правда нет в списке, — сохраняется.
+        var req = Request(Day(stored: 403, fresh: 403, reason: "Отсутствие оператора"));
+
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropUnknownReasonComplaints(
+            req, ["Причина 'Телепортация' не входит в список известных причин"]);
+
+        Assert.Single(kept);
+        Assert.Empty(dropped);
+    }
+
+    [Fact]
+    public void SplitShiftEchoes_ObliqueCase_Moved()
+    {
+        // «некорректного отчёта мастера» (родительный падеж) — то же эхо отчёта.
+        var (data, echoes) = ShiftReportRuleEvaluator.SplitShiftEchoes(
+            ["Причина 'Отсутствие оператора' не входит в список известных причин, что может быть признаком неполного или некорректного отчёта мастера"]);
+
+        Assert.Empty(data);
+        Assert.Single(echoes);
+    }
+
+    [Fact]
+    public void DropUnscoped_DualTag_Dropped()
+    {
+        // «Смена День/Ночь:» буквально — шаблон скопирован без выбора смены
+        // (пилот 24.09.2026, SKT21 22.09). Отнести не к чему.
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropUnscopedShiftIssues(
+            ["Смена День/Ночь: простой объясняет только простои, не КПД деталей",
+             "Смена День: простой 61% без релевантного комментария"]);
+
+        Assert.Single(kept);
+        Assert.Single(dropped);
+    }
+
+    [Fact]
+    public void DropRelevanceVerdicts_RelevantDropped_NegationKept()
+    {
+        // Кейс QTS350 2026-09-24: модель одобрила отчёт («релевантно»), но положила
+        // одобрение в issues. Одобрение — не проблема; отрицание — жалоба.
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropRelevanceVerdicts(
+            ["Смена День: Отсутствие оператора — релевантно (работал на другом станке)",
+             "Смена Ночь: комментарий нерелевантен",
+             "Смена День: причина не релевантна простою"]);
+
+        Assert.Equal(2, kept.Count);
+        Assert.Single(dropped);
+    }
+
+    [Fact]
+    public void SplitShiftEchoes_ShiftPrefixedSignal_Moved()
+    {
+        // Дубль вопроса из shift_report_issues в общем signals (там же):
+        // префикс «Смена День:» — формат issues по OUTPUT-контракту.
+        var (data, echoes) = ShiftReportRuleEvaluator.SplitShiftEchoes(
+            ["Смена День: Отсутствие оператора — релевантно (работал на другом станке)",
+             "[Д] КПД наладки 45% без объяснения"]);
+
+        Assert.Single(data);
+        Assert.Single(echoes);
+    }
+
+    [Fact]
+    public void DropKpdDowntimeLink_KpdExplainedByDowntime_Dropped()
+    {
+        // Кейс QTS350 2026-09-24 (v14): простой и КПД не связаны никогда —
+        // жалоба неверна по построению. Легитимные (нет причины, не о простое,
+        // «нерелевантно») — без связки, сохраняются.
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropKpdDowntimeLinkComplaints(
+            ["Смена День: отсутствие оператора (72% простой) не объясняет КПД наладки",
+             "Смена Ночь: нет причины простоя",
+             "Смена День: комментарий не о простое",
+             "Смена День: комментарий нерелевантен"]);
+
+        Assert.Equal(3, kept.Count);
+        Assert.Single(dropped);
+    }
 }

@@ -73,6 +73,8 @@ namespace remeLog.ViewModels
         }
 
         private bool _ThinkingEnabled;
+        /// <summary> Режим ИИ-анализа: вкл — агентский контур, выкл — обычный thinking-режим.
+        /// Имя сохранено ради привязки и настройки AppSettings.AiThinkingEnabled. </summary>
         public bool ThinkingEnabled
         {
             get => _ThinkingEnabled;
@@ -218,6 +220,12 @@ namespace remeLog.ViewModels
                                 item.ThinkingThoughts = update.Text;
                                 thinkingStarted = false;
                             }
+                            else if (update.Kind == AiProgressKind.Tool)
+                            {
+                                item.ThinkingThoughts += (item.ThinkingThoughts.Length > 0 ? "\n" : "")
+                                    + "⚙ " + update.Text + "\n";
+                                thinkingStarted = true;
+                            }
                             else
                             {
                                 item.ThinkingThoughts = thinkingStarted
@@ -247,11 +255,12 @@ namespace remeLog.ViewModels
                         }
                         else
                         {
+                            // Агентские вердикты пишутся как штатные (теневой режим снят).
                             await Database.SaveAiAnalysisAsync(
                                 item.DayReviewId, result, AppSettings.AiModel, ThinkingEnabled);
 
                             item.State = BatchItemState.Done;
-                            item.Summary = BuildResultSummary(result);
+                            item.Summary = BuildResultSummary(result) + (ThinkingEnabled ? " (агент)" : "");
                             item.Explanation = result.Explanation;
                             item.ShiftReportNote = result.ShiftReportIssues is { Length: > 0 } issues
                                 ? "Отчёт мастера: " + string.Join("; ", issues)
