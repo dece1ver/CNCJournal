@@ -1085,18 +1085,15 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
-                            <TextBlock Text="🧠" FontSize="14" ToolTip="Это ИИ">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="{DynamicResource Areopag.Alert}" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsOllamaAvailable}" Value="True">
-                                                <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
+                            <!-- Живой глаз-Дозор вместо эмодзи: состояние ИИ -->
+                            <controls:DozorEye Width="20" Height="20" VerticalAlignment="Center"
+                                               ToolTip="{Binding DozorTooltip}" Margin="0"
+                                               IsBusy="{Binding AiInProgress}"
+                                               IsAgent="{Binding AiThinkingEnabled}"
+                                               IsAvailable="{Binding IsOllamaAvailable}"
+                                               HasResult="{Binding HasAiResult}"
+                                               HasError="{Binding AiResult.HasError, FallbackValue=False}"
+                                               RequiresReview="{Binding AiResult.RequiresReview, FallbackValue=False}"/>
                         </StackPanel>
                     </Grid>
                 </StatusBarItem>

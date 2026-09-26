@@ -304,6 +304,14 @@ public static class ShiftReportRuleEvaluator
         if (lower.StartsWith("смена день") || lower.StartsWith("смена ночь")
             || lower.StartsWith("смена день/ночь"))
             return true;
+        // «Дневной простой…» / «Ночная смена: …» — та же смена-тематика без слова
+        // «мастер» (кейс Hyundai L230A 20.06.2026: оба вопроса про отчёт лежали
+        // в signals и не доходили до shift-дропов). «Дневной КПД…» без слов
+        // смен/просто/отч — данные, не задевается. «Смена инструмента…» —
+        // не смена суток, не задевается (требуется designator день/ночь).
+        if ((lower.StartsWith("дневн") || lower.StartsWith("ночн"))
+            && (lower.Contains("смен") || lower.Contains("просто") || lower.Contains("отч")))
+            return true;
         // Прямые маркеры отчёта/мастера/смены (включая косвенные падежи:
         // «некорректного отчёта мастера», кейс пилота 24.09.2026 SKT21 22.09)...
         if (lower.Contains("отчёт мастера") || lower.Contains("отчет мастера")
@@ -349,6 +357,7 @@ public static class ShiftReportRuleEvaluator
                 && byShift.TryGetValue(tag, out var rep)
                 && IsSelfSufficientReason(rep.DowntimeReason)
                 && (IsCommentDemand(issue)
+                    || IsConfirmationDemand(issue)
                     || (IsCommentRelevanceComplaint(issue)
                         && string.IsNullOrWhiteSpace(rep.MasterComment))))
             {
@@ -380,6 +389,20 @@ public static class ShiftReportRuleEvaluator
             || lower.Contains("не указан")
             || lower.Contains("пуст")
             || lower.Contains("добавить");
+    }
+
+    /// <summary>
+    /// Требование подтвердить/уточнить самодостаточную причину («без подтверждения
+    /// планового ТО» — кейс Hyundai L230A 20.06.2026): та же жалоба «сверх причины
+    /// из списка», только без слова «комментарий». Осторожно: «подтверждено
+    /// историей» про освоение — не сюда (там нет «подтвержд» + простой/смена,
+    /// эта проверка применяется только к shift-вопросам с тегом смены).
+    /// </summary>
+    private static bool IsConfirmationDemand(string issue)
+    {
+        var lower = issue.ToLowerInvariant();
+        if (lower.Contains("истори")) return false;
+        return lower.Contains("подтвержд") || lower.Contains("подтверж");
     }
 
     /// <summary>

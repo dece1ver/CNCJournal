@@ -429,6 +429,7 @@ namespace remeLog.ViewModels
                     OnPropertyChanged(nameof(AiVerdictText));
                     OnPropertyChanged(nameof(AiVerdictColor));
                     OnPropertyChanged(nameof(HasAiVerdict));
+                    OnPropertyChanged(nameof(DozorTooltip));
                 }
             }
         }
@@ -518,6 +519,7 @@ namespace remeLog.ViewModels
                 {
                     AppSettings.Instance.AiThinkingEnabled = value;
                     AppSettings.Save();
+                    OnPropertyChanged(nameof(DozorTooltip));
                 }    
             }
         }
@@ -542,6 +544,7 @@ namespace remeLog.ViewModels
                     OnPropertyChanged(nameof(AiResultText));
                     OnPropertyChanged(nameof(AiResultColor));
                     OnPropertyChanged(nameof(AiResultFormatted));
+                    OnPropertyChanged(nameof(DozorTooltip));
                 }
             }
         }
@@ -566,6 +569,23 @@ namespace remeLog.ViewModels
             { RequiresReview: true } => "#F57F17",
             _ => "#2E7D32",
         };
+
+        /// <summary> Тултип глаза-Дозора: модель, промпт, режим, время анализа. </summary>
+        public string DozorTooltip
+        {
+            get
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine("Дозор — состояние ИИ");
+                sb.AppendLine($"Модель: {AppSettings.AiModel}");
+                var prompt = AiResult?.PromptVersion ?? CurrentDayReview?.AiPromptVersion;
+                sb.AppendLine($"Промпт: {(string.IsNullOrEmpty(prompt) ? "—" : prompt)}");
+                sb.Append($"Режим: {(AiThinkingEnabled ? "агент" : "thinking")}");
+                if (CurrentDayReview?.AiAnalyzedAt != null)
+                    sb.Append($", анализ: {CurrentDayReview.AiAnalyzedAt:dd.MM HH:mm}");
+                return sb.ToString();
+            }
+        }
 
         public string AiResultFormatted
         {

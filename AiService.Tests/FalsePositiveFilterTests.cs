@@ -261,6 +261,106 @@ public class FalsePositiveFilterTests
     }
 
     [Fact]
+    public void AbsentSetup_NoSetupParaphrase_Removed()
+    {
+        // Кейс Mazak Nexus 5000 24.06.2026: «Нет наладки при наличии заказа
+        // и плане» — часть б/н (план 209, факт 0, заказ).
+        var part = new PartContext
+        {
+            PartName = "Корпус АР41.5-02-005", Order = "З1", Setup = 1,
+            NoSetupHappened = true, SetupTimePlan = 209, SetupTimeFact = 0,
+        };
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["Нет наладки при наличии заказа и плане"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void AbsentSetup_UndefinedKpdParaphrase_Removed()
+    {
+        // Кейс Mazak Nexus 5000 16.07.2026: «КПД наладки … не определён
+        // при наличии заказа и норматива» — часть б/н (план 171, факт 0);
+        // вторая строка дня (факт 110) в сигнале не названа.
+        var bn = new PartContext
+        {
+            PartName = "Корпус АР30-02-006 (литьё)", Order = "З1", Setup = 1,
+            NoSetupHappened = true, SetupTimePlan = 171, SetupTimeFact = 0,
+        };
+        var ok = new PartContext
+        {
+            PartName = "Эксцентрик", Order = "З2", Setup = 1,
+            SetupRatio = 1.0, SetupTimePlan = 114, SetupTimeFact = 110,
+        };
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(bn, ok), NoHard, NoDowngraded,
+            ["КПД наладки корпуса АР30-02-006 (литьё) не определён при наличии заказа и норматива"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void AbsentProduction_NoProductionParaphrase_Removed()
+    {
+        // Зеркало для изготовления: «Нет изготовления при наличии заказа», б/и.
+        var part = new PartContext
+        {
+            PartName = "Втулка", Order = "З1", Setup = 1,
+            NoProductionHappened = true, SingleProductionTimePlan = 5,
+        };
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["Нет изготовления при наличии заказа"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void ZeroMinutes_InsideBiggerNumber_Kept()
+    {
+        // Кейсы QTS350 06-26 / Victor A110 06-27.2026: «план 90мин»/«план 80мин»
+        // в клиентском сигнале частичной наладки — «0мин» внутри числа НЕ означает
+        // отсутствие работы. Часть с клиентским partial-сигналом, чтобы молчала
+        // и partial-проверка (как в проде).
+        var part = new PartContext
+        {
+            PartName = "Гильза", Order = "З1", Setup = 1,
+            SetupRatio = 0.2, SetupTimePlan = 90, SetupTimeFact = 508,
+            Signals = ["КПД частичной наладки 18% < 70% (план 90мин, факт 508мин)"],
+        };
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["КПД частичной наладки 18% <70% (план 90мин, факт 508мин)"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void ZeroMinutes_StandaloneZero_Cut()
+    {
+        // Страж: отдельно стоящий «факт 0 мин» — по-прежнему отсутствие работы.
+        var part = new PartContext
+        {
+            PartName = "Гильза", Order = "З1", Setup = 1,
+            NoSetupHappened = true, SetupTimePlan = 114, SetupTimeFact = 0,
+        };
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["[Гильза] факт наладки 0 мин"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+    }
+
+    [Fact]
     public void PositiveFinishedCount_NotRemoved()
     {
         // Позитивное «выполнено N шт» про деталь с реальной наладкой —
@@ -468,6 +568,45 @@ public class FalsePositiveFilterTests
         var (filtered, _, removed) = FalsePositiveFilter.Apply(
             Request(), NoHard, NoDowngraded,
             ["[Гильза] КПД изготовления 44% ниже нормы"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void NormBandKpd_DigitPartName_Removed()
+    {
+        // Кейс Goodway 24.09.2026: «КПД изготовления корпуса клапана
+        // АР110-01-001 > 100%» — 101% в диапазоне 70–120, но цифры в имени
+        // детали не давали регулярке пересечь промежуток — сигнал выживал
+        // и через IsIncoherentOk зажигал True при базовом False.
+        var part = new PartContext
+        {
+            PartName = "Корпус клапана АР110-01-001", Order = "З1", Setup = 1,
+            ProductionRatio = 1.0112, FinishedCount = 108,
+            SingleProductionTimePlan = 5,
+        };
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["КПД изготовления корпуса клапана АР110-01-001 > 100% (без объяснения)"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void NormBandKpd_OutOfBand_Kept()
+    {
+        // Страж: расширение промежутка не должно съедать реальные нарушения.
+        var part = new PartContext
+        {
+            PartName = "Гильза", Order = "З1", Setup = 1,
+            SetupRatio = 2.5, SetupTimePlan = 100, SetupTimeFact = 250,
+        };
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["[Гильза] КПД наладки 250% без объяснения"]);
 
         Assert.Single(filtered);
         Assert.Empty(removed);

@@ -19,10 +19,15 @@
         </Grid.RowDefinitions>
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
             <StackPanel>
-        <!-- Вердикт -->
-        <TextBlock Text="{Binding VerdictTitle}" d:Text="Всё в порядке"
-                   FontWeight="Bold" FontSize="16"
-                   Foreground="{Binding VerdictBrush}"/>
+        <!-- Вердикт: иконка Дозора + заголовок -->
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <ContentControl Content="{StaticResource DozorIcon.Themed}"
+                            Width="24" Height="24" Margin="0 0 8 0"
+                            VerticalAlignment="Center" Focusable="False"/>
+            <TextBlock Text="{Binding VerdictTitle}" d:Text="Всё в порядке"
+                       FontWeight="Bold" FontSize="16" VerticalAlignment="Center"
+                       Foreground="{Binding VerdictBrush}"/>
+        </StackPanel>
         <TextBlock Text="{Binding VerdictDetails}" d:Text="Уверенность 85%"
                    Opacity="0.7" Margin="0 2 0 12" TextWrapping="Wrap"/>
 

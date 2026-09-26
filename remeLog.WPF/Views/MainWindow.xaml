@@ -70,7 +70,7 @@
                     <MenuItem Header="Пакетный ИИ-анализ"
                               Command="{Binding ShowBatchAiAnalysisCommand}"
                               IsEnabled="{Binding HasFeatureAi}"
-                              Icon="🤖"
+                              Icon="{StaticResource DozorIcon.Themed}"
                               ToolTip="Пакетный ИИ-анализ всех суток-станков с записями в ai_day_reviews"/>
                     <MenuItem Header="Мониторинг"
                               Command="{Binding ShowMonitorCommand}" Icon="{StaticResource AboutIcon}"/>
@@ -150,18 +150,10 @@
                                 </Style>
                             </TextBlock.Style>
                         </TextBlock>
-                        <TextBlock Text="🧠" FontSize="14" ToolTip="Это ИИ">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="{DynamicResource Areopag.Alert}"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsOllamaAvailable}" Value="True">
-                                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
+                        <!-- Глаз-Дозор: состояние ИИ (статичен, гаснет при недоступности) -->
+                        <cnt:DozorEye Width="20" Height="20" VerticalAlignment="Center"
+                                           ToolTip="{Binding HealthTooltip}" Margin="0"
+                                           IsAvailable="{Binding IsOllamaAvailable}"/>
                     </StackPanel>
                 </StatusBarItem>
             </StatusBar>

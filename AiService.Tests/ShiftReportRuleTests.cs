@@ -929,4 +929,33 @@ public class ShiftReportRuleTests
         Assert.Equal(3, kept.Count);
         Assert.Single(dropped);
     }
+
+    [Fact]
+    public void SplitShiftEchoes_DayNightForms_Moved()
+    {
+        // Кейс Hyundai L230A 20.06.2026: «Дневной простой…» / «Ночная смена: …»
+        // лежали в signals, минуя shift-дропы. «Дневной КПД…» без слов
+        // смен/просто/отч и «Смена инструмента…» — данные, не задеваются.
+        var (data, echoes) = ShiftReportRuleEvaluator.SplitShiftEchoes(
+            ["Дневной простой 66% смены (435 мин) без подтверждения планового ТО",
+             "Ночная смена: отсутствие комментария к причине 'Отсутствие оператора'",
+             "Дневной КПД наладки 45% без объяснения",
+             "Смена инструмента 3 раза за день"]);
+
+        Assert.Equal(2, data.Count);
+        Assert.Equal(2, echoes.Count);
+    }
+
+    [Fact]
+    public void DropSelfSufficient_ConfirmationDemand_Dropped()
+    {
+        // Кейс Hyundai L230A 20.06.2026: «без подтверждения планового ТО»
+        // при причине из списка + комментарии — требование сверх причины.
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropSelfSufficientCommentDemands(
+            Request(Day(stored: 435, fresh: 435, reason: "Ремонт оборудования", comment: "ТО станка")),
+            ["Смена День: простой 66% без подтверждения планового ТО"]);
+
+        Assert.Empty(kept);
+        Assert.Single(dropped);
+    }
 }

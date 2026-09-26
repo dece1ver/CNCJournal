@@ -28,8 +28,6 @@ public static class FalsePositiveFilter
         // про б/н-деталь). Числовые претензии с реальными значениями не задевает:
         // их ловит IsNormBandKpdClaim только внутри диапазона, а тут маркера нет.
         "вне нормы",
-        "0 мин",
-        "0мин",
         "наладка без",
         "наладка не",
         "наладки не",
@@ -38,6 +36,11 @@ public static class FalsePositiveFilter
         "факта нет",
         "факт 0",
         "без факта",
+        // Падежные «нет» и «не определён» (кейсы Mazak Nexus 5000 24.06/16.07.2026:
+        // «Нет наладки при наличии заказа и плане», «КПД … не определён
+        // при наличии заказа и норматива» — та же запрещённая категория).
+        "нет наладк",
+        "не определ",
     ];
 
     private static readonly string[] ProductionKeywords =
@@ -54,14 +57,20 @@ public static class FalsePositiveFilter
         "факта нет",
         "факт 0",
         "без факта",
+        "нет изготов",
+        "не определ",
     ];
 
     // «КПД [частичной] наладки 74%» / «КПД изготовления 87%» / «Аномалия наладки 200%» —
     // первое число с % после упоминания категории. Модель стабильно ошибается в
     // арифметике порогов (в прогонах называла аномалией 72%, 74%, 83%, 197%, 200%),
     // поэтому значения в диапазоне нормы отсеиваются детерминированно.
+    // Промежуток [^%] (а не [^0-9%]): в именах деталей бывают цифры («АР110-01-001»),
+    // и узкий класс их не пересекал — сигнал «КПД изготовления корпуса клапана
+    // АР110-01-001 > 100%» не матчился и выживал (кейс Goodway 24.09.2026).
+    // Якорь % исключает ложные срабатывания на номерах без процентов.
     private static readonly Regex KpdClaim = new(
-        @"(?:кпд|аномал\w*)\s+(?:кпд\s+)?(?<partial>частичн\w*\s+)?(?<cat>наладк|изготовлен)\w*[^0-9%]{0,40}?(?<val>\d+(?:[.,]\d+)?)\s*%",
+        @"(?:кпд|аномал\w*)\s+(?:кпд\s+)?(?<partial>частичн\w*\s+)?(?<cat>наладк|изготовлен)\w*[^%]{0,80}?(?<val>\d+(?:[.,]\d+)?)\s*%",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // «\bК1\b» — эхо наших же exclude-подсказок про влияние разовой причины на К1
@@ -74,8 +83,19 @@ public static class FalsePositiveFilter
         @"\b0\s*%",
         RegexOptions.Compiled);
 
+    /// <summary>
+    /// «факт 0 мин» — только отдельно стоящий ноль: подстрока «0мин» внутри
+    /// «90мин»/«100мин» — не отсутствие работы (кейс QTS350 06-26 / Victor A110
+    /// 06-27.2026: «план 90мин»/«план 80мин» в клиентском сигнале частичной
+    /// наладки давали ложное срабатывание б/н-правила и съедали легитимный
+    /// сигнал — аналитик справедливо эскалировал).
+    /// </summary>
+    private static readonly Regex ZeroMinutes = new(
+        @"\b0\s?мин",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static readonly Regex DowntimeClaim = new(
-        @"просто\w*[^0-9%]{0,40}?(?<val>\d+(?:[.,]\d+)?)\s*%",
+        @"просто\w*[^%]{0,80}?(?<val>\d+(?:[.,]\d+)?)\s*%",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
@@ -237,7 +257,8 @@ public static class FalsePositiveFilter
     private static bool IsNoSetupHallucination(string signal, List<PartContext> parts)
     {
         var lower = signal.ToLowerInvariant();
-        if (!lower.Contains(SetupMarker) || !SetupKeywords.Any(kw => lower.Contains(kw)))
+        if (!lower.Contains(SetupMarker)
+            || (!SetupKeywords.Any(kw => lower.Contains(kw)) && !ZeroMinutes.IsMatch(lower)))
             return false;
 
         var named = NamedParts(lower, parts);
@@ -248,7 +269,8 @@ public static class FalsePositiveFilter
     private static bool IsNoProductionHallucination(string signal, List<PartContext> parts)
     {
         var lower = signal.ToLowerInvariant();
-        if (!lower.Contains(ProductionMarker) || !ProductionKeywords.Any(kw => lower.Contains(kw)))
+        if (!lower.Contains(ProductionMarker)
+            || (!ProductionKeywords.Any(kw => lower.Contains(kw)) && !ZeroMinutes.IsMatch(lower)))
             return false;
 
         var named = NamedParts(lower, parts);
