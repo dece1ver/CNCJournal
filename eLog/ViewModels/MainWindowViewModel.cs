@@ -60,6 +60,7 @@ namespace eLog.ViewModels
             LoadProductionTasksCommand = new LambdaCommand(OnLoadProductionTasksCommandExecuted, CanLoadProductionTasksCommandExecute);
             LoadAssignedPartsCommand = new LambdaCommand(OnLoadAssignedPartsCommandExecuted, CanLoadAssignedPartsCommandExecute);
             SendMessageCommand = new LambdaCommand(OnSendMessageCommandExecuted, CanSendMessageCommandExecute);
+            OpenAiChatCommand = new LambdaCommand(OnOpenAiChatCommandExecuted, CanOpenAiChatCommandExecute);
             OpenReferenceCommand = new LambdaCommand(OnOpenReferenceCommandExecuted, CanOpenReferenceCommandExecute);
             ShowAboutCommand = new LambdaCommand(OnShowAboutCommandExecuted, CanShowAboutCommandExecute);
             TestCommand = new LambdaCommand(OnTestCommandExecuted, CanTestCommandExecute);
@@ -570,6 +571,19 @@ namespace eLog.ViewModels
             }
         }
         private bool CanOpenReferenceCommandExecute(object p) => true;
+        #endregion
+
+        #region OpenAiChat
+        public ICommand OpenAiChatCommand { get; }
+        private void OnOpenAiChatCommandExecuted(object p)
+        {
+            using (Overlay = new())
+            {
+                var chatWindow = new AiChatWindow { Owner = Application.Current.MainWindow };
+                chatWindow.ShowDialog();
+            }
+        }
+        private bool CanOpenAiChatCommandExecute(object p) => true;
         #endregion
 
         #region EditOperators

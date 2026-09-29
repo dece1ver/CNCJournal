@@ -1121,7 +1121,7 @@
          (два овала, экспорт из Inkscape), зрачок по центру (cx=500 cy=278.292 r=86).
          Раскраска из палитры (видна в обеих темах): знак IconGrey, зрачок Primary.
          Оригиналов без .Themed нет — знак новый, eLog его не использует. -->
-    <Viewbox x:Key="DozorIcon.Themed" Width="16" Height="16" x:Shared="False">
+    <Viewbox x:Key="DozorIcon.Themed" Width="30" Height="30" x:Shared="False">
         <Canvas Width="1000" Height="556">
             <Path Fill="{DynamicResource Areopag.IconGrey}"
                   SnapsToDevicePixels="True"

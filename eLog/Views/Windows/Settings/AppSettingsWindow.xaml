@@ -56,6 +56,8 @@
                 <RowDefinition Height="24"/>
                 <RowDefinition Height="24"/>
                 <RowDefinition Height="24"/>
+                <RowDefinition Height="24"/>
+                <RowDefinition Height="24"/>
             </Grid.RowDefinitions>
             <TextBlock Grid.Row="0" Grid.Column="0" Text="Станок:" Margin="5 0" VerticalAlignment="Center"/>
             <ComboBox Grid.Row="0"  Grid.Column="1" DockPanel.Dock="Top" Margin="0 1" Style="{StaticResource ComboBoxStyle}"
@@ -138,6 +140,24 @@
             
             <CheckBox Grid.Row="11" Grid.Column="0" Grid.ColumnSpan="2" Content="Запись дополнительных отладочных логов"
                       VerticalAlignment="Center" IsChecked="{Binding DebugMode}" Margin="5 0 0 0"/>
+
+            <TextBlock Grid.Row="12" Grid.Column="0" Text="ИИ-помощник:" VerticalAlignment="Center" Margin="5 0" />
+            <DockPanel Grid.Row="12" Grid.Column="1" LastChildFill="False">
+                <TextBox VerticalContentAlignment="Center" VerticalAlignment="Stretch"
+                         Margin="0 1" MinWidth="50" MaxWidth="200" Text="{Binding AiHost}"
+                         ToolTip="Хост AiService"/>
+                <TextBlock Text="Порт: " Margin="15 0 0 0" VerticalAlignment="Center" />
+                <TextBox VerticalContentAlignment="Center" VerticalAlignment="Stretch"
+                         Margin="0 1" Width="60" Text="{Binding AiPort}"
+                         ToolTip="Порт AiService"/>
+                <TextBlock Text="Модель: " Margin="15 0 0 0" VerticalAlignment="Center" />
+                <TextBox VerticalContentAlignment="Center" VerticalAlignment="Stretch"
+                         Margin="0 1" MinWidth="50" MaxWidth="140" Text="{Binding AiModel}"
+                         ToolTip="Пусто — модель по умолчанию с сервера"/>
+            </DockPanel>
+
+            <CheckBox Grid.Row="13" Grid.Column="0" Grid.ColumnSpan="2" Content="Чат ищет в сети по умолчанию"
+                      VerticalAlignment="Center" IsChecked="{Binding AiChatAllowWebSearch}" Margin="5 0 0 0"/>
         </Grid>
     </DockPanel>
 </Window>

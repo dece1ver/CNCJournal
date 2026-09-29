@@ -107,6 +107,10 @@ namespace eLog.Services
             AppSettings.Instance.SmtpUsername = dlg.SmtpUsername;
             AppSettings.Instance.TimerForNotify = dlg.TimerForNotify;
             AppSettings.Instance.EnableWriteShiftHandover = dlg.EnableWriteShiftHandover;
+            AppSettings.Instance.AiHost = dlg.AiHost;
+            AppSettings.Instance.AiPort = dlg.AiPort;
+            AppSettings.Instance.AiModel = dlg.AiModel;
+            AppSettings.Instance.AiChatAllowWebSearch = dlg.AiChatAllowWebSearch;
             if (AppSettings.Instance.DebugMode) { WriteLog($"Подтверждено."); }
             return true;
         }

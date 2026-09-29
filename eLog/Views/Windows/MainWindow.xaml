@@ -136,6 +136,13 @@
                         Content="📧" Padding="0 -2 0 0" 
                         Command="{Binding SendMessageCommand}">
                 </Button>
+                <Button Style="{StaticResource GeneralButton}"
+                        Margin="4 4 0 0"
+                        Width="34"
+                        ToolTip="ДОЗОР — помощник оператора"
+                        Command="{Binding OpenAiChatCommand}">
+                    <ContentControl Content="{StaticResource DozorIcon.Themed}" Width="30" Height="30"/>
+                </Button>
                 <Button Visibility="{Binding _CanLoadProductionTasksCommandExecute, Converter={StaticResource VisibilityConverter}}"
                         Margin="4 4 0 0" 
                         Width="34"

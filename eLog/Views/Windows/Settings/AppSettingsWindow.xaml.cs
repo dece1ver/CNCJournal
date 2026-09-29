@@ -162,6 +162,38 @@ namespace eLog.Views.Windows.Settings
             set => Set(ref _TimerForNotify, value);
         }
 
+        private string _AiHost = "";
+        /// <summary> Хост AiService (ИИ-помощник) </summary>
+        public string AiHost
+        {
+            get => _AiHost;
+            set => Set(ref _AiHost, value);
+        }
+
+        private int _AiPort;
+        /// <summary> Порт AiService (ИИ-помощник) </summary>
+        public int AiPort
+        {
+            get => _AiPort;
+            set => Set(ref _AiPort, value);
+        }
+
+        private string _AiModel = "";
+        /// <summary> Модель для чата (пусто — дефолт сервера) </summary>
+        public string AiModel
+        {
+            get => _AiModel;
+            set => Set(ref _AiModel, value);
+        }
+
+        private bool _AiChatAllowWebSearch;
+        /// <summary> Чат ищет в сети по умолчанию </summary>
+        public bool AiChatAllowWebSearch
+        {
+            get => _AiChatAllowWebSearch;
+            set => Set(ref _AiChatAllowWebSearch, value);
+        }
+
         private bool _EnableWriteShiftHandover;
         /// <summary> Передача смены </summary>
         public bool EnableWriteShiftHandover
@@ -199,6 +231,10 @@ namespace eLog.Views.Windows.Settings
             _TimerForNotify = AppSettings.Instance.TimerForNotify;
             _EnableWriteShiftHandover = AppSettings.Instance.EnableWriteShiftHandover;
             _DebugMode = AppSettings.Instance.DebugMode;
+            _AiHost = AppSettings.Instance.AiHost ?? "localhost";
+            _AiPort = AppSettings.Instance.AiPort <= 0 ? 5050 : AppSettings.Instance.AiPort;
+            _AiModel = AppSettings.Instance.AiModel ?? "";
+            _AiChatAllowWebSearch = AppSettings.Instance.AiChatAllowWebSearch;
             InitializeComponent();
             _ = LoadMachinesAsync();
         }
@@ -324,6 +360,10 @@ namespace eLog.Views.Windows.Settings
                 PathToRecievers = AppSettings.Instance.PathToRecievers ?? "";
                 TimerForNotify = AppSettings.Instance.TimerForNotify;
                 DebugMode = AppSettings.Instance.DebugMode;
+                AiHost = AppSettings.Instance.AiHost ?? "localhost";
+                AiPort = AppSettings.Instance.AiPort <= 0 ? 5050 : AppSettings.Instance.AiPort;
+                AiModel = AppSettings.Instance.AiModel ?? "";
+                AiChatAllowWebSearch = AppSettings.Instance.AiChatAllowWebSearch;
 
                 File.Copy(tempName, AppSettings.ConfigFilePath, true);
                 AppSettings.Instance.ReadConfig();
