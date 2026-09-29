@@ -80,6 +80,11 @@ public class ChatAgentService(
         // Поручень «нет данных без тула» и поручень чисел — по одному раунду.
         var noDataForcedLeft = 1;
         var countForcedLeft = 1;
+        var promiseForcedLeft = 1;
+        var correctionForcedLeft = 1;
+        // Последний вопрос оператора нужен нуджам обоих поручней: без цитаты
+        // модель уходит с исходной темы (кейс C.4).
+        var lastQuestion = LastUserQuestion(messages);
         try
         {
             for (var i = 1; i <= MaxIterations + 2; i++)
@@ -157,7 +162,10 @@ public class ChatAgentService(
                     // «Нет данных» без вызова инструмента — вывод на глаз (кейс
                     // кампании E.2: на «а что делал Крафт во вторник?» модель
                     // ответила «нет данных» по смене, вообще не открыв журнал).
-                    if (historyCalls == 0 && noDataForcedLeft > 0 && ClaimsNoData(lastContent))
+                    // Поручень бьёт только по вопросам про прошлое: на вопрос про
+                    // склад он однажды увёл модель в историю смены (регресс C.4).
+                    if (historyCalls == 0 && noDataForcedLeft > 0
+                        && AsksAboutPastShifts(lastQuestion) && ClaimsNoData(lastContent))
                     {
                         noDataForcedLeft--;
                         toolProgress?.Report("⚙ проверяю по журналу…");
@@ -168,16 +176,70 @@ public class ChatAgentService(
                         messages.Add(new ChatMessage
                         {
                             Role = "user",
-                            Content = "[Автопроверка] Ты сказал, что данных нет, не вызвав " +
-                                "get_operator_history. Отсутствие данных — это то, что вернул " +
-                                "инструмент, а не твой вывод. Вызови get_operator_history " +
-                                "(имя — из контекста смены или из вопроса, date — конкретный " +
-                                "день YYYY-MM-DD, если спрашивали про день) и ответь по его " +
-                                "результату. Если данных действительно нет — так и напиши, " +
-                                "но после вызова.",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». Ты сказал, что данных нет, " +
+                                "не вызвав get_operator_history. Отсутствие данных — это то, " +
+                                "что вернул инструмент, а не твой вывод. Вызови " +
+                                "get_operator_history (имя — из контекста смены или из " +
+                                "вопроса, date — конкретный день YYYY-MM-DD, если спрашивали " +
+                                "про день) и ответь по его результату. Про другие темы " +
+                                "не пиши.",
                         });
                         logger.LogInformation(
                             "Чат-агент ({Machine}): автопроверка «нет данных»", machine);
+                        continue;
+                    }
+                    // Обещал вызов, а не вызвал (кейс кампании D.2 после правки
+                    // промпта: «Вызову get_shift_info и get_active_part» — и тишина).
+                    // Проверяем только когда за весь запрос не было ни одного вызова:
+                    // тогда это чистая имитация, а не отсылка к уже сделанному.
+                    if (toolRounds == 0 && promiseForcedLeft > 0 && AnnouncesToolCall(lastContent))
+                    {
+                        promiseForcedLeft--;
+                        toolProgress?.Report("⚙ выполняю обещанную проверку…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(LastUserQuestion(messages), 120) + "». Ты пообещал " +
+                                "проверку, но ни одного инструмента не вызвал — оператору " +
+                                "уйдёт текст, а проверки не будет. Сделай вызов СЕЙЧАС и " +
+                                "ответь по его результату. Обещать в тексте проверку " +
+                                "запрещено, обещание без вызова — брак.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка обещанного вызова", machine);
+                        continue;
+                    }
+                    // Поправка без признания. Правило 7 требует начинать с признания,
+                    // но текстом оно держится не всегда (кейс регресса D.3: на «всё
+                    // не так, проверь ещё раз» модель ответила «Дозор бдит — смена под
+                    // присмотром» — ни «ошибся», ни «прав»).
+                    if (correctionForcedLeft > 0
+                        && WebSearchService.IsCorrection(lastQuestion)
+                        && !AcknowledgesMistake(lastContent))
+                    {
+                        correctionForcedLeft--;
+                        toolProgress?.Report("⚙ исправляюсь…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Оператор указал, что ответ неверный, " +
+                                "а ты начал с другого — признания в ошибке нет. Начни ответ с " +
+                                "признания одним предложением («да, я ошибся» / «это неверно, " +
+                                "проверяю»), затем перепроверь факты инструментами по теме " +
+                                "исходного вопроса «" + Trunc(lastQuestion, 120) + "».",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка поправки без признания", machine);
                         continue;
                     }
                     // Количество «N шт», которого нет ни в вопросе, ни в результатах
@@ -195,10 +257,12 @@ public class ChatAgentService(
                         messages.Add(new ChatMessage
                         {
                             Role = "user",
-                            Content = "[Автопроверка] В ответе есть количество " +
-                                $"{string.Join(", ", invented.Take(3))}, которого нет ни в " +
-                                "вопросе, ни в результатах инструментов. Пересчитай по " +
-                                "данным тула и исправь: свои числа подставлять нельзя. " +
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». В твоём ответе есть " +
+                                $"количество {string.Join(", ", invented.Take(3))}, которого " +
+                                "нет ни в вопросе, ни в результатах инструментов. " +
+                                "Пересчитай по данным тула и исправь только эту цифру: " +
+                                "свои числа подставлять нельзя, и про другие темы не пиши. " +
                                 "Если считаешь иначе — покажи, откуда взял цифру.",
                         });
                         logger.LogInformation(
@@ -224,6 +288,25 @@ public class ChatAgentService(
                     if (call.Name == "web_search")
                     {
                         var query = ExtractArg(call.Arguments, "query");
+                        // Внутренние данные (остатки, наличие, что записано в
+                        // журнале) в интернете не лежат: поиск по «остатки по цеху»
+                        // возвращал лотки и газовые редукторы, и это уезжало
+                        // оператору (кейс C.3). Цены и аналоги по-прежнему ищем.
+                        if (WebSearchService.IsInternalData(query))
+                        {
+                            messages.Add(new ChatMessage
+                            {
+                                Role = "tool",
+                                Content = "Поиск в сети по этому вопросу не имеет смысла: " +
+                                    "это наши внутренние данные (склад, журнал, смена), " +
+                                    "в интернете их нет. Скажи оператору честно, чего " +
+                                    "не знаешь, и предложи уточнить.",
+                            });
+                            logger.LogInformation(
+                                "Чат-агент ({Machine}): web_search «{Q}» пропущен (внутренние данные)",
+                                machine, Trunc(query));
+                            continue;
+                        }
                         toolProgress?.Report($"🌐 ищу «{Trunc(query)}»…");
                         var found = await webSearch.SearchAsync(query, cts.Token);
                         webSources.AddRange(found);
@@ -474,6 +557,77 @@ public class ChatAgentService(
     }
 
     /// <summary>
+    /// Обещает ли ответ вызов инструмента, ничего не вызвав: «вызову
+    /// get_shift_info», «проверю по базе», «сначала посмотрю смену». Это ровно та
+    /// имитация проверки, что запрещена промптом, но правило текстом не
+    /// остановило (кейс D.2). Ловится детерминированно. Чистая функция.
+    /// </summary>
+    public static bool AnnouncesToolCall(string reply)
+    {
+        if (string.IsNullOrWhiteSpace(reply)) return false;
+        var t = reply.ToLowerInvariant();
+        string[] promises =
+        [
+            "вызову ", "вызвать ", "сделаю вызов", "проверю по базе", "сверюсь с базой",
+            "сверю по базе", "посмотрю смену", "посмотрю в базе", "запрошу в базе",
+            "проверю инструментом", "проверю инструмент", "уточню инструментом",
+            "сейчас проверю", "сейчас посмотрю", "сейчас сверюсь", "сначала проверю",
+            "сначала посмотрю", "затем перепроверю", "обращусь к базе",
+        ];
+        return promises.Any(p => t.Contains(p, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Признал ли ответ свою ошибку. Поправка оператора обязана начинаться с
+    /// признания (правило 7 промпта), иначе он читает прежний ответ как верный.
+    /// Чистая функция.
+    /// </summary>
+    public static bool AcknowledgesMistake(string reply)
+    {
+        if (string.IsNullOrWhiteSpace(reply)) return false;
+        var t = reply.ToLowerInvariant();
+        string[] marks =
+        [
+            "ошиб", "ошибочн", "неверн", "неправ", "поправ", "призна", "извин",
+            "не так", "мимо", "нерядом",
+        ];
+        return marks.Any(m => t.Contains(m, StringComparison.Ordinal));
+    }
+
+    /// <summary> Последний вопрос оператора — цитатой в нудж, чтобы модель не ушла    /// с исходной темы (кейс C.4: проверка чисел уводила в историю смены). </summary>
+    private static string LastUserQuestion(IReadOnlyList<ChatMessage> messages) =>
+        messages.LastOrDefault(m =>
+            (m.Role ?? "").Trim().Equals("user", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(m.Content)
+            && !m.Content.StartsWith("[Автопроверка]", StringComparison.Ordinal))?.Content
+        ?? "(вопрос оператора)";
+
+    /// <summary>
+    /// Спросил ли оператор про прошлое. Поручни прошлого бьют только по таким
+    /// вопросам: на вопрос про склад или документы «нет данных» — это нормальный
+    /// ответ, и требование звать историю увозило модель не туда.
+    /// </summary>
+    public static bool AsksAboutPastShifts(string question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        var t = question.ToLowerInvariant();
+        string[] other =
+        [
+            "склад", "остатк", "наличие", "есть ли", "цена", "стоимость", "курс",
+            "документ", "регламент", "инструкц", "правил", "документац", "новости",
+        ];
+        if (other.Any(k => t.Contains(k, StringComparison.Ordinal))) return false;
+        string[] past =
+        [
+            "делал", "делала", "делали", "работал", "работала", "работали", "работал",
+            "смен", "вчера", "позавчера", "вторник", "понедельник", "сред", "среда",
+            "четверг", "пятниц", "суббот", "воскресень", "истори", "прошл",
+            "неделю", "неделе", "месяц", "тогда", "раньше", "было", "успевал",
+        ];
+        return past.Any(k => t.Contains(k, StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// Утверждение, что данных нет, по конкретной сущности: «нет данных о Крафт»,
     /// «записей не найдено». Без вызова инструмента это вывод на глаз (кейс E.2).
     /// Отличать от честной пустоты тула не нужно: туда попасть нельзя без вызова.
@@ -621,16 +775,36 @@ public class ChatAgentService(
         var ctxLast = FirstToken(ctxName);
         if (string.IsNullOrEmpty(req) || string.IsNullOrEmpty(ctxLast)) return (argName, false);
         if (req.Equals(ctxLast, StringComparison.OrdinalIgnoreCase)) return (argName, false);
-        // Первое слово — служебное, а не фамилия: модель вписывает в name слова
-        // вопроса («оператор CNC-513», «мастер Иванов»). Их присутствие в тексте
-        // вопроса не считается упоминанием человека, иначе в БД уходит мусор и
-        // модель получает честную пустоту (кейс «что делал оператор на станке
-        // CNC-513»). Слово в состав фамилии не входит — стоп-лист точный.
-        if (GenericOperatorWords.Contains(req)) return (ctxName, true);
+        // Модель почти всегда передаёт фамилию из снимка смены («Хомутов А. Б.»).
+        // Раньше такая запись считалась «чужой» (её нет в тексте вопроса) и в
+        // результат тула попадала пометка «вызов был с чужой фамилией» — шум и
+        // лишнее подозрение в каждом ответе. Считаем исправлением только реальную
+        // замену: остаток аргумента после фамилии не совпадает с контекстом.
+        if (argName.Trim().Equals(ctxName, StringComparison.OrdinalIgnoreCase))
+            return (argName, false);
+        if (argName.Trim().StartsWith(ctxLast + " ", StringComparison.OrdinalIgnoreCase)
+            || argName.Trim().StartsWith(ctxLast + ".", StringComparison.OrdinalIgnoreCase))
+        {
+            var rest = argName.Trim()[ctxLast.Length..].Trim();
+            if (rest.Length == 0
+                || (ctxName.Length > ctxLast.Length
+                    && ctxName[ctxLast.Length..].Trim().Equals(rest, StringComparison.OrdinalIgnoreCase)))
+                return (argName, false);
+        }
+        // Служебное слово или одна буква: модель вписывает в name слова вопроса
+        // («оператор CNC-513») или инициал («А.» от «Хомутов А. Б.»). Ни то, ни
+        // другое фамилией быть не может, и их присутствие в вопросе не считается
+        // упоминанием человека. Кейс: на «а я?» ушёл запрос get_operator_info
+        // с name="А." — и в ответ модель перечислила случайных операторов из базы.
+        if (GenericOperatorWords.Contains(req) || req.Trim().Length <= 1)
+            return (ctxName, true);
         // Проверяются только user-сообщения: в системе примеры есть всегда.
+        // Сравнение по границе слова, а не подстрокой, иначе фамилия внутри
+        // другого слова («Крафт» в «крафтовый») считалась бы упомянутой.
         var mentioned = messages.Any(m =>
             m.Role.Trim().Equals("user", StringComparison.OrdinalIgnoreCase)
-            && (m.Content ?? "").Contains(req, StringComparison.OrdinalIgnoreCase));
+            && Regex.IsMatch(m.Content ?? "", $@"(?<![\p{{L}}]){Regex.Escape(req)}(?![\p{{L}}])",
+                RegexOptions.IgnoreCase));
         if (mentioned) return (argName, false);
         return (ctxName, true);
     }
@@ -652,13 +826,15 @@ public class ChatAgentService(
 
     /// <summary> Строка списка результатов: «[1] Заголовок — https://…». </summary>
     private static readonly Regex SearchDumpItemRx = new(
-        @"^\s*\[\d+\]\s+\S.*?https?://\S*\s*$", RegexOptions.Multiline | RegexOptions.Compiled);
+        @"^\s*\[\d+\]\s+\S.*$", RegexOptions.Multiline | RegexOptions.Compiled);
 
     /// <summary>
     /// Убирает из ответа перечисление результатов поиска: это данные тула, а не
     /// ответ оператору. Режем от заголовка «Результаты поиска…» либо от первой
-    /// строки вида «[1] … https://…» (модель печатает список и без заголовка) —
-    /// до конца текста. Чистая функция.
+    /// строки списка «[1] …» (модель печатает список и без заголовка, и без
+    /// ссылок — «[1] Лоток Treston (kiit.ru)») — до конца текста. Ссылку внутри
+    /// обычной фразы не трогаем: для этого нужны две и более строки списка.
+    /// Чистая функция.
     /// </summary>
     public static string StripSearchDump(string reply)
     {
@@ -667,14 +843,11 @@ public class ChatAgentService(
         var start = SearchDumpHeaderRx.Match(text);
         if (!start.Success)
         {
-            var item = SearchDumpItemRx.Match(text);
-            if (!item.Success) return text;
-            // Заголовка нет — режем, только если дальше идёт именно перечисление,
-            // а не единичная ссылка внутри предложения.
-            var after = text[item.Index..];
-            var items = SearchDumpItemRx.Matches(after).Count;
-            if (items < 2) return text;
-            start = item;
+            var items = SearchDumpItemRx.Matches(text);
+            // Заголовка нет — режем, только если строк списка хотя бы две:
+            // одиночная «[1]» может быть частью ответа.
+            if (items.Count < 2) return text;
+            start = items[0];
         }
         return text[..start.Index].TrimEnd();
     }

@@ -301,7 +301,64 @@ public class ChatTests
     }
 
     [Theory]
-    [InlineData("а я?", false, false, false)]
+    [InlineData("Да, я ошибся — проверяю факты смены. Вызову get_shift_info и get_active_part.", true)]
+    [InlineData("Сначала посмотрю смену, затем перепроверю историю оператора.", true)]
+    [InlineData("Проверю по базе, что за деталь.", true)]
+    [InlineData("Да, я ошибся. Смена выбрана, но не начата.", false)]
+    [InlineData("22.09 делал Корпус верхний, 2 шт.", false)]
+    [InlineData("Уточните, пожалуйста, что именно перепроверить.", false)]
+    [InlineData("", false)]
+    public void AnnouncesToolCall_Forms(string reply, bool expected)
+    {
+        Assert.Equal(expected, ChatAgentService.AnnouncesToolCall(reply));
+    }
+
+    [Fact]
+    public async Task Agent_PromisedToolCall_ForcesIt()
+    {
+        // Кейс D.2 после правки промпта: признание есть, обещание вызова есть,
+        // вызова нет — оператору уходит пустой текст.
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "Да, я ошибся. Вызову get_shift_info и get_active_part." },
+            new ChatResult
+            {
+                Content = "",
+                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_shift_info", Arguments = "{}" }],
+            },
+            new ChatResult { Content = "Да, я ошибся: смена выбрана, но не начата. Деталь «опять тест», уст. 1." },
+        ]));
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user", Content = "наврал, ты неправ" }]),
+            [], 20, 12000);
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null, CancellationToken.None);
+
+        Assert.Equal("Да, я ошибся: смена выбрана, но не начата. Деталь «опять тест», уст. 1.", res.Reply);
+        Assert.Equal(1, res.ToolRounds);
+        var nudge = stub.SeenMessages[^1].First(
+            m => m.Role == "user" && m.Content.Contains("[Автопроверка]"));
+        Assert.Contains("пообещал", nudge.Content);
+    }
+
+    [Fact]
+    public async Task Agent_PlainAnswerWithoutTools_NotForced()
+    {
+        // Обычный ответ без инструментов — не имитация: поручень молчит.
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "Да, я ошибся: смена выбрана, но не начата." },
+        ]));
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user", Content = "наврал, ты неправ" }]),
+            [], 20, 12000);
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null, CancellationToken.None);
+
+        Assert.Equal(0, res.ToolRounds);
+        Assert.Equal("Да, я ошибся: смена выбрана, но не начата.", res.Reply);
+    }
+
     [InlineData("какой курс доллара", false, false, true)]
     [InlineData("найди аналог пластины", false, false, true)]
     // Галка клиента — единственное, что включает поиск принудительно.
@@ -336,22 +393,105 @@ public class ChatTests
     [Fact]
     public void StripSearchDump_CutsListWithoutHeader()
     {
+        // Модель печатает список и без ссылок в строках («[1] Лоток (kiit.ru)») —
+        // такая форма тоже должна срезаться (кейс C.3).
         var reply =
             "Вот что нашлось:\n"
             + "[1] Пластина CNMG 120408 — https://example.com/a\n"
             + "[2] Пластина CNMG 120408 купить — https://example.com/b\n";
 
         Assert.Equal("Вот что нашлось:", ChatAgentService.StripSearchDump(reply));
+
+        var noUrls =
+            "По аналогам из сети:\n"
+            + "[1] Лоток Treston L-07 (kiit.ru)\n"
+            + "[2] Лоток Treston L-07 купить (ozon.ru)\n";
+        Assert.Equal("По аналогам из сети:", ChatAgentService.StripSearchDump(noUrls));
     }
 
     [Theory]
-    [InlineData("Здравствуйте! Чем помочь?")]
-    [InlineData("Пластина CNMG120408 есть на складе, 16 шт.")]
-    // Одна ссылка в предложении — не перечисление, резать нельзя.
     [InlineData("Инструкция на Fanuc: https://fanuc.com/manual — там всё есть.")]
+    // Одна строка списка — может быть частью ответа, резать нельзя.
+    [InlineData("Смотри [1] в приложенном документе.")]
     public void StripSearchDump_KeepsNormalText(string reply)
     {
         Assert.Equal(reply, ChatAgentService.StripSearchDump(reply));
+    }
+
+    [Fact]
+    public void CorrectOperatorArg_InitialOrSubstring_NotTreatedAsMentioned()
+    {
+        // Кейс регресса A.2: на «а я?» модель вызвала get_operator_info с name="А."
+        // (инициал из «Хомутов А. Б.»). Проверка «упомянут ли в вопросе» проходила,
+        // потому что буква «а» есть в любом тексте, и в БД уходил мусор — модель в
+        // ответе перечислила случайных операторов из базы.
+        var ctx = new ElogChatContext { OperatorName = "Хомутов А. Б." };
+        var messages = new List<ChatMessage>
+        {
+            new() { Role = "user", Content = "а я?" },
+        };
+
+        var (name, corrected) = ChatAgentService.CorrectOperatorArg("А.", ctx, messages);
+        Assert.True(corrected);
+        Assert.Equal("Хомутов А. Б.", name);
+
+        // Фамилия внутри другого слова — тоже не упоминание.
+        var (n2, c2) = ChatAgentService.CorrectOperatorArg("Крафт", new ElogChatContext
+            { OperatorName = "Хомутов А. Б." }, [
+                new ChatMessage { Role = "user", Content = "крафтовый станок сломался" },
+            ]);
+        Assert.True(c2);
+        Assert.Equal("Хомутов А. Б.", n2);
+    }
+
+    [Theory]
+    [InlineData("Да, я ошибся — проверяю.", true)]
+    [InlineData("Это неверно, сверяюсь.", true)]
+    [InlineData("Поправляю: смена выбрана, но не начата.", true)]
+    [InlineData("Дозор бдит — смена под присмотром. Уточните, что именно проверяете?", false)]
+    [InlineData("Смена не начата: начнём?", false)]
+    [InlineData("", false)]
+    public void AcknowledgesMistake_Forms(string reply, bool expected)
+    {
+        Assert.Equal(expected, ChatAgentService.AcknowledgesMistake(reply));
+    }
+
+    [Fact]
+    public async Task Agent_CorrectionWithoutApology_ForcesAdmission()
+    {
+        // Регресс D.3: на «всё не так, проверь ещё раз» ответ начался с «Дозор
+        // бдит» — признания не было, и поправка выглядела как игнор.
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "Дозор бдит — смена под присмотром. Уточните, что именно проверяете?" },
+            new ChatResult
+            {
+                Content = "",
+                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_shift_info", Arguments = "{}" }],
+            },
+            new ChatResult { Content = "Да, я ошибся: смена выбрана, но не начата." },
+        ]));
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user", Content = "всё не так, проверь ещё раз" }]),
+            [], 20, 12000);
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null, CancellationToken.None);
+
+        Assert.Equal("Да, я ошибся: смена выбрана, но не начата.", res.Reply);
+        var nudge = stub.SeenMessages[^1].First(
+            m => m.Role == "user" && m.Content.Contains("[Автопроверка]"));
+        Assert.Contains("признан", nudge.Content);
+    }
+
+    [InlineData("сколько CNMG120408 на складе", true)]
+    [InlineData("наличие инструмента", true)]
+    [InlineData("цена пластины CNMG120408", false)]
+    [InlineData("аналог AEKR-D2.25X25 купить", false)]
+    [InlineData("где делают фрезу 12мм", false)]
+    [InlineData("", false)]
+    public void IsInternalData_Forms(string text, bool expected)
+    {
+        Assert.Equal(expected, WebSearchService.IsInternalData(text));
     }
 
     // ── Цикл агента ──
@@ -1448,7 +1588,9 @@ public class ChatTests
             "Крафт Алексей Сергеевич",
             [new OperatorHistoryLine(new DateTime(2026, 9, 29), "Hyundai L230A",
                 "Кольцо опорное АР30-01-015-22 13х25", "УЧ2609-0078.1.1", 1, 60)]));
-        var build = Builder().BuildChatMessages(Request(), [], 20, 12000);
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user", Content = "а что делал Крафт во вторник?" }]),
+            [], 20, 12000);
 
         var res = await Agent(stub, source: source).RunAsync(
             build.System, build.Messages, Context(), null, null, null, null, CancellationToken.None);
@@ -1458,6 +1600,44 @@ public class ChatTests
         var nudge = stub.SeenMessages[^1].First(
             m => m.Role == "user" && m.Content.Contains("[Автопроверка]"));
         Assert.Contains("get_operator_history", nudge.Content);
+        // Нудж цитирует исходный вопрос: без этого модель уходила с темы
+        // (кейс C.4 — проверка чисел уводила в историю смены).
+        Assert.Contains("а что делал Крафт во вторник?", nudge.Content);
+    }
+
+    [Fact]
+    public async Task Agent_NoDataClaim_NotForcedOnStockQuestion()
+    {
+        // Регресс C.4: «сколько CNMG120408?» — «данных нет» тут не про историю,
+        // и требование звать get_operator_history увозило модель в смены.
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "По складу данных нет, уточните обозначение." },
+        ]));
+
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user", Content = "сколько CNMG120408?" }]),
+            [], 20, 12000);
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null, CancellationToken.None);
+
+        Assert.Equal("По складу данных нет, уточните обозначение.", res.Reply);
+        Assert.Equal(0, res.ToolRounds);
+    }
+
+    [Theory]
+    [InlineData("что я делал во вторник?", true)]
+    [InlineData("а что делал Крафт?", true)]
+    [InlineData("что делал вчера?", true)]
+    [InlineData("как я работал на прошлой неделе", true)]
+    [InlineData("сколько CNMG120408?", false)]
+    [InlineData("есть ли AEKR-D2.25X25 на складе?", false)]
+    [InlineData("как правильно отметить простой?", false)]
+    [InlineData("какой курс доллара?", false)]
+    [InlineData("", false)]
+    public void AsksAboutPastShifts_Forms(string question, bool expected)
+    {
+        Assert.Equal(expected, ChatAgentService.AsksAboutPastShifts(question));
     }
 
     [Fact]

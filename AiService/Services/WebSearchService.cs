@@ -84,7 +84,9 @@ public class WebSearchService(IConfiguration config, ILogger<WebSearchService> l
             "наврал", "наврала", "врёшь", "врешь", "враньё", "вранье",
             "неправда", "не правда", "неправильно", "не правильно", "неверно",
             "ты ошиб", "я не так", "всё выдумал", "все выдумал", "выдумал",
-            "это не так", "совсем не так", "мимо",
+            // «всё не так» — самая частая форма поправки в кампании (D.3), раньше
+            // попадала только в «это не так», и поручень признания не срабатывал.
+            "не так", "совсем не так", "мимо",
         ];
         return markers.Any(m => t.Contains(m, StringComparison.Ordinal));
     }
@@ -136,6 +138,24 @@ public class WebSearchService(IConfiguration config, ILogger<WebSearchService> l
         ];
         return self.Any(s => norm.Contains(s, StringComparison.Ordinal))
             && shift.Any(s => t.Contains(s, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Внутренние данные предприятия: остатки, наличие, записи журнала, смена.
+    /// В интернете их нет, и поиск по таким словам приносит мусор — в кампании
+    /// на «остатки по цеху» вернулись лотки и газовые редукторы (кейс C.3).
+    /// Цены, каталоги и аналоги — не внутренние данные, их ищем по-прежнему.
+    /// </summary>
+    public static bool IsInternalData(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var t = text.ToLowerInvariant();
+        string[] markers =
+        [
+            "остатк", "наличие", "в наличии", "на складе", "по цеху", "цеховые",
+            "в журнале", "по журналу", "смену оператора", "смена оператора",
+        ];
+        return markers.Any(m => t.Contains(m, StringComparison.Ordinal));
     }
 
     /// <summary>
