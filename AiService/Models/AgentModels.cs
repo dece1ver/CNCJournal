@@ -59,7 +59,8 @@ public interface IAgentChatClient
         CancellationToken ct,
         string? model = null,
         double? temperature = null,
-        IProgress<string>? thinkingProgress = null);
+        IProgress<string>? thinkingProgress = null,
+        IProgress<string>? tokenProgress = null);
 }
 
 // ── Трассировка агентского цикла (пишется в request_logs) ────────────────────

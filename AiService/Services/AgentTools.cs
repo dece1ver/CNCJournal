@@ -5,13 +5,13 @@ using System.Text.Json;
 namespace AiService.Services;
 
 /// <summary>
-/// Инструменты агентского контура дневного анализа (стадия 1).
+/// Инструменты агентского контура дневного анализа (стадия 2).
 ///
-/// ВАЖНО про стадию 1: у AiService нет доступа в БД (нет SqlClient и connection string —
-/// сервис stateless, всё приезжает в AnalyzeRequest). Поэтому tools читают данные
-/// ИЗ ЗАПРОСА (история/отчёты уже приложены клиентом). Для будущего прямого доступа
-/// в БД (cnc_normatives, cnc_deviation_reasons, cnc_shifts) оставлен шов IAgentDataSource:
-/// замена источника — без правок цикла и инструментов.
+/// Источник фактологии — IAgentDataSource: SqlAgentDataSource (прямые read-only
+/// запросы в SQL, та же машина) либо RequestAgentDataSource (данные из запроса:
+/// без БД, тесты, replay). Fallback-цепочка внутри каждого инструмента:
+/// БД → данные запроса → честный текст «нет данных». Цикл агента от источника
+/// не падает никогда (см. AGENTS.md «Требование к серверу»).
 /// Правило обрезки: каждый результат ≤ MaxResultChars, иначе контекст разъезжается.
 /// </summary>
 public static class AgentTools
@@ -60,9 +60,18 @@ public static class AgentTools
         new ChatTool
         {
             Name = "get_past_decisions",
-            Description = "Последние решения аналитиков по этому станку (как они закрывали спорное). "
-                + "Ориентир стиля, а не основание для эскалации: прошлое не создаёт текущей аномалии.",
+            Description = "Последние решения аналитиков по этому станку (JSON, как они закрывали спорное). "
+                + "Ориентир стиля, а не основание для эскалации: прошлое не создаёт текущей аномалии "
+                + "и не упоминается в signals вообще.",
             ParametersJson = """{"type":"object","properties":{"limit":{"type":"integer","description":"Сколько записей, 1-10"}},"required":[]}""",
+        },
+        new ChatTool
+        {
+            Name = "get_operator_info",
+            Description = "Оператор по фамилии/инициалам («Крафт А.С.», JSON: ФИО, разряд, активен). "
+                + "Для проверки заявлений про ученика/неопытного (кто именно работал) "
+                + "и расшифровки подписей в комментариях.",
+            ParametersJson = """{"type":"object","properties":{"query":{"type":"string","description":"Фамилия, можно с инициалами"}},"required":["query"]}""",
         },
         new ChatTool
         {
@@ -80,9 +89,17 @@ public static class AgentTools
         },
     ];
 
-    // ── Исполнение ──
+    // ── Исполнение (асинхронное: Sql-источник ходит в БД) ──
 
-    public static string Execute(AnalyzeRequest req, string name, string argsJson)
+    /// <summary>
+    /// Синхронная обёртка ТОЛЬКО для request-источника (тесты): там нет I/O,
+    /// задачи всегда завершены синхронно — дедлока нет. БД-путь — через async.
+    /// </summary>
+    public static string Execute(AnalyzeRequest req, string name, string argsJson) =>
+        Execute(req, RequestAgentDataSource.Instance, name, argsJson).GetAwaiter().GetResult();
+
+    public static async Task<string> Execute(
+        AnalyzeRequest req, IAgentDataSource source, string name, string argsJson, CancellationToken ct = default)
     {
         using var doc = TryParse(argsJson);
         var args = doc?.RootElement ?? default;
@@ -91,11 +108,13 @@ public static class AgentTools
         {
             "get_reason_semantics" => ReasonSemantics(
                 req, Get(args, "reason"), Get(args, "category")),
-            "get_part_history" => PartHistory(
-                req, Get(args, "partName"), GetInt(args, "setup")),
+            "get_part_history" => await PartHistoryAsync(
+                req, source, Get(args, "partName"), GetInt(args, "setup"), ct),
             "get_past_decisions" => PastDecisions(req, GetInt(args, "limit") ?? 5),
             "get_normatives" => Normatives(req, Get(args, "partName")),
             "get_shift_report" => ShiftReport(req),
+            "get_operator_info" => await OperatorInfoAsync(
+                source, Get(args, "query"), ct),
             _ => $"Неизвестный инструмент «{name}». Доступны: {string.Join(", ", Definitions.Select(d => d.Name))}.",
         };
 
@@ -192,7 +211,8 @@ public static class AgentTools
         return $"«{reason.Trim()}» [{entry.Cats}{(entry.ReqComment ? ", требует комментария" : "")}].{normalizedNote}{binding} {entry.Rule}";
     }
 
-    private static string PartHistory(AnalyzeRequest req, string partName, int? setup)
+    private static async Task<string> PartHistoryAsync(
+        AnalyzeRequest req, IAgentDataSource source, string partName, int? setup, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(partName))
             return "Укажи partName.";
@@ -203,6 +223,12 @@ public static class AgentTools
             .ToList();
         if (matches.Count == 0)
             return $"Детали «{partName}» нет в данных дня.";
+
+        // Стадия 2: прямой источник (БД) первичен — формат наружу тот же JSON,
+        // модель разницы не видит. Пусто в БД → построчный legacy-путь по запросу.
+        var fromDb = await source.GetPartHistoryAsync(req, partName.Trim(), setup, ct);
+        if (fromDb != null)
+            return RenderHistoryDto(matches[0], fromDb);
 
         var sb = new StringBuilder();
         foreach (var p in matches.Take(3))
@@ -243,10 +269,44 @@ public static class AgentTools
         return sb.ToString().Trim();
     }
 
+    /// <summary>
+    /// Один JSON-объект истории из готового DTO (БД-путь): те же ключи, что
+    /// в построчном пути, заказ — из строки дня.
+    /// </summary>
+    internal static string RenderHistoryDto(PartContext part, PartsHistoryDto dto)
+    {
+        if (dto.RecordsFound == 0 || dto.Lines.Count == 0)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                деталь = part.PartName,
+                уст = part.Setup,
+                заказ = part.Order,
+                прошлыхСмен = 0,
+                вывод = "под другими заказами не выполнялась = заявление «впервые» ПОДТВЕРЖДЕНО",
+            }, JsonOptions);
+        }
+        return JsonSerializer.Serialize(new
+        {
+            деталь = part.PartName,
+            уст = part.Setup,
+            заказ = part.Order,
+            прошлыхСмен = dto.RecordsFound,
+            строки = dto.Lines.Take(5).Select(l => new
+            {
+                дата = l.ShiftDate,
+                готовоШт = l.FinishedCount,
+                кпдИзготовления = l.ProductionRatio,
+                кпдНаладки = l.SetupRatio,
+                решение = l.AnalystDecision,
+            }),
+        }, JsonOptions);
+    }
+
     private static string PastDecisions(AnalyzeRequest req, int limit)
     {
         limit = Math.Clamp(limit, 1, 10);
-        var lines = req.Parts
+        var rows = req.Parts
             .SelectMany(p => p.PartsHistory?.Lines ?? [])
             .GroupBy(l => l.ShiftDate)
             .OrderByDescending(g => g.Key)
@@ -254,14 +314,36 @@ public static class AgentTools
             .Select(g =>
             {
                 var first = g.First();
-                var comment = string.IsNullOrWhiteSpace(first.AnalystComment) ? "" : $" — «{first.AnalystComment.Trim()}»";
-                var fb = string.IsNullOrWhiteSpace(first.AiFeedback) ? "" : $" [отзыв на ИИ: {first.AiFeedback.Trim()}]";
-                return $"{g.Key}: {first.AnalystDecision}{comment}{fb}";
+                return new
+                {
+                    дата = g.Key,
+                    решение = first.AnalystDecision,
+                    комментарий = string.IsNullOrWhiteSpace(first.AnalystComment) ? null : first.AnalystComment.Trim(),
+                    отзыв = string.IsNullOrWhiteSpace(first.AiFeedback) ? null : first.AiFeedback.Trim(),
+                };
             })
             .ToList();
-        return lines.Count == 0
+        return rows.Count == 0
             ? "Прошлых решений аналитика по этому станку в данных нет."
-            : "Прошлые решения (стиль, не основание для эскалации): " + string.Join(" | ", lines);
+            : JsonSerializer.Serialize(rows, JsonOptions);
+    }
+
+    private static async Task<string> OperatorInfoAsync(
+        IAgentDataSource source, string query, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return "Укажи фамилию (можно с инициалами): например «Крафт А.С.».";
+        var found = await source.FindOperatorsAsync(query.Trim(), ct);
+        if (found.Count == 0)
+            return $"Оператор «{query.Trim()}» не найден в cnc_operators.";
+        return JsonSerializer.Serialize(found.Take(10).Select(o => new
+        {
+            фамилия = o.LastName,
+            имя = o.FirstName,
+            отчество = o.Patronymic,
+            разряд = o.Qualification,
+            активен = o.IsActive,
+        }), JsonOptions);
     }
 
     private static string Normatives(AnalyzeRequest req, string partName)

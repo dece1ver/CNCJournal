@@ -28,6 +28,15 @@ public class RequestLog(IConfiguration configuration, ILogger<RequestLog> logger
             "verify-part", filePrefix: "verify_");
 
     /// <summary>
+    /// Лог производственного чата (префикс "chat_"): запрос с историей и контекстом
+    /// + ответ. История нужна, чтобы задним числом понять, на что отвечала модель.
+    /// </summary>
+    public Task WriteChatAsync(ChatRequest request, ChatResponse response) =>
+        WriteCoreAsync(request.Context?.Machine ?? "(chat)",
+            DateTime.Now.ToString("yyyy-MM-dd"), response.PromptVersion,
+            request, response, "chat", filePrefix: "chat_");
+
+    /// <summary>
     /// Записывает сбой, случившийся до получения ответа модели: ошибку Ollama, таймаут,
     /// исключение. <see cref="WriteAsync"/> и <see cref="WriteVerifyAsync"/> вызываются
     /// только при успехе, поэтому без этого метода такие запросы в request_logs не попадают.

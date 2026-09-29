@@ -49,9 +49,10 @@ public class AgentToolsTests
     [Fact]
     public void Definitions_KnownReasons()
     {
-        Assert.Equal(5, AgentTools.Definitions.Count);
+        Assert.Equal(6, AgentTools.Definitions.Count);
         Assert.Contains(AgentTools.Definitions, d => d.Name == "get_reason_semantics");
         Assert.Contains(AgentTools.Definitions, d => d.Name == "get_part_history");
+        Assert.Contains(AgentTools.Definitions, d => d.Name == "get_operator_info");
     }
 
     [Fact]

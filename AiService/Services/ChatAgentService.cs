@@ -1,0 +1,722 @@
+using AiService.Models;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+
+namespace AiService.Services;
+
+public record ChatAgentResult(string Reply, int ToolRounds, string? Error = null)
+{
+    /// <summary> Результаты поиска, добытые самим агентом через web_search
+    /// (в дополнение к пред-поиску сервера): уходят в Sources ответа. </summary>
+    public List<WebSearchResult> WebSources { get; init; } = [];
+}
+
+/// <summary>
+/// Агентский цикл чата-ДОЗОРа: модель сама решает, нужны ли ей факты о смене,
+/// и берёт их инструментами ChatTools (контекст в системный промпт НЕ кладётся),
+/// а свежие факты из сети — инструментом web_search (доуточнение и проверка
+/// собранных обозначений прямо по ходу диалога, а не только пред-поиском сервера).
+/// Очередь Ollama занимается на каждый раунд отдельно (внутри ChatAsync) —
+/// между раундами её держат другие клиенты, голодания нет.
+/// Токены ответа стримятся живьём (tokenProgress) из КАЖДОГО раунда: tool-раунды
+/// обычно пустые, финал печатается по мере генерации. Шаги инструментов —
+/// в toolProgress («что дозор делает»: смотрит смену/ищет в сети).
+/// </summary>
+public class ChatAgentService(
+    IAgentChatClient chat,
+    WebSearchService webSearch,
+    IAgentDataSource dataSource,
+    DocsService docs,
+    StockService stock,
+    IConfiguration config,
+    ILogger<ChatAgentService> logger)
+{
+    public int MaxIterations => Math.Clamp(config.GetValue("Chat:AgentMaxIterations", 4), 1, 8);
+    public TimeSpan Timeout => TimeSpan.FromSeconds(
+        Math.Clamp(config.GetValue("Chat:AgentTimeoutSeconds", 120), 15, 600));
+    public double Temperature => Math.Clamp(
+        config.GetValue("Chat:Temperature", 0.2), 0.0, 2.0);
+    /// <summary>
+    /// Рассуждения модели (Chat:Thinking, дефолт true): перед вызовом инструментов
+    /// модель думает — заметно надёжнее выбирает тулзы и реже отвечает вслепую.
+    /// Цена — дольше ответ (thinking жрёт очередь и токены). В eLog живьём
+    /// не показываются (клиент их игнорирует), на качество влияют всё равно.
+    /// </summary>
+    public bool Thinking => config.GetValue("Chat:Thinking", true);
+
+    public async Task<ChatAgentResult> RunAsync(
+        string system,
+        List<ChatMessage> history,
+        ElogChatContext? ctx,
+        string? model,
+        double? temperature,
+        IProgress<string>? toolProgress,
+        IProgress<string>? tokenProgress,
+        CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(Timeout);
+
+        var machine = string.IsNullOrWhiteSpace(ctx?.Machine) ? "(без контекста)" : ctx.Machine;
+        // Якорь календаря: модель считает дни («во вторник», «вчера») от него.
+        // Без якоря даты днями недели называет наугад (кейс «вторник 24.09»).
+        var today = DateTime.Today;
+        var todayLine = "\n\nСегодня: " + today.ToString("dd.MM.yyyy") + ", " +
+            today.ToString("dddd", new System.Globalization.CultureInfo("ru-RU")) + ".";
+        var messages = new List<ChatMessage> { new() { Role = "system", Content = system + todayLine } };
+        messages.AddRange(history);
+
+        var toolRounds = 0;
+        var webSources = new List<WebSearchResult>();
+        string lastContent = "";
+        // Поручень автопроверки обозначений (см. NeedsDesignationVerify): максимум
+        // два доп-раунда сверх лимита, дальше отдаём как есть с пометкой.
+        var verifyRoundsLeft = 2;
+        var verifiedNote = "";
+        // Поручень прошлого: рассказ о прошлых сменах без вызова get_operator_history
+        // (кейс «CNC-513, Шестерня А-47» из головы) — один принудительный раунд.
+        var historyCalls = 0;
+        var historyForcedLeft = 1;
+        try
+        {
+            for (var i = 1; i <= MaxIterations + 2; i++)
+            {
+                var round = await chat.ChatAsync(
+                    messages, ChatTools.Definitions, format: null,
+                    think: Thinking, cts.Token, model: model,
+                    temperature: temperature ?? Temperature,
+                    thinkingProgress: null, tokenProgress: tokenProgress);
+                lastContent = round.Content ?? "";
+
+                if (round.ToolCalls.Count == 0)
+                {
+                    if (string.IsNullOrWhiteSpace(lastContent))
+                        return new ChatAgentResult("", toolRounds,
+                            "Модель вернула пустой ответ без вызова инструментов.")
+                        { WebSources = webSources };
+                    // Модель ввела обозначение пластин (DNMG150604), которого нет
+                    // ни в поиске, ни в словах пользователя, и не проверила его:
+                    // ссылки и цены из головы (кейсы 404/410). Один доп-раунд
+                    // на принудительную проверку, максимум дважды.
+                    var unverified = FindUnverifiedDesignations(lastContent, messages);
+                    if (unverified.Count > 0 && verifyRoundsLeft > 0)
+                    {
+                        verifyRoundsLeft--;
+                        toolProgress?.Report($"🌐 проверяю {unverified[0]}…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] В твоём ответе есть обозначение " +
+                                $"{string.Join(", ", unverified.Take(2))}, которого нет в результатах поиска. " +
+                                "Проверь его вызовом web_search и исправь ответ и ссылки. " +
+                                "Без вызова выдуманные ссылки запрещены.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка {D}",
+                            machine, string.Join(",", unverified.Take(2)));
+                        continue;
+                    }
+                    if (unverified.Count > 0)
+                        verifiedNote = " (обозначение не подтверждено поиском — проверьте у поставщика)";
+                    // Рассказ о прошлом без вызова истории — принудительный раунд:
+                    // иначе модель отвечает из головы (кейс CNC-513).
+                    if (historyCalls == 0 && historyForcedLeft > 0
+                        && ClaimsPastShifts(lastContent))
+                    {
+                        historyForcedLeft--;
+                        toolProgress?.Report("⚙ проверяю прошлое…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ты рассказываешь о прошлых сменах, " +
+                                "не вызвав get_operator_history (имя — из контекста смены, " +
+                                "date — конкретный день YYYY-MM-DD, если спрашивали про день). " +
+                                "Вызови его сейчас и исправь ответ. " +
+                                "Отвечать о прошлом без этого тула запрещено.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка прошлого", machine);
+                        continue;
+                    }
+                    logger.LogInformation(
+                        "Чат-агент ({Machine}): финал за {I} раундов, tools {T}",
+                        machine, i, toolRounds);
+                    return new ChatAgentResult(lastContent.Trim() + verifiedNote, toolRounds)
+                    { WebSources = webSources };
+                }
+
+                toolRounds += round.ToolCalls.Count;
+                messages.Add(new ChatMessage
+                {
+                    Role = "assistant", Content = round.Content, ToolCalls = round.ToolCalls,
+                });
+
+                foreach (var call in round.ToolCalls)
+                {
+                    if (call.Name == "web_search")
+                    {
+                        var query = ExtractArg(call.Arguments, "query");
+                        toolProgress?.Report($"🌐 ищу «{Trunc(query)}»…");
+                        var found = await webSearch.SearchAsync(query, cts.Token);
+                        webSources.AddRange(found);
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "tool", Content = FormatWebResults(query, found),
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): web_search «{Q}» → {N}",
+                            machine, Trunc(query), found.Count);
+                    }
+                    else if (call.Name == "get_operator_info")
+                    {
+                        // Эксперимент: ФИО из БД (стадия 2, read-only SELECT).
+                        // Без строки подключения источник — RequestAgentDataSource
+                        // и честно отвечает пустотой, цикл не падает.
+                        var name = ExtractArg(call.Arguments, "name");
+                        var (opName, corrected) = CorrectOperatorArg(name, ctx, messages);
+                        toolProgress?.Report($"⚙ ищу оператора «{Trunc(opName)}»…");
+                        var found = await dataSource.FindOperatorsAsync(opName, cts.Token);
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "tool",
+                            Content = FormatOperators(opName, found)
+                                + CorrectionNote(name, corrected),
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): get_operator_info «{Q}» → {N}{Corr}",
+                            machine, Trunc(opName), found.Count,
+                            corrected ? " (фамилия исправлена)" : "");
+                    }
+                    else if (call.Name == "get_operator_history")
+                    {
+                        historyCalls++;
+                        // Прошлые смены из Parts (read-only). Пусто — честное
+                        // «данных нет», модель не выдумывает биографию.
+                        var name = ExtractArg(call.Arguments, "name");
+                        var days = ParseDays(ExtractArg(call.Arguments, "days"));
+                        var day = ParseDate(ExtractArg(call.Arguments, "date"));
+                        var (opName, corrected) = CorrectOperatorArg(name, ctx, messages);
+                        toolProgress?.Report($"⚙ смотрю прошлые смены «{Trunc(opName)}»…");
+                        var opHistory = await dataSource.GetOperatorHistoryAsync(opName, days, day, cts.Token);
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "tool",
+                            Content = FormatOperatorHistory(opName, days, opHistory)
+                                + CorrectionNote(name, corrected),
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): get_operator_history «{Q}» days={D} date={Date} → {N} строк{Corr}",
+                            machine, Trunc(opName), days, day?.ToString("yyyy-MM-dd") ?? "-",
+                            opHistory?.Lines.Count ?? 0,
+                            corrected ? " (фамилия исправлена)" : "");
+                    }
+                    else if (call.Name == "list_docs")
+                    {
+                        toolProgress?.Report("📄 смотрю документы…");
+                        var list = docs.List();
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "tool", Content = FormatDocList(list),
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): list_docs → {N}", machine, list.Count);
+                    }
+                    else if (call.Name == "search_docs")
+                    {
+                        var query = ExtractArg(call.Arguments, "query");
+                        toolProgress?.Report($"📄 ищу в документах «{Trunc(query)}»…");
+                        var hits = docs.Search(query);
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "tool", Content = FormatDocHits(query, hits),
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): search_docs «{Q}» → {N}",
+                            machine, Trunc(query), hits.Count);
+                    }
+                    else if (call.Name == "read_doc")
+                    {
+                        var name = ExtractArg(call.Arguments, "name");
+                        var offset = ParseInt(ExtractArg(call.Arguments, "offset"));
+                        var length = ParseInt(ExtractArg(call.Arguments, "length"));
+                        toolProgress?.Report($"📄 читаю «{Trunc(name)}»…");
+                        var (docName, text, total, found) = docs.Read(name, offset, length);
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "tool", Content = FormatDocRead(name, docName, text, total, offset, found),
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): read_doc «{Q}» → {Found}",
+                            machine, Trunc(name), found);
+                    }
+                    else if (call.Name == "stock_search")
+                    {
+                        var query = ExtractArg(call.Arguments, "query");
+                        toolProgress?.Report($"📦 ищу на складе «{Trunc(query)}»…");
+                        var rows = stock.Search(query);
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "tool", Content = FormatStock(query, rows, stock.SourceInfo),
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): stock_search «{Q}» → {N}",
+                            machine, Trunc(query), rows.Count);
+                    }
+                    else if (call.Name == "check_db")
+                    {
+                        toolProgress?.Report("⚙ проверяю доступ к базе…");
+                        var status = await dataSource.GetDbStatusAsync(cts.Token);
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "tool", Content = FormatDbStatus(status),
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): check_db → available={A}",
+                            machine, status.Available);
+                    }
+                    else if (call.Name == "list_downtime_reasons")
+                    {
+                        toolProgress?.Report("⚙ смотрю справочник простоев…");
+                        var reasons = await dataSource.GetDowntimeReasonsAsync(cts.Token);
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "tool", Content = FormatDowntimeReasons(reasons),
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): list_downtime_reasons → {N}",
+                            machine, reasons.Count);
+                    }
+                    else
+                    {
+                        toolProgress?.Report(DescribeCall(call.Name));
+                        var result = ChatTools.Execute(ctx, call.Name, call.Arguments);
+                        messages.Add(new ChatMessage { Role = "tool", Content = result });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): tool {Tool} → {ResLen} симв.",
+                            machine, call.Name, result.Length);
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(lastContent))
+            {
+                if (FindUnverifiedDesignations(lastContent, messages).Count > 0)
+                    lastContent += " (обозначение не подтверждено поиском — проверьте у поставщика)";
+                return new ChatAgentResult(lastContent.Trim(), toolRounds)
+                { WebSources = webSources };
+            }
+            return new ChatAgentResult("", toolRounds,
+                $"Модель {MaxIterations} раунда подряд только звала инструменты без ответа.")
+            { WebSources = webSources };
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            return new ChatAgentResult("", toolRounds, "Думал слишком долго — попробуйте спросить короче.")
+            { WebSources = webSources };
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Чат-агент ({Machine}): сбой цикла", machine);
+            return new ChatAgentResult("", toolRounds, $"Сбой: {ex.Message}")
+            { WebSources = webSources };
+        }
+    }
+
+    private static string DescribeCall(string name) => name switch
+    {
+        "get_shift_info" => "⚙ смотрю смену и оператора…",
+        "get_active_part" => "⚙ смотрю активную деталь…",
+        _ => $"⚙ {name}…",
+    };
+
+    /// <summary>
+    /// Утверждения о прошлом в ответе: дата/месяц + глагол прошедшего времени.
+    /// Используется поручнем: рассказ о прошлом без get_operator_history —
+    /// принудительный проверочный раунд. Чистая функция.
+    /// </summary>
+    public static bool ClaimsPastShifts(string reply)
+    {
+        if (string.IsNullOrWhiteSpace(reply)) return false;
+        var t = reply.ToLowerInvariant();
+        string[] months =
+        [
+            "января", "февраля", "марта", "апреля", "мая", "июня",
+            "июля", "августа", "сентября", "октября", "ноября", "декабря",
+        ];
+        var hasDate = months.Any(m => t.Contains(m, StringComparison.Ordinal))
+            || Regex.IsMatch(t, @"\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}");
+        if (!hasDate) return false;
+        string[] verbs =
+        [
+            "работал", "работала", "делал", "делала", "делали",
+            "изготов", "обрабатывал", "обрабатывала", "действи",
+        ];
+        return verbs.Any(v => t.Contains(v, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Календарная подсказка: модель считает дни недели наугад («вторник» →
+    /// 20.09-суббота), поэтому относительные даты резолвит сервер. Возвращает
+    /// null, если относительного времени в вопросе нет. День недели — ближайший
+    /// прошедший включая сегодня («во вторник» в субботу = позапрошлый вторник
+    /// недели? нет: ближайший вторник ≤ сегодня). Чистая функция (дата параметром).
+    /// </summary>
+    public static string? CalendarHint(string text, DateTime today)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var t = text.ToLowerInvariant();
+        var parts = new List<string>();
+        if (t.Contains("позавчера"))
+            parts.Add("«позавчера» = " + today.AddDays(-2).ToString("dd.MM.yyyy"));
+        else if (t.Contains("вчера"))
+            parts.Add("«вчера» = " + today.AddDays(-1).ToString("dd.MM.yyyy"));
+        else if (t.Contains("сегодня"))
+            parts.Add("«сегодня» = " + today.ToString("dd.MM.yyyy"));
+        (string[] Forms, DayOfWeek Dow)[] days =
+        [
+            (["понедельник", "понедельника"], DayOfWeek.Monday),
+            (["вторник", "вторника"], DayOfWeek.Tuesday),
+            (["среду", "среде", "среда"], DayOfWeek.Wednesday),
+            (["четверг", "четверга"], DayOfWeek.Thursday),
+            (["пятницу", "пятница"], DayOfWeek.Friday),
+            (["субботу", "суббота"], DayOfWeek.Saturday),
+            (["воскресенье", "воскресенья"], DayOfWeek.Sunday),
+        ];
+        foreach (var (forms, dow) in days)
+        {
+            if (!forms.Any(f => t.Contains(f, StringComparison.Ordinal))) continue;
+            var d = today;
+            while (d.DayOfWeek != dow) d = d.AddDays(-1);
+            parts.Add($"«{forms[0]}» = " + d.ToString("dd.MM.yyyy"));
+        }
+        if (parts.Count == 0) return null;
+        return "[Календарь: сегодня " + today.ToString("dd.MM.yyyy") + "; " +
+               string.Join("; ", parts) + ". Даты дней недели не вычисляй — бери отсюда.]";
+    }
+
+    /// <summary>
+    /// Обозначения пластин вида CNMG120408 / DNMG150604 / VCMT160404.
+    /// </summary>
+    private static readonly Regex DesignationRx = new(
+        @"\b[CDVTSR](?:NMG|NM|MG|MMT|MP|GT)\d{4,6}\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Обозначения из ответа, которых нет ни в словах пользователя, ни в результатах
+    /// инструментов/поиска — т.е. введённые самой моделью (собранные по таблице
+    /// или выдуманные). Опорой считаются только user и tool:
+    /// ответы ассистента из истории и примеры из системного промпта опорой НЕ
+    /// считаются — там может лежать та же выдумка. Пусто — всё подтверждено.
+    /// </summary>
+    public static List<string> FindUnverifiedDesignations(
+        string reply, IReadOnlyList<ChatMessage> messages)
+    {
+        var inReply = DesignationRx.Matches(reply ?? "")
+            .Cast<Match>()
+            .Select(m => m.Value.ToUpperInvariant())
+            .Distinct()
+            .ToList();
+        if (inReply.Count == 0) return [];
+        var supported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in messages)
+        {
+            var role = (m.Role ?? "").Trim();
+            if (!role.Equals("user", StringComparison.OrdinalIgnoreCase)
+                && !role.Equals("tool", StringComparison.OrdinalIgnoreCase)) continue;
+            foreach (Match hit in DesignationRx.Matches(m.Content ?? ""))
+                supported.Add(hit.Value);
+        }
+        return [.. inReply.Where(d => !supported.Contains(d))];
+    }
+
+    private static string Trunc(string s, int max = 60) =>
+        s.Length <= max ? s : s[..max] + "…";
+
+    private static int ParseDays(string raw) =>
+        int.TryParse(raw, out var days) ? Math.Clamp(days, 7, 365) : 30;
+
+    /// <summary> Строгий разбор дня YYYY-MM-DD; мусор — null (тогда окно days). </summary>
+    public static DateOnly? ParseDate(string raw) =>
+        DateOnly.TryParseExact((raw ?? "").Trim(), "yyyy-MM-dd",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var date)
+            ? date : null;
+
+    private static int ParseInt(string raw) =>
+        int.TryParse(raw, out var v) ? v : 0;
+
+    /// <summary>
+    /// Страховка от подстановки фамилии из примеров («Крафт А. С.» из описаний
+    /// вместо фамилии из смены — кейс: история Крафта, выданная за историю Громова).
+    /// Чужая фамилия без упоминания в вопросах пользователя = ошибка копирования:
+    /// молча заменяем на фамилию из контекста смены (пользователь спросить
+    /// про другого может только назвав его — тогда фамилия есть в вопросах
+    /// и замена не срабатывает). Возвращает (имя для запроса, была ли замена).
+    /// </summary>
+    public static (string Name, bool Corrected) CorrectOperatorArg(
+        string argName, ElogChatContext? ctx, IReadOnlyList<ChatMessage> messages)
+    {
+        static string? FirstToken(string? s)
+        {
+            var t = (s ?? "").Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            return t.Length == 0 ? null : t[0].Trim().Trim('.');
+        }
+        var req = FirstToken(argName);
+        var ctxName = (ctx?.OperatorName ?? "").Trim();
+        var ctxLast = FirstToken(ctxName);
+        if (string.IsNullOrEmpty(req) || string.IsNullOrEmpty(ctxLast)) return (argName, false);
+        if (req.Equals(ctxLast, StringComparison.OrdinalIgnoreCase)) return (argName, false);
+        // Проверяются только user-сообщения: в системе примеры есть всегда.
+        var mentioned = messages.Any(m =>
+            m.Role.Trim().Equals("user", StringComparison.OrdinalIgnoreCase)
+            && (m.Content ?? "").Contains(req, StringComparison.OrdinalIgnoreCase));
+        if (mentioned) return (argName, false);
+        return (ctxName, true);
+    }
+
+    private static string CorrectionNote(string original, bool corrected) =>
+        corrected
+            ? $"\nПримечание: вызов был с чужой фамилией «{original.Trim()}» — " +
+              "выполнено с фамилией из контекста смены, отвечай по этим данным."
+            : "";
+
+    /// <summary>
+    /// Аргумент tool-вызова: норма {"prop": "..."}, иначе сырой текст
+    /// (модель иногда кладёт строку целиком). Пусто — сигнал переформулировать.
+    /// </summary>
+    public static string ExtractArg(string argsJson, string propName)
+    {
+        if (string.IsNullOrWhiteSpace(argsJson)) return "";
+        try
+        {
+            using var doc = JsonDocument.Parse(argsJson);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty(propName, out var q)
+                && q.ValueKind == JsonValueKind.String)
+                return (q.GetString() ?? "").Trim();
+        }
+        catch (JsonException) { }
+        return argsJson.Trim().Trim('"');
+    }
+
+    /// <summary> Запрос из аргументов web_search (см. <see cref="ExtractArg"/>). </summary>
+    public static string ExtractWebQuery(string argsJson) => ExtractArg(argsJson, "query");
+
+    /// <summary>
+    /// Найденные операторы языком модели: полные ФИО первыми (по ним обращаться —
+    /// по Имени Отчеству), разряд и активность. Пусто — честное «нет в базе»,
+    /// имя не выдумывать. Несколько — все кандидаты, пусть модель уточнит.
+    /// </summary>
+    public static string FormatOperators(string name, IReadOnlyList<OperatorInfo> found)
+    {
+        if (found.Count == 0)
+            return $"Оператор «{name}» в базе cnc_operators не найден " +
+                   "(или БД недоступна). Отвечай по контексту смены, ФИО не выдумывай.";
+        var lines = found.Take(3).Select(o =>
+        {
+            var fio = $"{o.LastName} {o.FirstName} {o.Patronymic}".Trim();
+            var qual = o.Qualification > 0 ? $", разряд {o.Qualification}" : "";
+            var active = o.IsActive ? "" : " (неактивен)";
+            return $" • {fio}{qual}{active}";
+        });
+        var tail = found.Count > 3 ? $"\nИ ещё {found.Count - 3}: уточни фамилию/инициалы." : "";
+        return $"Операторы по запросу «{name}» (обращайся по Имени Отчеству):\n" +
+               string.Join("\n", lines) + tail;
+    }
+
+    /// <summary>
+    /// Прошлые смены оператора языком модели: построчно дата/станок/деталь/штуки
+    /// + итог. Пусто — честное «данных нет», выдумывать биографию запрещено.
+    /// </summary>
+    public static string FormatOperatorHistory(
+        string name, int days, OperatorHistoryDto? history)
+    {
+        if (history == null || history.Lines.Count == 0)
+            return $"В журнале за {days} дн. записей работы «{name}» нет. " +
+                   "Скажи, что данных о прошлых сменах нет, ничего не выдумывай.";
+        var singleDay = history.Lines.Select(l => l.ShiftDate.Date).Distinct().Count() == 1;
+        var lines = history.Lines.Select(l =>
+            $" • {l.ShiftDate:dd.MM.yyyy} | {l.Machine} | «{l.PartName}»" +
+            (string.IsNullOrWhiteSpace(l.Order) ? "" : $" ({l.Order}, уст. {l.Setup})") +
+            $" — {l.FinishedCount:0} шт");
+        var total = history.Lines.Sum(l => l.FinishedCount);
+        var scope = singleDay
+            ? "Отвечай ТОЛЬКО про этот день — другие периоды не упоминай."
+            : "";
+        var approx = history.Approximate
+            ? "Точного совпадения по инициалам нет — это однофамильцы: уточни у оператора, он ли это, не выдавай за факт."
+            : "";
+        return $"Прошлые смены «{history.OperatorName}» (за {days} дн., новые сверху):\n" +
+               string.Join("\n", lines) +
+               $"\nИтого строк: {history.Lines.Count}, изготовлено: {total:0} шт." +
+               (scope.Length > 0 ? "\n" + scope : "") +
+               (approx.Length > 0 ? "\n" + approx : "");
+    }
+
+    /// <summary>
+    /// Результаты поиска языком модели: нумерованный список для цитирования [n]
+    /// в ответе. Пусто — честный «ничего не нашёл», а не тишина.
+    /// </summary>
+    public static string FormatWebResults(string query, IReadOnlyList<WebSearchResult> found)
+    {
+        if (found.Count == 0)
+            return $"Поиск в сети по запросу «{query}» ничего не нашёл. " +
+                   "Скажи об этом оператору и предложи переформулировать или уточнить детали.";
+        var lines = found.Select((r, i) =>
+            $"[{i + 1}] {r.Title} — {r.Url}\n    {r.Snippet}");
+        return $"Результаты поиска в сети по запросу «{query}» " +
+               "(отвечай строго по ним, прикладывай ссылки [n]):\n" +
+               string.Join("\n", lines);
+    }
+
+    /// <summary>
+    /// Имя для первой строки приветствия: ФИО из базы (активный первый),
+    /// иначе фамилия из смены, иначе «оператор». Просить модель «заполнить
+    /// форму» слабее, чем «скопируй дословно» — инициалы она сокращает сама.
+    /// </summary>
+    public static string GreetingDisplayName(
+        string contextName, IReadOnlyList<OperatorInfo> found)
+    {
+        var op = found.FirstOrDefault(o => o.IsActive) ?? found.FirstOrDefault();
+        if (op != null)
+            return $"{op.LastName} {op.FirstName} {op.Patronymic}".Trim();
+        var t = (contextName ?? "").Trim()
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        return t.Length == 0 ? "оператор" : t[0].Trim().Trim('.');
+    }
+
+    /// <summary>
+    /// Факт об операторе для автостарт-триггера (см. ChatController): сервер
+    /// резолвит ФИО детерминированно, потому что модель дважды доказала, что
+    /// инициалы расшифровывать нельзя — «Крафт А. С.» превращался в выдуманного
+    /// «Афанасий Семёнович». Активный кандидат первый, иначе первый.
+    /// </summary>
+    public static string GreetingOperatorFact(
+        string contextName, IReadOnlyList<OperatorInfo> found)
+    {
+        var op = found.FirstOrDefault(o => o.IsActive) ?? found.FirstOrDefault();
+        if (op == null)
+            return "\n\nФакт из базы: оператор не найден — обращайся только " +
+                   "по фамилии из смены, имя и отчество не выдумывай.";
+        var fio = $"{op.LastName} {op.FirstName} {op.Patronymic}".Trim();
+        var qual = op.Qualification > 0 ? $", разряд {op.Qualification}" : "";
+        return "\n\nФакт из базы (имя пиши ТОЧНО так, расшифровка инициалов запрещена): " +
+               $"{fio}{qual}.";
+    }
+
+    /// <summary>
+    /// Чистка markdown из ответа модели: окно eLog — plain TextBlock, сырые `**`
+    /// и `[текст](url)` видны как есть (кейс «**695 рублей**», «[iscar.com](...)»).
+    /// Ссылки поиска всё равно лежат в Sources, в тексте остаётся читаемое.
+    /// </summary>
+    public static string CleanMarkdown(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        // [текст](url) → текст (url); сначала ссылки, потом жирность.
+        text = Regex.Replace(text, @"\[(.+?)\]\((.+?)\)", "$1 ($2)");
+        text = text.Replace("**", "");
+        return text;
+    }
+
+    /// <summary>
+    /// Каталог документов языком модели: имя + заголовок. Пусто — честное
+    /// «документов нет», правила из головы не пересказывать.
+    /// </summary>
+    public static string FormatDocList(IReadOnlyList<DocInfo> list)
+    {
+        if (list.Count == 0)
+            return "Рабочих документов нет (каталог пуст или недоступен). " +
+                   "Отвечай по общим знаниям и честно скажи, что регламента под рукой нет.";
+        var lines = list.Select(d => $" • {d.Name} — «{d.Title}»");
+        return "Доступные документы:\n" + string.Join("\n", lines);
+    }
+
+    /// <summary>
+    /// Найденные фрагменты: имя документа + позиция для read_doc + текст.
+    /// Пусто — «в документах нет», а не тишина.
+    /// </summary>
+    public static string FormatDocHits(string query, IReadOnlyList<DocHit> hits)
+    {
+        if (hits.Count == 0)
+            return $"В документах по запросу «{query}» ничего нет. " +
+                   "Скажи об этом и предложи переформулировать; из головы правила не выдумывай.";
+        var lines = hits.Select((h, i) =>
+            $"[{i + 1}] {h.Name}" +
+            (string.IsNullOrWhiteSpace(h.Section) ? "" : $" (раздел «{h.Section}»)") +
+            $" (позиция {h.OffsetChars}):\n{h.Snippet}");
+        return $"Фрагменты из документов по запросу «{query}» " +
+               "(отвечай строго по ним, указывай имя документа):\n" +
+               string.Join("\n", lines);
+    }
+
+    /// <summary>
+    /// Прочитанный кусок: имя, диапазон, текст. Мимо — честное «нет такого».
+    /// </summary>
+    public static string FormatDocRead(
+        string asked, string docName, string text, int total, int offset, bool found)
+    {
+        if (!found)
+            return $"Документа «{asked}» нет. Сначала вызови list_docs и возьми имя оттуда.";
+        var tail = offset + text.Length < total
+            ? $"\n(показано {offset}-{offset + text.Length} из {total}; продолжай read_doc с offset={offset + text.Length})"
+            : $"\n(конец документа, всего {total})";
+        return $"Документ «{docName}»:\n{text}" + tail;
+    }
+
+    /// <summary>
+    /// Строки остатков языком модели: номенклатура + количество + источник выгрузки.
+    /// Пусто — честное «на складе нет». Остатков цеха в данных нет никогда.
+    /// </summary>
+    public static string FormatStock(
+        string query, IReadOnlyList<StockRow> rows, string sourceInfo)
+    {
+        if (rows.Count == 0)
+            return $"На складе по запросу «{query}» ничего нет. " +
+                   "Так и скажи; отсутствие не додумывай, аналоги из сети предложи через web_search.";
+        var head = string.IsNullOrWhiteSpace(sourceInfo) ? "" : $" ({sourceInfo})";
+        var lines = rows.Select(r =>
+            $" • {r.Name} — {r.Qty:0.##} {r.Unit}".Trim());
+        return $"Склад{head} по запросу «{query}»:\n" +
+               string.Join("\n", lines) +
+               "\nОстатков цеха в данных нет — цифры по цеху не выдумывай.";
+    }
+
+    /// <summary>
+    /// Статус доступа к БД языком модели: цифры-доказательства или честная причина.
+    /// </summary>
+    public static string FormatDbStatus(DbStatusDto status)
+    {
+        if (!status.Available)
+            return "Доступа к базе данных нет" +
+                   (string.IsNullOrWhiteSpace(status.Error) ? "" : $" ({status.Error})") +
+                   ". Отвечай по контексту смены и другим инструментам; " +
+                   "про БД говори «не вижу», а не «нет вообще».";
+        return $"Доступ к базе данных есть: строк в журнале (Parts) — {status.PartsRows}, " +
+               $"операторов в справочнике — {status.OperatorsCount}.";
+    }
+
+    /// <summary>
+    /// Справочник типов простоя: закрытый список, выбирать только из него.
+    /// Пусто — справочник недоступен, тип не выдумывать, спросить мастера.
+    /// </summary>
+    public static string FormatDowntimeReasons(IReadOnlyList<string> reasons)
+    {
+        if (reasons.Count == 0)
+            return "Справочник типов простоя недоступен. Тип не выдумывай — " +
+                   "попроси оператора уточнить у мастера.";
+        return "Типы простоя (закрытый список, выбирай только из него):\n" +
+               string.Join("\n", reasons.Select(r => $" • {r}"));
+    }
+}

@@ -22,7 +22,8 @@ public class AgentLoopServiceTests
             IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool> tools,
             string? format, bool think, CancellationToken ct,
             string? model = null, double? temperature = null,
-            IProgress<string>? thinkingProgress = null)
+            IProgress<string>? thinkingProgress = null,
+            IProgress<string>? tokenProgress = null)
         {
             Calls++;
             SeenMessages.Add(messages);
@@ -60,7 +61,8 @@ public class AgentLoopServiceTests
         new(stub,
             new PromptBuilder(NullLogger<PromptBuilder>.Instance),
             config ?? Config(),
-            NullLogger<AgentLoopService>.Instance);
+            NullLogger<AgentLoopService>.Instance,
+            RequestAgentDataSource.Instance);
 
     private static readonly HardRuleResult NoHard = new([], []);
     private static readonly ShiftReportRuleResult NoShift = new([], []);
@@ -256,7 +258,8 @@ public class AgentLoopServiceTests
         var svc = new AgentLoopService(fwd,
             new PromptBuilder(NullLogger<PromptBuilder>.Instance),
             Config(("Agent:Thinking", "true")),
-            NullLogger<AgentLoopService>.Instance);
+            NullLogger<AgentLoopService>.Instance,
+            RequestAgentDataSource.Instance);
 
         var think = new Progress<string>(_ => { });
         await svc.AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None, null, think);
@@ -273,7 +276,8 @@ public class AgentLoopServiceTests
             IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool> tools,
             string? format, bool think, CancellationToken ct,
             string? model = null, double? temperature = null,
-            IProgress<string>? thinkingProgress = null)
+            IProgress<string>? thinkingProgress = null,
+            IProgress<string>? tokenProgress = null)
         {
             // Первый вызов без tools и короткий — это верифаер (у базового есть tools).
             if (tools.Count == 0)
@@ -297,7 +301,8 @@ public class AgentLoopServiceTests
         var svc = new AgentLoopService(stub,
             new PromptBuilder(NullLogger<PromptBuilder>.Instance),
             Config(("Agent:VerifyFalse", "true"), ("Agent:VerifyRounds", "1")),
-            NullLogger<AgentLoopService>.Instance);
+            NullLogger<AgentLoopService>.Instance,
+            RequestAgentDataSource.Instance);
 
         var outcome = await svc.AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
 
@@ -333,7 +338,8 @@ public class AgentLoopServiceTests
         var svc = new AgentLoopService(stub,
             new PromptBuilder(NullLogger<PromptBuilder>.Instance),
             Config(("Agent:VerifyFalse", "true")),
-            NullLogger<AgentLoopService>.Instance);
+            NullLogger<AgentLoopService>.Instance,
+            RequestAgentDataSource.Instance);
 
         var outcome = await svc.AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
 
@@ -347,7 +353,8 @@ public class AgentLoopServiceTests
             IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool> tools,
             string? format, bool think, CancellationToken ct,
             string? model = null, double? temperature = null,
-            IProgress<string>? thinkingProgress = null)
+            IProgress<string>? thinkingProgress = null,
+            IProgress<string>? tokenProgress = null)
         {
             capture(thinkingProgress);
             return inner.ChatAsync(messages, tools, format, think, ct, model, temperature, thinkingProgress);
@@ -435,3 +442,4 @@ public class AgentLoopServiceTests
         Assert.DoesNotContain("б/н", user);
     }
 }
+

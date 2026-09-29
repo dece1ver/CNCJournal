@@ -376,8 +376,138 @@ public class PromptBuilder
         _ => field,
     };
 
+    private const string ChatSystemPromptFile = "chat_system.txt";
+
     private static string OverrideBy(PartContext p) =>
         string.IsNullOrWhiteSpace(p.ReasonOverrideBy) ? "" : $" ({p.ReasonOverrideBy.Trim()})";
+
+    public record ChatBuildResult(string System, string Version, List<ChatMessage> Messages);
+
+    /// <summary>
+    /// Сообщения чата-ДОЗОРа для агентского цикла: системный chat_system.txt (роль,
+    /// БЕЗ данных смены — факты модель берёт инструментами ChatTools) + история
+    /// диалога. Сниппеты веб-поиска приклеиваются к последнему вопросу пользователя,
+    /// а не отдельным сообщением — иначе диалог выглядит чужеродно.
+    /// Историю режем со старых сообщений, пока не влезем в maxChars; системный
+    /// промпт не режется никогда (иначе модель теряет роль).
+    /// </summary>
+    public ChatBuildResult BuildChatMessages(
+        ChatRequest req, IReadOnlyList<WebSearchResult> webResults,
+        int maxHistoryMessages, int maxChars)
+    {
+        var (systemPrompt, promptVersion, _) = GetPrompt(ChatSystemPromptFile, allowEmbeddedFallback: true);
+
+        var history = (req.Messages ?? [])
+            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
+            .Select(m => new ChatMessage
+            {
+                Role = (m.Role ?? "").Trim().Equals("assistant", StringComparison.OrdinalIgnoreCase)
+                    ? "assistant" : "user",
+                Content = m.Content.Trim(),
+            })
+            .ToList();
+        if (history.Count > maxHistoryMessages)
+            history = history[^maxHistoryMessages..];
+
+        var webBlock = RenderWebResults(webResults);
+        if (webBlock.Length > 0)
+        {
+            for (var i = history.Count - 1; i >= 0; i--)
+            {
+                if (history[i].Role != "user") continue;
+                history[i].Content += "\n\n" + webBlock;
+                break;
+            }
+        }
+
+        static int TotalLen(string system, List<ChatMessage> hist)
+        {
+            var len = system.Length;
+            foreach (var m in hist) len += (m.Content?.Length ?? 0) + 16;
+            return len;
+        }
+
+        while (TotalLen(systemPrompt, history) > maxChars && history.Count > 1)
+            history.RemoveAt(0);
+
+        return new ChatBuildResult(systemPrompt, promptVersion, history);
+    }
+
+    /// <summary>
+    /// Снимок смены из eLog одной строкой фактов: станок, смена, оператор,
+    /// активная деталь + простои. Пустые поля пропускаются, переносы строк
+    /// в комментариях сплющиваются — иначе разъезжается формат диалога.
+    /// </summary>
+    public static string RenderElogContext(ElogChatContext? ctx)
+    {
+        static string Safe(string? s) => (s ?? "").Trim().Replace("\r", "").Replace("\n", " / ");
+        var sb = new StringBuilder();
+        sb.AppendLine("Контекст смены (eLog):");
+        if (ctx == null)
+        {
+            sb.AppendLine("Контекст не прислан — отвечай в общем виде, уточняй детали у собеседника.");
+            return sb.ToString();
+        }
+
+        // Выбрана ≠ активна: значение из комбобокса — не работа. Формулировка
+        // однозначная, чтобы модель не говорила «вы работаете в смену День»,
+        // когда смена только выбрана, но не начата.
+        sb.Append($"Станок: {Safe(ctx.Machine)} | Смена: {Safe(ctx.Shift)} " +
+                  (ctx.ShiftStarted
+                      ? "(активна — оператор работает)"
+                      : "(только ВЫБРАНА в журнале, НЕ начата — оператор вне смены)") +
+                  $" | Оператор: {Safe(ctx.OperatorName)}");
+        sb.AppendLine();
+        sb.AppendLine($"Записей деталей: {ctx.PartsCount}");
+
+        var part = ctx.ActivePart;
+        if (part == null || string.IsNullOrWhiteSpace(part.Name))
+        {
+            sb.AppendLine("Активной детали нет.");
+            return sb.ToString();
+        }
+
+        sb.Append($"Активная деталь: «{Safe(part.Name)}»");
+        if (!string.IsNullOrWhiteSpace(part.Number)) sb.Append($" ({Safe(part.Number)})");
+        if (!string.IsNullOrWhiteSpace(part.Order)) sb.Append($" | М/Л «{Safe(part.Order)}»");
+        sb.Append($" | уст. №{part.Setup}");
+        if (!string.IsNullOrWhiteSpace(part.StartSetupTime)) sb.Append($", наладка с {Safe(part.StartSetupTime)}");
+        sb.AppendLine();
+        if (!string.IsNullOrWhiteSpace(part.OperatorComment))
+            sb.AppendLine($"Комментарий оператора: «{Safe(part.OperatorComment)}»");
+
+        if (part.Downtimes.Count > 0)
+        {
+            sb.AppendLine("Простои по детали:");
+            foreach (var d in part.Downtimes)
+            {
+                var span = $"{Safe(d.Start)} → {(string.IsNullOrWhiteSpace(d.End) ? "идёт сейчас" : Safe(d.End))}";
+                var comment = string.IsNullOrWhiteSpace(d.Comment) ? "" : $" — «{Safe(d.Comment)}»";
+                sb.AppendLine($" • {Safe(d.Name)} ({span}){comment}");
+            }
+        }
+        else
+        {
+            sb.AppendLine("Простоев по детали нет.");
+        }
+
+        return sb.ToString();
+    }
+
+    private static string RenderWebResults(IReadOnlyList<WebSearchResult> webResults)
+    {
+        if (webResults.Count == 0) return "";
+        var sb = new StringBuilder();
+        sb.AppendLine($"Результаты поиска в сети ({webResults.Count}, отвечай СТРОГО по ним, прикладывай ссылки [n]):");
+        var n = 0;
+        foreach (var r in webResults)
+        {
+            n++;
+            sb.AppendLine($"[{n}] {r.Title} — {r.Url}");
+            sb.AppendLine($"    {r.Snippet}");
+        }
+        return sb.ToString();
+    }
 
     /// <summary>
     /// Блоки суточных отчётов мастера (2.8 промпта): свежие значения простоя,

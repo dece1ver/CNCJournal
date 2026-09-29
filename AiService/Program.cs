@@ -21,8 +21,22 @@ namespace AiService
             builder.Services.AddSingleton<IAgentChatClient>(sp => sp.GetRequiredService<OllamaService>());
             builder.Services.AddSingleton<PromptBuilder>();
             builder.Services.AddSingleton<RequestLog>();
+            builder.Services.AddSingleton<WebSearchService>();
+            builder.Services.AddSingleton<DocsService>();
+            builder.Services.AddSingleton<StockService>();
+            builder.Services.AddSingleton<ChatAgentService>();
             // Агентский контур дневного анализа (стадия 1: каркас, выключен флагом Agent:Enabled).
             builder.Services.AddSingleton<AgentLoopService>();
+            // Источник фактологии tools (стадия 2): прямая БД при непустой
+            // Database:ConnectionString, иначе данные запроса (тесты, replay).
+            builder.Services.AddSingleton<IAgentDataSource>(sp =>
+            {
+                var cfg = sp.GetRequiredService<IConfiguration>();
+                return string.IsNullOrWhiteSpace(cfg.GetValue("Database:ConnectionString", ""))
+                    ? RequestAgentDataSource.Instance
+                    : new SqlAgentDataSource(
+                        cfg, sp.GetRequiredService<ILogger<SqlAgentDataSource>>());
+            });
 
             builder.Host.UseWindowsService();
 

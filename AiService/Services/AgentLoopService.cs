@@ -20,7 +20,8 @@ public class AgentLoopService(
     IAgentChatClient chat,
     PromptBuilder prompts,
     IConfiguration config,
-    ILogger<AgentLoopService> logger)
+    ILogger<AgentLoopService> logger,
+    IAgentDataSource dataSource)
 {
     public bool Enabled => config.GetValue("Agent:Enabled", false);
     public int MaxIterations => Math.Clamp(config.GetValue("Agent:MaxIterations", 4), 1, 10);
@@ -135,7 +136,8 @@ public class AgentLoopService(
                 foreach (var call in round.ToolCalls)
                 {
                     progress?.Report("→ " + DescribeCall(call.Name, call.Arguments));
-                    var result = AgentTools.Execute(request, call.Name, call.Arguments);
+                    var result = await AgentTools.Execute(
+                        request, dataSource, call.Name, call.Arguments, cts.Token);
                     trace.Rounds.Add(new AgentToolRound(call.Name, call.Arguments, result.Length));
                     messages.Add(new ChatMessage { Role = "tool", Content = result });
                     logger.LogInformation(
@@ -351,6 +353,7 @@ public class AgentLoopService(
             "get_past_decisions" => "Смотрит прошлые решения аналитиков",
             "get_normatives" => $"Сверяет нормативы детали «{Arg("partName")}»",
             "get_shift_report" => "Проверяет отчёты мастера",
+            "get_operator_info" => $"Ищет оператора «{Arg("query")}»",
             _ => $"Вызывает {name}",
         };
     }

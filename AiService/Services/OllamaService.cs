@@ -278,12 +278,13 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
         CancellationToken ct,
         string? model = null,
         double? temperature = null,
-        IProgress<string>? thinkingProgress = null)
+        IProgress<string>? thinkingProgress = null,
+        IProgress<string>? tokenProgress = null)
     {
         await EnterQueueAsync(ct);
         try
         {
-            return await ChatCoreAsync(messages, tools, format, think, ct, model, temperature, thinkingProgress);
+            return await ChatCoreAsync(messages, tools, format, think, ct, model, temperature, thinkingProgress, tokenProgress);
         }
         finally
         {
@@ -299,7 +300,8 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
         CancellationToken ct,
         string? model,
         double? temperature,
-        IProgress<string>? thinkingProgress)
+        IProgress<string>? thinkingProgress,
+        IProgress<string>? tokenProgress)
     {
         var effectiveModel = string.IsNullOrWhiteSpace(model) ? _model : model;
 
@@ -370,9 +372,10 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
             response.EnsureSuccessStatusCode();
 
             // think:true — стрим чанков (делюсь мыслями живьём + собираю итог);
-            // иначе один JSON целиком, как раньше.
-            if (think)
-                return await ChatReadStreamAsync(response, thinkingProgress, ct);
+            // tokenProgress (чат-агент) — тоже стрим: дельты content идут живьём,
+            // thinking-дельт при think:false просто не бывает. Иначе один JSON целиком.
+            if (think || tokenProgress != null)
+                return await ChatReadStreamAsync(response, thinkingProgress, tokenProgress, ct);
 
             var result = await response.Content.ReadFromJsonAsync<OllamaChatResponse>(cancellationToken: ct);
             var msg = result?.Message;
@@ -403,7 +406,7 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
     /// безопасен: AgentTools.Execute терпит непарсибельные аргументы ({}).
     /// </summary>
     private async Task<ChatResult> ChatReadStreamAsync(
-        HttpResponseMessage response, IProgress<string>? thinkingProgress, CancellationToken ct)
+        HttpResponseMessage response, IProgress<string>? thinkingProgress, IProgress<string>? tokenProgress, CancellationToken ct)
     {
         var content = new StringBuilder();
         var thinking = new StringBuilder();
@@ -454,7 +457,10 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
             }
 
             if (!string.IsNullOrEmpty(msg.Content))
+            {
                 content.Append(msg.Content);
+                tokenProgress?.Report(msg.Content);
+            }
 
             if (msg.ToolCalls != null)
             {
