@@ -77,6 +77,9 @@ public class ChatAgentService(
         // (кейс «CNC-513, Шестерня А-47» из головы) — один принудительный раунд.
         var historyCalls = 0;
         var historyForcedLeft = 1;
+        // Поручень «нет данных без тула» и поручень чисел — по одному раунду.
+        var noDataForcedLeft = 1;
+        var countForcedLeft = 1;
         try
         {
             for (var i = 1; i <= MaxIterations + 2; i++)
@@ -94,6 +97,11 @@ public class ChatAgentService(
                         return new ChatAgentResult("", toolRounds,
                             "Модель вернула пустой ответ без вызова инструментов.")
                         { WebSources = webSources };
+                    // Сырой блок результатов поиска в ответе — не ответ оператору:
+                    // модель иногда цитирует его целиком (кейс — приветствие с
+                    // пятью ссылками на CRM-сервисы). Режем с места, где начинается
+                    // перечисление, иначе та же мусорь попадёт в UI и в лог.
+                    lastContent = StripSearchDump(lastContent);
                     // Модель ввела обозначение пластин (DNMG150604), которого нет
                     // ни в поиске, ни в словах пользователя, и не проверила его:
                     // ссылки и цены из головы (кейсы 404/410). Один доп-раунд
@@ -144,6 +152,58 @@ public class ChatAgentService(
                         });
                         logger.LogInformation(
                             "Чат-агент ({Machine}): автопроверка прошлого", machine);
+                        continue;
+                    }
+                    // «Нет данных» без вызова инструмента — вывод на глаз (кейс
+                    // кампании E.2: на «а что делал Крафт во вторник?» модель
+                    // ответила «нет данных» по смене, вообще не открыв журнал).
+                    if (historyCalls == 0 && noDataForcedLeft > 0 && ClaimsNoData(lastContent))
+                    {
+                        noDataForcedLeft--;
+                        toolProgress?.Report("⚙ проверяю по журналу…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ты сказал, что данных нет, не вызвав " +
+                                "get_operator_history. Отсутствие данных — это то, что вернул " +
+                                "инструмент, а не твой вывод. Вызови get_operator_history " +
+                                "(имя — из контекста смены или из вопроса, date — конкретный " +
+                                "день YYYY-MM-DD, если спрашивали про день) и ответь по его " +
+                                "результату. Если данных действительно нет — так и напиши, " +
+                                "но после вызова.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка «нет данных»", machine);
+                        continue;
+                    }
+                    // Количество «N шт», которого нет ни в вопросе, ни в результатах
+                    // инструментов, — цифра из головы (кейс B.4: «Итого: 3 детали
+                    // (7 штук)» при четырёх строках и 7.2 шт. в туле).
+                    var invented = FindUnverifiedCounts(lastContent, messages);
+                    if (invented.Count > 0 && countForcedLeft > 0)
+                    {
+                        countForcedLeft--;
+                        toolProgress?.Report($"⚙ сверяю {invented[0]}…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] В ответе есть количество " +
+                                $"{string.Join(", ", invented.Take(3))}, которого нет ни в " +
+                                "вопросе, ни в результатах инструментов. Пересчитай по " +
+                                "данным тула и исправь: свои числа подставлять нельзя. " +
+                                "Если считаешь иначе — покажи, откуда взял цифру.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка чисел {N}",
+                            machine, string.Join(",", invented.Take(3)));
                         continue;
                     }
                     logger.LogInformation(
@@ -399,12 +459,95 @@ public class ChatAgentService(
             if (!forms.Any(f => t.Contains(f, StringComparison.Ordinal))) continue;
             var d = today;
             while (d.DayOfWeek != dow) d = d.AddDays(-1);
-            parts.Add($"«{forms[0]}» = " + d.ToString("dd.MM.yyyy"));
+            // Найденный день — сегодняшний: «во вторник» в день вторника двусмысленно
+            // (сегодня или прошлый вторник), и молча выбранный день — это подмена
+            // вопроса. Даём оба варианта и прямо требуем уточнить (см. chat_system).
+            if (d == today)
+                parts.Add($"«{forms[0]}» = {d:dd.MM.yyyy} (это сегодня); " +
+                          $"прошлый такой же — {d.AddDays(-7):dd.MM.yyyy}, уточни какой имеется в виду");
+            else
+                parts.Add($"«{forms[0]}» = {d:dd.MM.yyyy}");
         }
         if (parts.Count == 0) return null;
         return "[Календарь: сегодня " + today.ToString("dd.MM.yyyy") + "; " +
                string.Join("; ", parts) + ". Даты дней недели не вычисляй — бери отсюда.]";
     }
+
+    /// <summary>
+    /// Утверждение, что данных нет, по конкретной сущности: «нет данных о Крафт»,
+    /// «записей не найдено». Без вызова инструмента это вывод на глаз (кейс E.2).
+    /// Отличать от честной пустоты тула не нужно: туда попасть нельзя без вызова.
+    /// Чистая функция.
+    /// </summary>
+    public static bool ClaimsNoData(string reply)
+    {
+        if (string.IsNullOrWhiteSpace(reply)) return false;
+        var t = reply.ToLowerInvariant();
+        string[] patterns =
+        [
+            "нет данных", "данных нет", "нет записей", "записей нет", "нет сведений",
+            "не нашёл", "не нашел", "не обнаружил", "не найдено", "ничего не найдено",
+        ];
+        return patterns.Any(p => t.Contains(p, StringComparison.Ordinal));
+    }
+
+    /// <summary> Количество в ответе: «5 шт», «12 штук», «3 детали», «2 записи». </summary>
+    private static readonly Regex CountRx = new(
+        @"(?<!\d)(\d{1,4}(?:[.,]\d)?)\s*(шт\.?|штук\w*|детал\w*|запис\w*|ш\.?)(?!\w)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Количества ответа, которых нет ни в вопросе оператора, ни в результатах
+    /// инструментов: цифра из головы. Считаются только числа с единицей измерения
+    /// («шт», «деталей»…) — иначе под правило попадали бы даты, артикулы и «до 800
+    /// символов» из самого промпта. Ответы ассистента в истории опорой не
+    /// считаются: там может лежать та же выдумка. Чистая функция.
+    /// </summary>
+    public static List<string> FindUnverifiedCounts(
+        string reply, IReadOnlyList<ChatMessage> messages)
+    {
+        var inReply = CountRx.Matches(reply ?? "")
+            .Cast<Match>()
+            .Select(m => NormCount(m.Groups[1].Value))
+            .Distinct()
+            .ToList();
+        if (inReply.Count == 0) return [];
+        var supported = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var m in messages)
+        {
+            var role = (m.Role ?? "").Trim();
+            if (!role.Equals("user", StringComparison.OrdinalIgnoreCase)
+                && !role.Equals("tool", StringComparison.OrdinalIgnoreCase)) continue;
+            foreach (Match hit in CountRx.Matches(m.Content ?? ""))
+                supported.Add(NormCount(hit.Groups[1].Value));
+            // Числа в сырых данных тулов идут без единиц («— 5 шт» есть, но и
+            // «изготовлено: 30 шт.» тоже), поэтому дополнительно принимаем любые
+            // числа из результатов инструментов: единица измерения в них может
+            // отличаться, а происхождение цифры — то же самое.
+            if (role.Equals("tool", StringComparison.OrdinalIgnoreCase))
+                foreach (Match any in NumberRx.Matches(m.Content ?? ""))
+                    supported.Add(NormCount(any.Value));
+        }
+        foreach (Match any in NumberRx.Matches(JoinUserText(messages)))
+            supported.Add(NormCount(any.Value));
+        return [.. inReply.Where(c => !supported.Contains(c))];
+    }
+
+    private static string JoinUserText(IReadOnlyList<ChatMessage> messages) =>
+        string.Join("\n", messages
+            .Where(m => (m.Role ?? "").Trim().Equals("user", StringComparison.OrdinalIgnoreCase))
+            .Select(m => m.Content ?? ""));
+
+    /// <summary> «5», «5,0» и «5.0» — одно и то же количество. </summary>
+    private static string NormCount(string raw) =>
+        double.TryParse(raw.Replace(',', '.'),
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v)
+            ? v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)
+            : raw;
+
+    private static readonly Regex NumberRx = new(
+        @"(?<![\d.,])\d+(?:[.,]\d+)?(?![\d.,])", RegexOptions.Compiled);
 
     /// <summary>
     /// Обозначения пластин вида CNMG120408 / DNMG150604 / VCMT160404.
@@ -492,7 +635,8 @@ public class ChatAgentService(
         return (ctxName, true);
     }
 
-    /// <summary> Слова, которыми модель подменяет фамилию оператора: роль или
+    /// <summary>
+    /// Служебные слова, которыми модель подменяет фамилию оператора: роль или
     /// объект журнала. Фамилией быть не могут, искать по ним бессмысленно. </summary>
     private static readonly HashSet<string> GenericOperatorWords = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -501,6 +645,39 @@ public class ChatAgentService(
         "детали", "журнал", "запись", "записи", "цех", "цеха", "сотрудник",
         "работник", "человек", "кто", "он", "я",
     };
+
+    /// <summary> Заголовок, с которого начинается перечисление результатов поиска. </summary>
+    private static readonly Regex SearchDumpHeaderRx = new(
+        @"^\s*(Результаты поиска|результаты поиска)", RegexOptions.Multiline | RegexOptions.Compiled);
+
+    /// <summary> Строка списка результатов: «[1] Заголовок — https://…». </summary>
+    private static readonly Regex SearchDumpItemRx = new(
+        @"^\s*\[\d+\]\s+\S.*?https?://\S*\s*$", RegexOptions.Multiline | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Убирает из ответа перечисление результатов поиска: это данные тула, а не
+    /// ответ оператору. Режем от заголовка «Результаты поиска…» либо от первой
+    /// строки вида «[1] … https://…» (модель печатает список и без заголовка) —
+    /// до конца текста. Чистая функция.
+    /// </summary>
+    public static string StripSearchDump(string reply)
+    {
+        if (string.IsNullOrWhiteSpace(reply)) return reply;
+        var text = reply!;
+        var start = SearchDumpHeaderRx.Match(text);
+        if (!start.Success)
+        {
+            var item = SearchDumpItemRx.Match(text);
+            if (!item.Success) return text;
+            // Заголовка нет — режем, только если дальше идёт именно перечисление,
+            // а не единичная ссылка внутри предложения.
+            var after = text[item.Index..];
+            var items = SearchDumpItemRx.Matches(after).Count;
+            if (items < 2) return text;
+            start = item;
+        }
+        return text[..start.Index].TrimEnd();
+    }
 
     private static string CorrectionNote(string original, bool corrected) =>
         corrected
