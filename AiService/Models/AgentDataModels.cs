@@ -40,11 +40,15 @@ public record OperatorHistoryLine(
 
 /// <summary> Прошлые смены оператора (новые сверху). Пусто — не работал / нет данных.
 /// Approximate=true: точного совпадения по инициалам нет, показаны однофамильцы —
-/// модели велено уточнить, а не выдавать за факт. </summary>
+/// модели велено уточнить, а не выдавать за факт.
+/// Truncated=true: за период записей больше, чем пришло в Lines (Chat:OperatorHistoryRows).
+/// Без этой пометки модель принимает усечённый список за полный и выводит «данных
+/// за эти дни нет» там, где их просто не влезло (кейс «а за неделю покажи»). </summary>
 public record OperatorHistoryDto(
     string OperatorName,
     List<OperatorHistoryLine> Lines,
-    bool Approximate = false);
+    bool Approximate = false,
+    bool Truncated = false);
 
 /// <summary> Доступность БД для инструментов: доказательство цифрами, а не словами. </summary>
 public record DbStatusDto(

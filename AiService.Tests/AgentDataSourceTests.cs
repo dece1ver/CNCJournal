@@ -54,6 +54,14 @@ public class AgentDataSourceTests
     [InlineData("Крафт АС", "Крафт", "А", "С")]
     [InlineData("Крафт А.", "Крафт", "А", null)]
     [InlineData("Крафт", "Крафт", null, null)]
+    // Полное ФИО модель передаёт после get_operator_info. Раньше инициалы
+    // склеивались из букв запроса и отчество выходило «л» (вторая буква слова
+    // «Алексей») — запись отбрасывалась как «однофамилец», и модель отвечала
+    // «данных нет» при существующей записи (кейс «что делал Крафт во вторник»).
+    [InlineData("Крафт Алексей Сергеевич", "Крафт", "А", "С")]
+    [InlineData("Крафт  Алексей   Сергеевич", "Крафт", "А", "С")]
+    [InlineData("Крафт Алексей", "Крафт", "А", null)]
+    [InlineData("Хомутов Андрей Борисович", "Хомутов", "А", "Б")]
     public void OperatorQueryParser_Forms(string query, string last, string? fi, string? pi)
     {
         var parsed = OperatorQueryParser.Parse(query);

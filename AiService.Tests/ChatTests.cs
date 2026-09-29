@@ -829,6 +829,39 @@ public class ChatTests
         Assert.Contains("Неизвестный", text);
     }
 
+    [Fact]
+    public void FormatOperatorHistory_Truncated_SaysListIsPartial()
+    {
+        // Кейс кампании: список за неделю обрезан лимитом Chat:OperatorHistoryRows,
+        // модель приняла его за полный и объявила «данных за 22–23 сентября нет».
+        // Об усечении обязано быть сказано в тексте тула, иначе вывод о
+        // неполноте делается из усечённого списка.
+        var dto = new OperatorHistoryDto("Хомутов Андрей Борисович", [
+            new OperatorHistoryLine(new DateTime(2026, 9, 29), "Mazak QTS350", "Корпус нижний", "УЧ1", 4, 1.8),
+            new OperatorHistoryLine(new DateTime(2026, 9, 28), "Mazak QTS350", "Корпус нижний", "УЧ1", 4, 2.2),
+        ], Approximate: false, Truncated: true);
+
+        var text = ChatAgentService.FormatOperatorHistory("Хомутов А. Б.", 7, dto);
+
+        Assert.Contains("обрезан", text);
+        Assert.Contains("БОЛЬШЕ", text);
+        Assert.Contains("НЕ делай вывод", text);
+        Assert.Contains("2", text);   // обе показанные строки на месте
+    }
+
+    [Fact]
+    public void FormatOperatorHistory_FullWindow_NoTruncationNotice()
+    {
+        var dto = new OperatorHistoryDto("Хомутов Андрей Борисович", [
+            new OperatorHistoryLine(new DateTime(2026, 9, 25), "Mazak QTS350", "Гильза", "УЧ1", 1, 1),
+        ]);
+
+        var text = ChatAgentService.FormatOperatorHistory("Хомутов А. Б.", 30, dto);
+
+        Assert.DoesNotContain("обрезан", text);
+        Assert.DoesNotContain("БОЛЬШЕ", text);
+    }
+
     [Theory]
     [InlineData("Крафт Алексей Сергеевич", "А", "С", true)]
     [InlineData("Крафт  Алексей   Сергеевич", "А", "С", true)]
@@ -882,6 +915,34 @@ public class ChatTests
 
         Assert.True(corrected);
         Assert.Equal("Громов А. А.", name);
+    }
+
+    [Fact]
+    public void CorrectOperatorArg_ServiceWord_NotTreatedAsMentioned()
+    {
+        // Кейс кампании: «а что делал оператор на станке CNC-513…» — модель
+        // подставила слово «оператор» в name, оно же дословно есть в вопросе,
+        // поэтому проверка «упомянут ли пользователем» проходила и в БД уходил
+        // мусор. Служебное слово фамилией быть не может.
+        var ctx = new ElogChatContext { OperatorName = "Хомутов А. Б." };
+        var messages = new List<ChatMessage>
+        {
+            new() { Role = "user", Content = "а что делал оператор на станке CNC-513 на прошлой неделе?" },
+        };
+
+        var (name, corrected) = ChatAgentService.CorrectOperatorArg("оператор CNC-513", ctx, messages);
+
+        Assert.True(corrected);
+        Assert.Equal("Хомутов А. Б.", name);
+
+        // Настоящая фамилия из вопроса — легитимна, даже если в вопросе есть
+        // и служебные слова.
+        var askedKraft = new List<ChatMessage>
+        {
+            new() { Role = "user", Content = "а что делал оператор Крафт на прошлой неделе?" },
+        };
+        Assert.Equal(("Крафт", false),
+            ChatAgentService.CorrectOperatorArg("Крафт", ctx, askedKraft));
     }
 
     [Fact]

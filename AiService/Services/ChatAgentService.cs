@@ -478,6 +478,12 @@ public class ChatAgentService(
         var ctxLast = FirstToken(ctxName);
         if (string.IsNullOrEmpty(req) || string.IsNullOrEmpty(ctxLast)) return (argName, false);
         if (req.Equals(ctxLast, StringComparison.OrdinalIgnoreCase)) return (argName, false);
+        // Первое слово — служебное, а не фамилия: модель вписывает в name слова
+        // вопроса («оператор CNC-513», «мастер Иванов»). Их присутствие в тексте
+        // вопроса не считается упоминанием человека, иначе в БД уходит мусор и
+        // модель получает честную пустоту (кейс «что делал оператор на станке
+        // CNC-513»). Слово в состав фамилии не входит — стоп-лист точный.
+        if (GenericOperatorWords.Contains(req)) return (ctxName, true);
         // Проверяются только user-сообщения: в системе примеры есть всегда.
         var mentioned = messages.Any(m =>
             m.Role.Trim().Equals("user", StringComparison.OrdinalIgnoreCase)
@@ -485,6 +491,16 @@ public class ChatAgentService(
         if (mentioned) return (argName, false);
         return (ctxName, true);
     }
+
+    /// <summary> Слова, которыми модель подменяет фамилию оператора: роль или
+    /// объект журнала. Фамилией быть не могут, искать по ним бессмысленно. </summary>
+    private static readonly HashSet<string> GenericOperatorWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "оператор", "оператора", "оператору", "операторы", "мастер", "мастера",
+        "смена", "смены", "смену", "станок", "станка", "станку", "деталь",
+        "детали", "журнал", "запись", "записи", "цех", "цеха", "сотрудник",
+        "работник", "человек", "кто", "он", "я",
+    };
 
     private static string CorrectionNote(string original, bool corrected) =>
         corrected
@@ -558,11 +574,20 @@ public class ChatAgentService(
         var approx = history.Approximate
             ? "Точного совпадения по инициалам нет — это однофамильцы: уточни у оператора, он ли это, не выдавай за факт."
             : "";
+        // Усечение выдачи — самая частая причина «нет данных» там, где они есть:
+        // список ограничен, и модель без этой строки объявляет отсутствующими дни,
+        // которые просто не влезли. Запрет на вывод об отсутствии обязателен.
+        var cut = history.Truncated
+            ? $"\nПоказаны последние {history.Lines.Count} записей, за период их БОЛЬШЕ — " +
+              "список обрезан. НЕ делай вывод, что в не показанные дни работы не было: " +
+              "спроси конкретный день или попроси другой диапазон."
+            : "";
         return $"Прошлые смены «{history.OperatorName}» (за {days} дн., новые сверху):\n" +
                string.Join("\n", lines) +
                $"\nИтого строк: {history.Lines.Count}, изготовлено: {total:0} шт." +
                (scope.Length > 0 ? "\n" + scope : "") +
-               (approx.Length > 0 ? "\n" + approx : "");
+               (approx.Length > 0 ? "\n" + approx : "") +
+               cut;
     }
 
     /// <summary>

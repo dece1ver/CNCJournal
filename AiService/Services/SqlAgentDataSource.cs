@@ -129,6 +129,9 @@ public sealed class SqlAgentDataSource(IConfiguration config, ILogger<SqlAgentDa
         {
             await using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync(ct);
+            // Берём на одну строку больше лимита: так видно, что выдача усечена,
+            // и это можно сказать модели прямо (иначе она принимает усечённый
+            // список за полный и выводит «данных за эти дни нет»).
             // Конкретный день («во вторник», «12 сентября») — только его строки,
             // иначе окно назад. Про другие периоды модель не рассказывает.
             var sql = date.HasValue
@@ -147,15 +150,21 @@ public sealed class SqlAgentDataSource(IConfiguration config, ILogger<SqlAgentDa
             var all = new List<(string Stored, OperatorHistoryLine Line)>();
             await using var cmd = new SqlCommand(sql, connection);
             cmd.CommandTimeout = _timeoutSecs;
-            cmd.Parameters.AddWithValue("@MaxRows", _operatorHistoryRows);
+            cmd.Parameters.AddWithValue("@MaxRows", _operatorHistoryRows + 1);
             cmd.Parameters.AddWithValue("@like", OperatorQueryParser.EscapeLike(parsed.LastName) + "%");
             if (date.HasValue)
                 cmd.Parameters.AddWithValue("@Date", date.Value.ToDateTime(TimeOnly.MinValue));
             else
                 cmd.Parameters.AddWithValue("@MinDate", DateTime.Today.AddDays(-Math.Clamp(daysBack, 1, 365)));
+            var truncated = false;
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
+                if (all.Count >= _operatorHistoryRows)
+                {
+                    truncated = true;
+                    break;
+                }
                 var stored = reader.IsDBNull(6) ? "" : reader.GetString(6);
                 var line = new OperatorHistoryLine(
                     reader.GetDateTime(0),
@@ -165,8 +174,6 @@ public sealed class SqlAgentDataSource(IConfiguration config, ILogger<SqlAgentDa
                     Convert.ToInt32(reader.GetValue(4)),
                     reader.IsDBNull(5) ? 0 : reader.GetDouble(5));
                 all.Add((stored, line));
-                if (all.Count >= _operatorHistoryRows)
-                    break;
             }
             // Строго по инициалам; если всё выкосило (мусорные инициалы в запросе),
             // отдаём однофамильцев с пометкой — лучше уточняющий вопрос, чем «нет данных».
@@ -180,7 +187,11 @@ public sealed class SqlAgentDataSource(IConfiguration config, ILogger<SqlAgentDa
             return new OperatorHistoryDto(
                 use[0].Stored switch { "" => operatorQuery.Trim(), var s => s },
                 [.. use.Select(x => x.Line)],
-                approximate);
+                approximate,
+                // Усечение — это свойство выборки по фамилии до сверки инициалов:
+                // какая именно из отброшенных строк принадлежала оператору, здесь
+                // не известно, поэтому честно говорим «записей больше».
+                truncated);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -351,8 +362,9 @@ public sealed class SqlAgentDataSource(IConfiguration config, ILogger<SqlAgentDa
 
 /// <summary>
 /// Разбор «Фамилия И.О.» в (фамилия + инициалы). Формы: «Крафт А.С.»,
-/// «Крафт А С», «Крафт АС», «Крафт». Null — фамилии нет, искать нечего.
-/// Чистая функция — покрыта тестами.
+/// «Крафт А С», «Крафт АС», «Крафт», а также полное ФИО «Крафт Алексей
+/// Сергеевич» — модель передаёт его после get_operator_info. Null — фамилии
+/// нет, искать нечего. Чистая функция — покрыта тестами.
 /// </summary>
 public static class OperatorQueryParser
 {
@@ -368,11 +380,27 @@ public static class OperatorQueryParser
         var last = tokens[0].Trim().Trim('.');
         if (last.Length == 0)
             return null;
-        var letters = new string(string.Concat(tokens.Skip(1)).Where(char.IsLetter).ToArray());
+        // Инициалы берём по СЛОВАМ, а не склейкой букв запроса: склейка давала
+        // для «Крафт Алексей Сергеевич» инициалы А и «л» (вторая буква слова
+        // «Алексей»), отчество не проходило сверку, строка отбрасывалась как
+        // «однофамилец», и модель отвечала «данных нет» при существующей записи
+        // (кейс «что делал Крафт во вторник»). Слово короче двух букв — это и
+        // инициал, две буквы подряд — два инициала («АС»), длиннее — первая буква.
+        var initials = new List<string>(2);
+        foreach (var token in tokens.Skip(1))
+        {
+            var word = string.Concat(token.Where(char.IsLetter));
+            if (word.Length == 0) continue;
+            if (word.Length <= 2)
+                initials.AddRange(word.Select(c => c.ToString()));
+            else
+                initials.Add(word[..1]);
+            if (initials.Count >= 2) break;
+        }
         return new ParsedQuery(
             last,
-            letters.Length > 0 ? letters[..1] : null,
-            letters.Length > 1 ? letters[1..2] : null);
+            initials.Count > 0 ? initials[0] : null,
+            initials.Count > 1 ? initials[1] : null);
     }
 
     /// <summary> Экранирование спецсимволов LIKE ([, %, _). </summary>
