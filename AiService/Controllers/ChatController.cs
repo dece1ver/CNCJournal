@@ -233,10 +233,13 @@ public class ChatController(
         first.Content += "\n\nНачни ответ ДОСЛОВНО с этой строки (не перефразировать): " +
             $"«Здравствуйте, {ChatAgentService.GreetingDisplayName(contextName, found)}!»";
         // Выбрана ≠ активна: без этой строки модель говорит «вы работаете
-        // в смену День», хотя смена только выбрана в комбобоксе.
+        // в смену День», хотя смена только выбрана в комбобоксе. Клиентский
+        // триггер приветствия переведён на нейтральную формулировку, чтобы два
+        // указания не спорили друг с другом.
         if (request.Context is { ShiftStarted: false })
-            first.Content += "\n\nСмена НЕ начата: не пиши «вы работаете» и «ваша смена идёт». " +
-                "Скажи, что смена выбрана, но не начата, и предложи начать смену.";
+            first.Content += "\n\nСмена НЕ начата: не пиши «вы работаете», «вы на смене» " +
+                "и «ваша смена идёт». Скажи, что смена выбрана, но не начата, " +
+                "и предложи начать смену.";
         logger.LogInformation("Чат ({Machine}): автостарт, операторов в базе {N}",
             request.Context?.Machine ?? "(без контекста)", found.Count);
     }
@@ -293,8 +296,19 @@ public class ChatController(
                 query[..Math.Min(60, query.Length)]);
             return [];
         }
-        if (!request.AllowWebSearch && !WebSearchService.NeedsWeb(query))
+        // Триггер автоприветствия — служебный: его задаёт клиент, а не оператор.
+        // Он собирается из инструментов и снимка смены, и поиск по нему в сети
+        // давал в приветствии ссылки на посторонние сайты.
+        var isAutostart = request.Messages.Any(m =>
+            !string.IsNullOrWhiteSpace(m.Content)
+            && m.Content.StartsWith("[Автостарт]", StringComparison.Ordinal));
+        if (!WebSearchService.ShouldPreSearch(query, request.AllowWebSearch, isAutostart))
+        {
+            if (isAutostart)
+                logger.LogInformation("Чат ({Machine}): пред-поиск пропущен (автостарт)",
+                    request.Context?.Machine ?? "(без контекста)");
             return [];
+        }
         var results = await webSearch.SearchAsync(query, ct);
         logger.LogInformation("Чат ({Machine}): веб-поиск «{Q}» → {N} (галка={Flag})",
             request.Context?.Machine ?? "(без контекста)",
