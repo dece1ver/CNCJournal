@@ -287,9 +287,71 @@ public class ChatTests
     [InlineData("как отметить простой в журнале", false)]
     [InlineData("почему долго идёт наладка", false)]
     [InlineData("", false)]
+    // Год в датах смены больше не считается признаком «нужен интернет»:
+    // снимок смены в приветствии содержит «наладка с 26.05.2026», и пред-поиск
+    // срабатывал на каждом открытии чата — оператор видел в приветствии ссылки
+    // на CRM-сервисы (кейс кампании, A.1).
+    [InlineData("Контекст смены: наладка с 26.05.2026 10:49", false)]
+    [InlineData("смена День, записи за 2025 и 2026", false)]
+    // Настоящие маркеры внешнего факта продолжают работать.
+    [InlineData("что нового у Fanuc в 2026 году", true)]
     public void NeedsWeb_Heuristic(string text, bool expected)
     {
         Assert.Equal(expected, WebSearchService.NeedsWeb(text));
+    }
+
+    [Theory]
+    [InlineData("а я?", false, false, false)]
+    [InlineData("какой курс доллара", false, false, true)]
+    [InlineData("найди аналог пластины", false, false, true)]
+    // Галка клиента — единственное, что включает поиск принудительно.
+    [InlineData("а я?", true, false, true)]
+    // Служебный триггер автоприветствия гасит поиск и при включённой галке:
+    // вопроса оператора в нём нет, искать нечего.
+    [InlineData("а я?", false, true, false)]
+    [InlineData("а я?", true, true, false)]
+    public void ShouldPreSearch_Rules(
+        string query, bool allowWebSearch, bool isAutostart, bool expected)
+    {
+        Assert.Equal(expected,
+            WebSearchService.ShouldPreSearch(query, allowWebSearch, isAutostart));
+    }
+
+    [Fact]
+    public void StripSearchDump_CutsList()
+    {
+        // Кейс кампании: в приветствии уезжал блок результатов поиска.
+        var reply =
+            "Здравствуйте, Хомутов Андрей Борисович! Смена День (выбрана, но не начата).\n\n"
+            + "Результаты поиска в сети:\n"
+            + "[1] Автоответы в чатах — https://chat2desk.com/baza\n"
+            + "[2] Как настроить автоответы — https://docs.avchat.ru/avto-otveti\n"
+            + "[3] Автоответы в WhatsApp — https://wahelp.ru/blog\n";
+
+        var text = ChatAgentService.StripSearchDump(reply);
+
+        Assert.Equal("Здравствуйте, Хомутов Андрей Борисович! Смена День (выбрана, но не начата).", text);
+    }
+
+    [Fact]
+    public void StripSearchDump_CutsListWithoutHeader()
+    {
+        var reply =
+            "Вот что нашлось:\n"
+            + "[1] Пластина CNMG 120408 — https://example.com/a\n"
+            + "[2] Пластина CNMG 120408 купить — https://example.com/b\n";
+
+        Assert.Equal("Вот что нашлось:", ChatAgentService.StripSearchDump(reply));
+    }
+
+    [Theory]
+    [InlineData("Здравствуйте! Чем помочь?")]
+    [InlineData("Пластина CNMG120408 есть на складе, 16 шт.")]
+    // Одна ссылка в предложении — не перечисление, резать нельзя.
+    [InlineData("Инструкция на Fanuc: https://fanuc.com/manual — там всё есть.")]
+    public void StripSearchDump_KeepsNormalText(string reply)
+    {
+        Assert.Equal(reply, ChatAgentService.StripSearchDump(reply));
     }
 
     // ── Цикл агента ──
@@ -464,6 +526,116 @@ public class ChatTests
         {
             Directory.Delete(dir, true);
         }
+    }
+
+    [Fact]
+    public void StockService_CodePriority_BeatsWordMatches()
+    {
+        // Кейс кампании C.4: «сколько CNMG120408?» — в выдачу попадали
+        // CNMG120404 (другая геометрия) впереди точного совпадения, и модель
+        // честно пересказывала именно их. Точное обозначение должно идти
+        // первым, а чужое — не выдаваться вовсе.
+        var (svc, dir) = TempStock(
+            "# source=test; warehouse=Склад; asof=2025-07-17\n" +
+            "articul;name;unit;qty\n" +
+            ";CNMG 120408-PM YBD102 Пластина;шт;16\n" +
+            ";CNMG120408E-RM T9315 Пластина;шт;30\n" +
+            ";CNMG120404-EX AC630M Пластина;шт;12\n" +
+            ";CNMG120404-PM 4225 Пластина;шт;10\n" +
+            ";CNMG 12 04 08-QM GP 1225 Пластина;шт;92\n");
+        try
+        {
+            var hits = svc.Search("сколько CNMG120408");
+
+            Assert.NotEmpty(hits);
+            Assert.Equal("CNMG 120408-PM YBD102 Пластина", hits[0].Name);
+            Assert.Contains(hits, r => r.Name.Contains("CNMG120408E-RM"));
+            Assert.Contains(hits, r => r.Name.Contains("CNMG 12 04 08-QM"));
+            // Геометрия 04 в ответ на вопрос про 08 не попадает.
+            Assert.DoesNotContain(hits, r => r.Name.Contains("120404"));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void StockService_UnknownCode_NoNoiseInstead()
+    {
+        // Кейс кампании C.1: AEKR-D2.25X25 в выгрузке нет, но по цифрам
+        // «2»/«25» в выдачу попадали 327R12-22 250VM-TH и подобные, и модель
+        // предлагала их как «похожие позиции». Для кода без точного совпадения
+        // выдача должна быть пустой.
+        var (svc, dir) = TempStock(
+            "# source=test; warehouse=Склад; asof=2025-07-17\n" +
+            "articul;name;unit;qty\n" +
+            ";327R12-22 250VM-TH 1025 Пластина;шт;8\n" +
+            ";327R06-12 250VM-TH 1025 Пластина;шт;30\n" +
+            ";CNMG120408E-RM T9315 Пластина;шт;30\n");
+        try
+        {
+            Assert.Empty(svc.Search("есть ли AEKR-D2.25X25?"));
+            Assert.Empty(svc.Search("880-D2500"));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void StockService_ShortNumber_NoLongerNumberMatch()
+    {
+        // Кейс кампании C.2: на «сверло Ø8» выдача отдавала Ø9,8 и Ø6,8 —
+        // цифра «8» подставлялась в 800/080/908. Цифровой терм совпадает
+        // только с равным токеном, смешанные слова ищутся подстрокой.
+        var (svc, dir) = TempStock(
+            "# source=test; warehouse=Склад; asof=2025-07-17\n" +
+            "articul;name;unit;qty\n" +
+            ";5512-9.800 Ø9,8 Сверло;шт;1\n" +
+            ";5514 - 6,800 Ø6,8 Сверло;шт;1\n" +
+            ";SCD 080-029-080 ACP3N 908 Ø8,0  Сверло;шт;1\n" +
+            ";63181 Ø8.0 Сверло;шт;1\n" +
+            ";5514-8.500 Ø8.5 Сверло;шт;2\n");
+        try
+        {
+            var hits = svc.Search("сверло Ø8");
+
+            Assert.NotEmpty(hits);
+            // «8» — это номинал диаметра: совпадает с 8,0 и 8,5, но не с 9,8 и 6,8.
+            Assert.DoesNotContain(hits, r => r.Name.Contains("9,8"));
+            Assert.DoesNotContain(hits, r => r.Name.Contains("6,8"));
+            Assert.Contains(hits, r => r.Name.Contains("Ø8,0"));
+            Assert.Contains(hits, r => r.Name.Contains("63181"));
+            Assert.Contains(hits, r => r.Name.Contains("8.5"));
+
+            // Смешанное слово по-прежнему ищется подстрокой: 880-D2400 на
+            // запрос «сверло 880 24» находится.
+            Assert.True(StockService.StockWordsMatch("d2400l25", "24"));
+            Assert.False(StockService.StockWordsMatch("800", "8"));
+            Assert.False(StockService.StockWordsMatch("9,8", "8"));
+            Assert.True(StockService.StockWordsMatch("8,5", "8"));
+            Assert.True(StockService.StockWordsMatch("8", "8"));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("CNMG120408", "cnmg120408")]
+    [InlineData("CNMG 12 04 08", "cnmg120408")]
+    [InlineData("880-D2500", "880d2500")]
+    [InlineData("AEKR-D2.25X25", "aekrd225x25")]
+    [InlineData("есть ли AEKR-D2.25X25?", "aekrd225x25")]
+    // Русские слова в код не входят: иначе «сверло Ø8» сошёл бы за обозначение.
+    [InlineData("сверло Ø8", "")]
+    [InlineData("пластина CNMG 120408", "cnmg120408")]
+    public void StockService_QueryCode_IgnoresRussianWords(string query, string expected)
+    {
+        Assert.Equal(expected, StockService.QueryCode(query));
     }
 
     [Fact]
@@ -1198,6 +1370,118 @@ public class ChatTests
         Assert.Equal(expected, ChatAgentService.ClaimsPastShifts(reply));
     }
 
+    [Theory]
+    [InlineData("У меня нет данных о работе «Крафт Алексей Сергеевич» 29.09.2026", true)]
+    [InlineData("По этому оператору записей не найдено", true)]
+    [InlineData("Я ничего не нашёл по этому станку", true)]
+    [InlineData("22.09 работал: Корпус верхний, 2 шт", false)]
+    // «Простоев нет» — это факт из get_active_part, а не вывод об истории:
+    // поручень прошлого на таком срабатывать не должен.
+    [InlineData("По детали простоев нет", false)]
+    [InlineData("Смена выбрана, но не начата", false)]
+    [InlineData("", false)]
+    public void ClaimsNoData_Forms(string reply, bool expected)
+    {
+        Assert.Equal(expected, ChatAgentService.ClaimsNoData(reply));
+    }
+
+    [Fact]
+    public void FindUnverifiedCounts_FlagsNumberFromHead()
+    {
+        // Кейс кампании B.4: в туле 4 строки / 7.2 шт, ответ — «Итого: 3 детали
+        // (7 штук)». Числа 3 и 7 не берутся ни из вопроса, ни из результатов.
+        var messages = new List<ChatMessage>
+        {
+            new() { Role = "user", Content = "что делал вчера?" },
+            new() { Role = "tool", Content =
+                " • 28.09.2026 | Mazak QTS350 | «Корпус нижний» (УЧ1, уст. 4) — 2.2 шт\n" +
+                " • 28.09.2026 | Mazak QTS350 | «расточка» (Без М/Л, уст. 1) — 1 шт\n" +
+                " • 28.09.2026 | Mazak QTS350 | «Корпус нижний» (УЧ1, уст. 4) — 0 шт\n" +
+                " • 28.09.2026 | Mazak QTS350 | «Корпус нижний» (УЧ1, уст. 1) — 4 шт\n" +
+                "Итого строк: 4, изготовлено: 7.2 шт." },
+        };
+
+        var invented = ChatAgentService.FindUnverifiedCounts(
+            "Вчера 4 строки: 2.2 шт корпус нижний, 1 шт расточка, 0 шт и 4 шт. Итого: 3 детали (7 штук).",
+            messages);
+
+        Assert.Contains("3", invented);
+        Assert.Contains("7", invented);
+        // Числа из тула и из вопроса опорой считаются.
+        Assert.DoesNotContain("4", invented);
+        Assert.DoesNotContain("2.2", invented);
+        Assert.DoesNotContain("1", invented);
+    }
+
+    [Fact]
+    public void FindUnverifiedCounts_IgnoresDatesAndPartNumbers()
+    {
+        // Единица измерения обязательна: даты, артикулы и «М/Л» под правило не
+        // попадают, иначе поручень срабатывал бы на каждом ответе.
+        var messages = new List<ChatMessage>
+        {
+            new() { Role = "user", Content = "что делал вчера?" },
+            new() { Role = "tool", Content = " • 28.09.2026 | Mazak QTS350 | «Кольцо» (УЧ1, уст. 1) — 8 шт" },
+        };
+
+        var invented = ChatAgentService.FindUnverifiedCounts(
+            "28.09 делал Кольцо АРМ2-49.3-01-041, заказ УЧ2608-0028.1.1, 8 шт.",
+            messages);
+
+        Assert.Empty(invented);
+    }
+
+    [Fact]
+    public async Task Agent_NoDataClaim_ForcesHistoryCall()
+    {
+        // Кейс кампании E.2: «нет данных» сказано про журнал, который не открывали.
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "У меня нет данных об операторе «Крафт» в текущей смене." },
+            new ChatResult
+            {
+                Content = "",
+                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_operator_history", Arguments = """{"name":"Крафт"}""" }],
+            },
+            new ChatResult { Content = "29.09 Крафт: Кольцо опорное, 60 шт." },
+        ]));
+        var source = new StubDataSource(operatorHistory: new OperatorHistoryDto(
+            "Крафт Алексей Сергеевич",
+            [new OperatorHistoryLine(new DateTime(2026, 9, 29), "Hyundai L230A",
+                "Кольцо опорное АР30-01-015-22 13х25", "УЧ2609-0078.1.1", 1, 60)]));
+        var build = Builder().BuildChatMessages(Request(), [], 20, 12000);
+
+        var res = await Agent(stub, source: source).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null, CancellationToken.None);
+
+        Assert.Null(res.Error);
+        Assert.Equal("29.09 Крафт: Кольцо опорное, 60 шт.", res.Reply);
+        var nudge = stub.SeenMessages[^1].First(
+            m => m.Role == "user" && m.Content.Contains("[Автопроверка]"));
+        Assert.Contains("get_operator_history", nudge.Content);
+    }
+
+    [Fact]
+    public async Task Agent_InventedCount_ForcesRecount()
+    {
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "Вчера сделал 9 деталей." },
+            new ChatResult { Content = "Вчера 3 детали, 7.2 шт." },
+        ]));
+        var source = new StubDataSource(operatorHistory: new OperatorHistoryDto(
+            "Хомутов Андрей Борисович",
+            [new OperatorHistoryLine(new DateTime(2026, 9, 28), "Mazak QTS350",
+                "Корпус нижний", "УЧ2609-0053.7.1", 4, 2.2)]));
+        var build = Builder().BuildChatMessages(Request(), [], 20, 12000);
+
+        var res = await Agent(stub, source: source).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null, CancellationToken.None);
+
+        Assert.Equal("Вчера 3 детали, 7.2 шт.", res.Reply);
+        var nudge = stub.SeenMessages[^1].First(
+            m => m.Role == "user" && m.Content.Contains("[Автопроверка]"));
+        Assert.Contains("9", nudge.Content);
+    }
+
     [Fact]
     public void CalendarHint_TuesdayResolved()
     {
@@ -1208,6 +1492,22 @@ public class ChatTests
         Assert.NotNull(hint);
         Assert.Contains("22.09.2026", hint);
         Assert.Contains("26.09.2026", hint);
+        Assert.DoesNotContain("уточни", hint);
+    }
+
+    [Fact]
+    public void CalendarHint_TodayTuesday_AsksWhich()
+    {
+        // Вторник 29.09.2026: «во вторник» — это сегодня или прошлый вторник?
+        // Молча выбирать день нельзя, подсказка требует уточнения.
+        var hint = ChatAgentService.CalendarHint(
+            "что я делал во вторник?", new DateTime(2026, 9, 29));
+
+        Assert.NotNull(hint);
+        Assert.Contains("29.09.2026", hint);
+        Assert.Contains("это сегодня", hint);
+        Assert.Contains("22.09.2026", hint);
+        Assert.Contains("уточни", hint);
     }
 
     [Fact]
