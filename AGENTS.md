@@ -55,8 +55,17 @@
 
 - Полная сборка: `dotnet build CNCJournal.sln -t:Rebuild -c Debug`.
 - Если запущено приложение (VS держит `libeLog.dll` в bin) — сборка падает на копировании. Собирайте в отдельный каталог:
-  `dotnet build CNCJournal.sln -t:Rebuild -c Debug -p:OutDir=%TEMP%\cncbuild\`.
+  - cmd: `dotnet build CNCJournal.sln -t:Rebuild -c Debug -p:OutDir=%TEMP%\cncbuild\`
+  - PowerShell: `dotnet build CNCJournal.sln -t:Rebuild -c Debug "-p:OutDir=$env:TEMP\cncbuild\"` (кавычки обязательны, иначе `\` съест последний аргумент).
+  `%TEMP%` — раскрытие cmd. В PowerShell такой литерал НЕ раскрывается: если вписать его как есть,
+  внутри проектов появятся каталоги с именем `%TEMP%\cncbuild` и перезапишутся отслеживаемые
+  `libeLog.dll`/`remeLog.dll`. Проверяйте `git status` после сборки в отдельный каталог.
 - Визуальные проверки темы/стилей делайте зондом `tools/ThemeProbe` (рендер в PNG в `%TEMP%\opencode`), а не «на глаз» в приложении. По завершении зонд удаляйте.
+
+## Требование к серверу (AiService + Ollama + SQL)
+
+- Ко-локация обязательна: AiService, Ollama (`:11434`) и SQL Server живут на одной машине. Агентские tools стадии 2 ходят в БД напрямую короткими read-only запросами — перенос службы на другой хост только вместе с ними.
+- Строка подключения — только в прод-`appsettings.json` (`Database:ConnectionString`, заполняет владелец при деплое), в репозитории всегда пустая. Без секции служба работает как раньше (источник tools — данные запроса).
 
 ## Code style
 

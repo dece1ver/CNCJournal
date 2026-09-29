@@ -35,7 +35,8 @@ using var loggerFactory = LoggerFactory.Create(b => b
 var ollama = new OllamaService(config, loggerFactory.CreateLogger<OllamaService>());
 var prompts = new PromptBuilder(loggerFactory.CreateLogger<PromptBuilder>());
 var agent = new AgentLoopService(ollama, prompts, config,
-    loggerFactory.CreateLogger<AgentLoopService>());
+    loggerFactory.CreateLogger<AgentLoopService>(),
+    RequestAgentDataSource.Instance);
 
 var files = Directory.GetFiles(opts.Logs, "*.json")
     .Where(f => !Path.GetFileName(f).StartsWith("verify_", StringComparison.OrdinalIgnoreCase)
