@@ -55,6 +55,9 @@ namespace eLog.Infrastructure
     {
         [JsonPropertyName("machine")]
         public string Machine { get; set; } = "";
+        [JsonPropertyName("shiftDate")]
+        public string ShiftDate { get; set; } = "";
+
         [JsonPropertyName("shift")]
         public string Shift { get; set; } = "";
         [JsonPropertyName("operatorName")]

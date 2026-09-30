@@ -73,12 +73,19 @@ public class DocsService(IConfiguration config, ILogger<DocsService> logger)
     }
 
     /// <summary> Каталог: имя + первая строка-заголовок + объём. </summary>
-    public IReadOnlyList<DocInfo> List()
+    public IReadOnlyList<DocInfo> List(IReadOnlyList<string>? allowed = null)
     {
         var docs = Load();
-        return [.. docs.Select(kv => new DocInfo(
-            kv.Key, TitleOf(kv.Value) ?? kv.Key, kv.Value.Length))];
+        return [.. docs
+            .Where(kv => Allowed(kv.Key, allowed))
+            .Select(kv => new DocInfo(
+                kv.Key, TitleOf(kv.Value) ?? kv.Key, kv.Value.Length))];
     }
+
+    /// <summary> Фильтр корпуса: null — все документы (аналитика), список — только
+    /// свои (оператору отдаём лишь инструкцию оператора).</summary>
+    private static bool Allowed(string name, IReadOnlyList<string>? allowed) =>
+        allowed is null || allowed.Any(a => name.Equals(a, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Поиск по текстам: слова запроса от 3 букв, score = разных слов + вхождения.
@@ -86,7 +93,8 @@ public class DocsService(IConfiguration config, ILogger<DocsService> logger)
     /// ≥5 букв («простой» находит «простои», «отмечать» — «отметка»).
     /// Возвращает до maxHits фрагментов (~500 символов вокруг первого вхождения).
     /// </summary>
-    public IReadOnlyList<DocHit> Search(string query, int maxHits = 3)
+    public IReadOnlyList<DocHit> Search(string query, int maxHits = 3,
+        IReadOnlyList<string>? allowed = null)
     {
         var terms = Tokenize(query);
         if (terms.Count == 0) return [];
@@ -94,6 +102,7 @@ public class DocsService(IConfiguration config, ILogger<DocsService> logger)
         var scored = new List<(DocHit Hit, int Score)>();
         foreach (var (name, text) in docs)
         {
+            if (!Allowed(name, allowed)) continue;
             var lower = text.ToLowerInvariant();
             var words = Tokenize(lower);
             var distinct = 0;
@@ -144,7 +153,7 @@ public class DocsService(IConfiguration config, ILogger<DocsService> logger)
     /// Имя — точное, без .md или подстрока; length clamp 500–12000.
     /// </summary>
     public (string Name, string Text, int Total, bool Found) Read(
-        string name, int offsetChars, int length)
+        string name, int offsetChars, int length, IReadOnlyList<string>? allowed = null)
     {
         var docs = Load();
         var key = docs.Keys.FirstOrDefault(k =>
@@ -152,7 +161,7 @@ public class DocsService(IConfiguration config, ILogger<DocsService> logger)
                 || k.Equals(name + ".md", StringComparison.OrdinalIgnoreCase))
             ?? docs.Keys.FirstOrDefault(k =>
                 k.Contains(name, StringComparison.OrdinalIgnoreCase));
-        if (key == null)
+        if (key == null || !Allowed(key, allowed))
             return ("", "", 0, false);
         var text = docs[key];
         // Окно по умолчанию — 6000 симв.: это целиком раздел инструкции оператора

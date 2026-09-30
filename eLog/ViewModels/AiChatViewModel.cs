@@ -288,7 +288,18 @@ namespace eLog.ViewModels
         /// Снимок «происходящего»: станок, смена, оператор, активная деталь
         /// (первая незавершённая, иначе верхняя) + её последние простои.
         /// </summary>
-        private static ElogChatContextDto BuildContextSnapshot()
+        /// <summary> Дата смены по календарю: ночная смена после 08:00 относится
+    /// к предыдущим суткам (принимает смену в 02:00 и записывает её за вчера). </summary>
+    private static string ShiftDateOfToday(string? shift)
+    {
+        var date = DateTime.Now.Hour < 8
+            && string.Equals(shift, Text.NightShift, StringComparison.OrdinalIgnoreCase)
+            ? DateTime.Today.AddDays(-1)
+            : DateTime.Today;
+        return date.ToString("yyyy-MM-dd");
+    }
+
+    private static ElogChatContextDto BuildContextSnapshot()
         {
             var settings = AppSettings.Instance;
             var parts = settings.Parts;

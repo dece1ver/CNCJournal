@@ -28,6 +28,7 @@ public class ChatAgentService(
     IAgentDataSource dataSource,
     DocsService docs,
     StockService stock,
+    OperatorStatsService stats,
     IConfiguration config,
     ILogger<ChatAgentService> logger)
 {
@@ -76,6 +77,9 @@ public class ChatAgentService(
         // Поручень прошлого: рассказ о прошлых сменах без вызова get_operator_history
         // (кейс «CNC-513, Шестерня А-47» из головы) — один принудительный раунд.
         var historyCalls = 0;
+        // Статистика/проверка смены: числа обязаны прийти из инструмента, без них
+        // ответ про цифры запрещён (см. блок СТАТИСТИКА в промпте).
+        var statsCalls = 0;
         var historyForcedLeft = 1;
         // Поручень «нет данных без тула» и поручень чисел — по одному раунду.
         var noDataForcedLeft = 1;
@@ -361,10 +365,81 @@ public class ChatAgentService(
                             opHistory?.Lines.Count ?? 0,
                             corrected ? " (фамилия исправлена)" : "");
                     }
+                    else if (call.Name == "get_shift_review")
+                    {
+                        statsCalls++;
+                        var who = ctx?.OperatorName ?? "";
+                        if (string.IsNullOrWhiteSpace(who))
+                        {
+                            messages.Add(new ChatMessage
+                            {
+                                Role = "tool",
+                                Content = "Клиент не прислал оператора — проверить смену не по чему. " +
+                                          "Скажи оператору, что не вижу его смену в программе.",
+                            });
+                        }
+                        else
+                        {
+                            toolProgress?.Report($"⚙ проверяю смену «{Trunc(who)}»…");
+                            var day = ParseDate(ExtractArg(call.Arguments, "date")) ?? ShiftDateOf(ctx);
+                            var shift = ExtractArg(call.Arguments, "shift");
+                            var review = await stats.LoadShiftReviewAsync(
+                                who, ctx?.Machine, day, shift, cts.Token);
+                            messages.Add(new ChatMessage
+                            {
+                                Role = "tool",
+                                Content = OperatorStatsFormatter.FormatShiftReview(review, who),
+                            });
+                            logger.LogInformation(
+                                "Чат-агент ({Machine}): get_shift_review {Op} date={Date} shift={Shift} → не отмечено {Un} мин",
+                                machine, Trunc(who), day?.ToString("yyyy-MM-dd") ?? "-",
+                                string.IsNullOrWhiteSpace(shift) ? "-" : shift,
+                                review?.UnmarkedMinutes ?? 0);
+                        }
+                    }
+                    else if (call.Name == "get_my_stats")
+                    {
+                        statsCalls++;
+                        var who = ctx?.OperatorName ?? "";
+                        if (string.IsNullOrWhiteSpace(who))
+                        {
+                            messages.Add(new ChatMessage
+                            {
+                                Role = "tool",
+                                Content = "Клиент не прислал оператора — посчитать статистику не по чему. " +
+                                          "Скажи оператору, что не вижу его данные в программе.",
+                            });
+                        }
+                        else
+                        {
+                            var days = ParseDaysLoose(ExtractArg(call.Arguments, "days"));
+                            var from = ParseDate(ExtractArg(call.Arguments, "from"));
+                            var to = ParseDate(ExtractArg(call.Arguments, "to"));
+                            // Станок берём из контекста клиента: мусорный аргумент
+                            // модели (бывало «{}») сужал выборку до нуля строк.
+                            // «все станки» — единственное намерение, которое
+                            // расширяет выборку на все станки.
+                            var wantAll = IsAllMachines(ExtractArg(call.Arguments, "machine"));
+                            toolProgress?.Report($"⚙ считаю статистику «{Trunc(who)}»…");
+                            var period = await stats.LoadPeriodStatsAsync(
+                                who, wantAll ? null : ctx?.Machine, days, from, to, cts.Token);
+                            messages.Add(new ChatMessage
+                            {
+                                Role = "tool",
+                                Content = OperatorStatsFormatter.FormatPeriodStats(period, who),
+                            });
+                            logger.LogInformation(
+                                "Чат-агент ({Machine}): get_my_stats {Op} days={D} from={From} to={To} → смен {S}",
+                                machine, Trunc(who), days,
+                                from?.ToString("yyyy-MM-dd") ?? "-",
+                                to?.ToString("yyyy-MM-dd") ?? "-",
+                                period?.WorkedShifts ?? 0);
+                        }
+                    }
                     else if (call.Name == "list_docs")
                     {
                         toolProgress?.Report("📄 смотрю документы…");
-                        var list = docs.List();
+                        var list = docs.List(OperatorDocs);
                         messages.Add(new ChatMessage
                         {
                             Role = "tool", Content = FormatDocList(list),
@@ -376,7 +451,7 @@ public class ChatAgentService(
                     {
                         var query = ExtractArg(call.Arguments, "query");
                         toolProgress?.Report($"📄 ищу в документах «{Trunc(query)}»…");
-                        var hits = docs.Search(query);
+                        var hits = docs.Search(query, allowed: OperatorDocs);
                         messages.Add(new ChatMessage
                         {
                             Role = "tool", Content = FormatDocHits(query, hits),
@@ -391,7 +466,7 @@ public class ChatAgentService(
                         var offset = ParseInt(ExtractArg(call.Arguments, "offset"));
                         var length = ParseInt(ExtractArg(call.Arguments, "length"));
                         toolProgress?.Report($"📄 читаю «{Trunc(name)}»…");
-                        var (docName, text, total, found) = docs.Read(name, offset, length);
+                        var (docName, text, total, found) = docs.Read(name, offset, length, OperatorDocs);
                         messages.Add(new ChatMessage
                         {
                             Role = "tool", Content = FormatDocRead(name, docName, text, total, offset, found),
@@ -464,6 +539,14 @@ public class ChatAgentService(
             { WebSources = webSources };
         }
     }
+
+    /// <summary>
+    /// Документы, доступные оператору. Регламент мастера, план и статус внедрения —
+    /// не его документы: в ответе они только сбивают с толку (и это уже было:
+    /// ДОЗОР путал мастерские правила с операторскими). Агентский контур аналитики
+    /// полный корпус по-прежнему видит.
+    /// </summary>
+    public static readonly IReadOnlyList<string> OperatorDocs = ["instrukciya_operatora.md"];
 
     private static string DescribeCall(string name) => name switch
     {
@@ -731,6 +814,24 @@ public class ChatAgentService(
 
     private static int ParseDays(string raw) =>
         int.TryParse(raw, out var days) ? Math.Clamp(days, 7, 365) : 30;
+
+    /// <summary> Просил ли оператор все станки. Всё остальное (в том числе мусор
+    /// вида «{}» или «Mazak») трактуется как «мой станок» — он и так известен
+    /// из контекста клиента.</summary>
+    public static bool IsAllMachines(string? raw)
+    {
+        var t = (raw ?? "").Trim().ToLowerInvariant();
+        return t is "все" or "все станки" or "всех станков" or "all" or "all machines";
+    }
+
+    /// <summary> Глубина периода для статистики: от 1 дня (в отличие от истории,
+    /// где минимум неделю — там окно нужно для контекста). </summary>
+    private static int ParseDaysLoose(string raw) =>
+        int.TryParse(raw, out var days) ? Math.Clamp(days, 1, 365) : 30;
+
+    /// <summary> Дата смены из контекста клиента; если не пришла — сегодня. </summary>
+    private static DateOnly? ShiftDateOf(ElogChatContext? ctx) =>
+        ParseDate(ctx?.ShiftDate ?? "") ?? DateOnly.FromDateTime(DateTime.Today);
 
     /// <summary> Строгий разбор дня YYYY-MM-DD; мусор — null (тогда окно days). </summary>
     public static DateOnly? ParseDate(string raw) =>

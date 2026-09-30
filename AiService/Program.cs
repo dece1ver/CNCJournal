@@ -24,6 +24,7 @@ namespace AiService
             builder.Services.AddSingleton<WebSearchService>();
             builder.Services.AddSingleton<DocsService>();
             builder.Services.AddSingleton<StockService>();
+builder.Services.AddSingleton<OperatorStatsService>();
             builder.Services.AddSingleton<ChatAgentService>();
             // Агентский контур дневного анализа (стадия 1: каркас, выключен флагом Agent:Enabled).
             builder.Services.AddSingleton<AgentLoopService>();

@@ -522,7 +522,8 @@ public class ChatTests
 
     private static ChatAgentService Agent(
         StubChat stub, IConfiguration? config = null, IAgentDataSource? source = null,
-        DocsService? docs = null, StockService? stock = null)
+        DocsService? docs = null, StockService? stock = null,
+        OperatorStatsService? stats = null)
     {
         var cfg = config ?? Config();
         return new(stub,
@@ -530,6 +531,7 @@ public class ChatTests
             source ?? RequestAgentDataSource.Instance,
             docs ?? new DocsService(cfg, NullLogger<DocsService>.Instance),
             stock ?? new StockService(cfg, NullLogger<StockService>.Instance),
+            stats ?? new OperatorStatsService(cfg, NullLogger<OperatorStatsService>.Instance),
             cfg, NullLogger<ChatAgentService>.Instance);
     }
 
@@ -568,7 +570,7 @@ public class ChatTests
         Assert.Equal("Отмечайте простой кнопкой.", res.Reply);
         Assert.Equal(0, res.ToolRounds);
         // Инструменты предлагаются, система первая, данных смены в ней нет.
-        Assert.Equal(11, Assert.Single(stub.SeenTools).Count);
+        Assert.Equal(13, Assert.Single(stub.SeenTools).Count);
         Assert.Equal("system", stub.SeenMessages[0][0].Role);
         Assert.DoesNotContain("SKT21", stub.SeenMessages[0][0].Content ?? "");
     }
@@ -1061,6 +1063,35 @@ public class ChatTests
         Assert.Contains("Поиск и получение инструмента", text.ToString());
     }
 
+    /// <summary>Оператору видна только инструкция оператора: регламент мастера,
+    /// план и статус внедрения — не его документы (иначе ДОЗОР смешивал мастерские
+    /// правила с операторскими).</summary>
+    [Fact]
+    public void DocsService_Фильтр_ПрячетМастерскиеДокументы()
+    {
+        var (svc, dir) = TempDocs(
+            ("instrukciya_operatora.md", "# Инструкция оператора\n\nОтметка простоев\n"),
+            ("reglament.md", "# Регламент ЭЖ\n\nПроверка отчёта мастером\n"),
+            ("plan.md", "# План внедрения\n\nЭтапы внедрения ИИ\n"));
+        try
+        {
+            Assert.Equal(["instrukciya_operatora.md"],
+                svc.List(ChatAgentService.OperatorDocs).Select(d => d.Name));
+            Assert.Equal(["instrukciya_operatora.md"],
+                svc.Search("отметка простоев", allowed: ChatAgentService.OperatorDocs)
+                    .Select(h => h.Name));
+            var hidden = svc.Read("reglament", 0, 0, ChatAgentService.OperatorDocs);
+            Assert.False(hidden.Found);
+            // Без фильтра корпус полный — так работает агентский контур аналитики.
+            Assert.Equal(3, svc.List().Count);
+            Assert.Contains(svc.List(), d => d.Name == "reglament.md");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     private static (DocsService Svc, string Dir) TempDocs(params (string Name, string Text)[] files)
     {
         var dir = Path.Combine(Path.GetTempPath(), "aichat-docs-" + Guid.NewGuid().ToString("N"));
@@ -1161,8 +1192,10 @@ public class ChatTests
     [Fact]
     public async Task Agent_SearchDocs_UsesSnippet()
     {
+        // Оператору видна только инструкция оператора — её и ищем.
         var (docs, dir) = TempDocs(
-            ("reglament.md", "# Регламент ЭЖ\n\nПростой отмечается кнопкой в журнале.\n"));
+            ("instrukciya_operatora.md",
+                "# Инструкция оператора\n\nОтметка простоев\n\nПростой отмечается кнопкой в журнале.\n"));
         try
         {
             var stub = new StubChat(new Queue<ChatResult>([
@@ -1182,7 +1215,7 @@ public class ChatTests
             Assert.Equal("Жми кнопку простоя.", res.Reply);
             Assert.Equal(1, res.ToolRounds);
             var toolMsg = Assert.Single(stub.SeenMessages[^1], m => m.Role == "tool");
-            Assert.Contains("reglament.md", toolMsg.Content);
+            Assert.Contains("instrukciya_operatora.md", toolMsg.Content);
         }
         finally
         {

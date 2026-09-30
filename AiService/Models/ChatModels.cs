@@ -39,6 +39,9 @@ public class ElogChatContext
 {
     public string Machine { get; set; } = "";
     public string Shift { get; set; } = "";
+    /// <summary>Дата смены клиента YYYY-MM-DD: без неё «сегодняшняя смена»
+    /// после полуночи считалась бы от вчера.</summary>
+    public string ShiftDate { get; set; } = "";
     public string OperatorName { get; set; } = "";
     public bool ShiftStarted { get; set; }
     public int PartsCount { get; set; }
