@@ -940,6 +940,127 @@ public class ChatTests
         Assert.Contains("list_operator_downtime_types", names);
     }
 
+    /// <summary> Файл репозитория: ищем от папки сборки вверх. </summary>
+    private static string? RepoFile(params string[] parts)
+    {
+        var cur = new DirectoryInfo(AppContext.BaseDirectory);
+        while (cur is not null)
+        {
+            var candidate = Path.Combine([cur.FullName, "AiService", .. parts]);
+            if (File.Exists(candidate)) return candidate;
+            cur = cur.Parent;
+        }
+        return null;
+    }
+
+    private static string Norm(string text) =>
+        System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").ToLowerInvariant();
+
+    /// <summary>
+    /// Шпаргалка порядка работы в промпте — это выжимка инструкции оператора, а не
+    /// пересказ. Каждая опорная фраза обязана дословно лежать в
+    /// instrukciya_operatora.md: разъехались — тест падает.
+    /// </summary>
+    [Fact]
+    public void Prompt_ШпаргалкаПорядкаРаботы_СовпадаетСИнструкцией()
+    {
+        var promptPath = RepoFile("prompts", "chat_system.txt");
+        var instrPath = RepoFile("docs", "instrukciya_operatora.md");
+        Assert.NotNull(promptPath);
+        Assert.NotNull(instrPath);
+
+        var prompt = Norm(File.ReadAllText(promptPath!));
+        var instr = Norm(File.ReadAllText(instrPath!));
+
+        string[] anchors =
+        [
+            "выбрать себя из списка операторов",
+            "заполнить чек-лист передачи смены",
+            "запускает изготовление детали подставляя номер м/л",
+            "нормативы наладки и изготовления из технологической карты",
+            "для отметки простоев используется кнопка",
+            "дополнительную информацию для склада и технической службы",
+            "завершение без выполнения готовой детали",
+            "количество лично изготовленных деталей без отклонений",
+            "смена оператором отмечается один раз",
+            "кроме комментариев, простоев и количества выполненных деталей",
+            "не менее 5 смен в месяц",
+            "менее 6 случаев умышленного некорректного заполнения данных",
+        ];
+        foreach (var anchor in anchors)
+        {
+            Assert.Contains(anchor, instr, StringComparison.Ordinal);
+            Assert.Contains(anchor, prompt, StringComparison.Ordinal);
+        }
+
+        // Шпаргалка обязана быть в промпте, иначе порядок работы снова придётся
+        // додумывать (проверено на стенде: без неё модель выдумывала процедуру).
+        Assert.Contains("порядок работы в эж (из инструкции оператора)", prompt,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary> Каталог документов репозитория: ищем от папки сборки вверх. </summary>
+    private static string? RepoDocsDir()
+    {
+        var cur = new DirectoryInfo(AppContext.BaseDirectory);
+        while (cur is not null)
+        {
+            var candidate = Path.Combine(cur.FullName, "AiService", "docs");
+            if (File.Exists(Path.Combine(candidate, "instrukciya_operatora.md")))
+                return candidate;
+            cur = cur.Parent;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Инструкция оператора обязана быть в корпусе: она пришла вложенным файлом
+    /// внутрь регламента, и при первой конвертации потерялась (осталась картинка).
+    /// </summary>
+    [Fact]
+    public void DocsService_Корпус_СодержитИнструкциюОператора()
+    {
+        var dir = RepoDocsDir();
+        Assert.NotNull(dir);
+        var svc = new DocsService(Config(("Docs:Directory", dir!)),
+            NullLogger<DocsService>.Instance);
+
+        Assert.Contains(svc.List(), d => d.Name == "instrukciya_operatora.md");
+
+        // Порядок работы оператора находится именно в инструкции, а не в регламенте.
+        Assert.Contains(svc.Search("отметка простоев"),
+            h => h.Name == "instrukciya_operatora.md");
+        Assert.Contains(svc.Search("неполное завершение наладки"),
+            h => h.Name == "instrukciya_operatora.md");
+
+        var (name, firstChunk, total, found) = svc.Read("instrukciya_operatora", 0, 0);
+        Assert.True(found);
+        Assert.Equal("instrukciya_operatora.md", name);
+        Assert.True(total > firstChunk.Length, "инструкция должна быть многостраничной");
+
+        // Читаем документ целиком: Read отдаёт постранично.
+        var text = new System.Text.StringBuilder(firstChunk);
+        for (var offset = firstChunk.Length; offset < total;)
+        {
+            var (_, chunk, _, ok) = svc.Read("instrukciya_operatora", offset, 0);
+            Assert.True(ok);
+            if (chunk.Length == 0) break;
+            text.Append(chunk);
+            offset += chunk.Length;
+        }
+
+        // Разделы, на которые ДОЗОР ссылается в промпте, должны существовать.
+        foreach (var section in new[]
+                 {
+                     "Отметка простоев", "Завершение наладки", "Завершение изготовления",
+                     "Завершение смены", "Начало смены", "Запуск детали",
+                 })
+            Assert.Contains(section, text.ToString());
+        // Особые случаи простоя из инструкции — чтобы агент не потерял их.
+        Assert.Contains("Отказ оборудования", text.ToString());
+        Assert.Contains("Поиск и получение инструмента", text.ToString());
+    }
+
     private static (DocsService Svc, string Dir) TempDocs(params (string Name, string Text)[] files)
     {
         var dir = Path.Combine(Path.GetTempPath(), "aichat-docs-" + Guid.NewGuid().ToString("N"));

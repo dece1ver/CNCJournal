@@ -89,8 +89,10 @@ public static class ChatTools
         {
             Name = "read_doc",
             Description = "Прочитать кусок документа с позиции (символы). Имя — из list_docs, "
-                + "можно без .md. Для дочитывания найденного search_docs фрагмента.",
-            ParametersJson = """{"type":"object","properties":{"name":{"type":"string","description":"Имя документа"},"offset":{"type":"integer","description":"Позиция в символах, по умолчанию 0"},"length":{"type":"integer","description":"Сколько символов, по умолчанию 3000 (500-4000)"}},"required":["name"]}""",
+                + "можно без .md. Для дочитывания найденного search_docs фрагмента: "
+                + "length=6000 — это целый раздел (порядок действий), preview в 500 "
+                + "символов из search_docs для ответа недостаточно.",
+            ParametersJson = """{"type":"object","properties":{"name":{"type":"string","description":"Имя документа"},"offset":{"type":"integer","description":"Позиция в символах, по умолчанию 0"},"length":{"type":"integer","description":"Сколько символов, по умолчанию 6000 (500-12000)"}},"required":["name"]}""",
         },
         new ChatTool
         {

@@ -141,7 +141,7 @@ public class DocsService(IConfiguration config, ILogger<DocsService> logger)
 
     /// <summary>
     /// Кусок документа с позиции (для дочитывания после поиска).
-    /// Имя — точное, без .md или подстрока; length clamp 500–4000.
+    /// Имя — точное, без .md или подстрока; length clamp 500–12000.
     /// </summary>
     public (string Name, string Text, int Total, bool Found) Read(
         string name, int offsetChars, int length)
@@ -155,7 +155,10 @@ public class DocsService(IConfiguration config, ILogger<DocsService> logger)
         if (key == null)
             return ("", "", 0, false);
         var text = docs[key];
-        length = Math.Clamp(length <= 0 ? 3000 : length, 500, 4000);
+        // Окно по умолчанию — 6000 симв.: это целиком раздел инструкции оператора
+        // (порядок действий), а не обрывок в 500 символов, из которого модель
+        // раньше додумывала процедуру.
+        length = Math.Clamp(length <= 0 ? 6000 : length, 500, 12000);
         var from = Math.Clamp(offsetChars, 0, text.Length);
         var len = Math.Min(length, text.Length - from);
         return (key, text.Substring(from, len), text.Length, true);
