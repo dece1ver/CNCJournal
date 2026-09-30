@@ -468,8 +468,11 @@ namespace remeLog.Views
             foreach (var (part, reason) in matched)
             {
                 var alreadyExcluded = part.ExcludeFromReports;
+                // Время начала — иначе две строки суток с одинаковыми
+                // именем/установкой/заказом неразличимы в списке (кейс 30.09.2026,
+                // SKT21 25.09 «Винт…»: одна строка, а исключалась другая).
                 items.Add(new AiVerdictCandidateItem(part,
-                    $"{part.PartName} | М/Л: {part.Order} | Уст.{part.Setup} — {reason}" +
+                    $"{part.PartName} | М/Л: {part.Order} | Уст.{part.Setup} | {part.StartSetupTime:dd.MM HH:mm} — {reason}" +
                     (alreadyExcluded ? " (уже исключена)" : string.Empty),
                     isSelected: !alreadyExcluded));
             }

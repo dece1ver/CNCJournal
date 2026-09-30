@@ -33,7 +33,7 @@ public class HardRuleFlaggedTests
         var result = HardRuleEvaluator.Evaluate(req);
 
         Assert.True(result.MustEscalate);
-        Assert.Contains("Деталь§2§З1", result.HardFlaggedPartKeys);
+        Assert.Contains("Деталь§2§З1§#1", result.HardFlaggedPartKeys);
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public class HardRuleFlaggedTests
 
         var result = HardRuleEvaluator.Evaluate(req);
 
-        Assert.Contains("Деталь§1§З1", result.HardFlaggedPartKeys);
+        Assert.Contains("Деталь§1§З1§#1", result.HardFlaggedPartKeys);
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class HardRuleFlaggedTests
         Assert.True(result.MustEscalate);
         Assert.Contains(result.HardSignals, s => s.Contains("недостоверны"));
         Assert.DoesNotContain(result.HardSignals, s => s.Contains("пересмотра технологии"));
-        Assert.Contains("Седло§2§З1", result.HardFlaggedPartKeys);
+        Assert.Contains("Седло§2§З1§#1", result.HardFlaggedPartKeys);
     }
 
     private static PartContext LowKpdPart() => new()
@@ -257,7 +257,52 @@ public class HardRuleFlaggedTests
             new HardRuleResult([], []), [], req,
             ["Гильза АР156.1-125-01-301М8Л: низкий КПД изготовления (33%) без достаточной детализации причины «Другое»"]);
 
-        Assert.Contains("Гильза АР156.1-125-01-301М8Л§1§З1", flagged);
+        Assert.Equal(["Гильза АР156.1-125-01-301М8Л§1§З1§#1"], flagged);
+    }
+
+    [Fact]
+    public void Evaluate_MachiningTime_ClientSignalPresent_NoDuplicate()
+    {
+        // Кейс 30.09.2026, SKT21 27.09: клиент уже прислал «Машинное время 4.7мин
+        // >= штучного норматива 4мин (117%)» — серверный дубль «…(118%)» в ответе
+        // только шумит. Обратный случай (сигнала клиента нет) проверяется рядом.
+        var part = new PartContext
+        {
+            PartName = "Седло",
+            Order = "З1",
+            Setup = 1,
+            MachiningTime = 4.7,
+            SingleProductionTimePlan = 4,
+            ProductionRatio = 0.53,
+            FinishedCount = 17,
+        };
+        part.Signals.Add("Машинное время 4.7мин >= штучного норматива 4мин (117%)");
+
+        var result = HardRuleEvaluator.Evaluate(Request(part));
+
+        Assert.DoesNotContain(result.HardSignals, s => s.Contains("Машинное время"));
+        Assert.DoesNotContain(result.SoftSignals, s => s.Contains("Машинное время"));
+    }
+
+    [Fact]
+    public void Evaluate_MachiningTime_NoClientSignal_HardFires()
+    {
+        // Клиентского сигнала нет (например, при КПД изготовления > 100% клиент
+        // его подавляет) — серверный сигнал остаётся, иначе аномалия потеряется.
+        var part = new PartContext
+        {
+            PartName = "Седло",
+            Order = "З1",
+            Setup = 1,
+            MachiningTime = 4.7,
+            SingleProductionTimePlan = 4,
+            ProductionRatio = 0.53,
+            FinishedCount = 17,
+        };
+
+        var result = HardRuleEvaluator.Evaluate(Request(part));
+
+        Assert.Contains(result.HardSignals, s => s.Contains("Машинное время"));
     }
 
     [Fact]
@@ -279,9 +324,27 @@ public class HardRuleFlaggedTests
     }
 
     [Fact]
-    public void CollectFlaggedPartKeys_AmbiguousName_FlagsAllRows()
+    public void CollectFlaggedPartKeys_AmbiguousName_OnlyEvidenceRow()
     {
-        // Одно имя на двух установках — флагуются обе, лишнее снимет аналитик.
+        // Одно имя на двух установках: флагуется та строка, где есть доказательства
+        // (клиентский сигнал), а не обе и не первая (жалоба 30.09.2026: по флагу
+        // на каждую строку дубля аналитику прилетало лишнее).
+        var withSignal = new PartContext { PartName = "Втулка", Order = "З1", Setup = 1 };
+        withSignal.Signals.Add("КПД наладки 45% без объяснения мастера");
+        var req = Request(withSignal, new PartContext { PartName = "Втулка", Order = "З1", Setup = 2 });
+
+        var flagged = AnalysisController.CollectFlaggedPartKeys(
+            new HardRuleResult([], []), [], req,
+            ["Втулка: КПД наладки 45% ниже нормы"]);
+
+        Assert.Equal(["Втулка§1§З1§#1"], flagged);
+    }
+
+    [Fact]
+    public void CollectFlaggedPartKeys_NoEvidence_NotFlagged()
+    {
+        // Строки-дубли без единой улики: флаг не ставим ни одной (текст сигнала
+        // аналитику всё равно виден в диалоге).
         var req = Request(
             new PartContext { PartName = "Втулка", Order = "З1", Setup = 1 },
             new PartContext { PartName = "Втулка", Order = "З1", Setup = 2 });
@@ -290,7 +353,32 @@ public class HardRuleFlaggedTests
             new HardRuleResult([], []), [], req,
             ["Втулка: КПД наладки 45% ниже нормы"]);
 
-        Assert.Contains("Втулка§1§З1", flagged);
-        Assert.Contains("Втулка§2§З1", flagged);
+        Assert.Empty(flagged);
+    }
+
+    [Fact]
+    public void CollectFlaggedPartKeys_DuplicateKey_OneRowPerHardSignal()
+    {
+        // Кейс 30.09.2026, SKT21 27.09: hard-сигнал приходит со своей строкой,
+        // поэтому ключ флага точный — вторая строка-дубль не флагуется.
+        PartContext Row(string reason) => new()
+        {
+            PartName = "Винт позиционирующий 1.АР0001-001 ТОС3",
+            Order = "ФЛ2609-0029.3.1",
+            Setup = 1,
+            SetupTimePlan = 86,
+            SetupTimeFact = 101,
+            SetupRatio = 0.85,
+            SingleProductionTimePlan = 15,
+            NoProductionHappened = true,
+            MasterMachiningComment = reason,
+        };
+        var req = Request(Row(""), Row("Некорректные нормативы"));
+
+        var hard = HardRuleEvaluator.Evaluate(req);
+        var flagged = AnalysisController.CollectFlaggedPartKeys(
+            hard, hard.SoftSignals.ToList(), req, []);
+
+        Assert.Equal(["Винт позиционирующий 1.АР0001-001 ТОС3§1§ФЛ2609-0029.3.1§#2"], flagged);
     }
 }

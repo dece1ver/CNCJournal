@@ -65,8 +65,11 @@ public static class HardRuleEvaluator
     // КПД = 0 и отсутствие норматива нормальны для доработки.
     private const string ReworkReason = "Доработка";
 
-    /// <summary> Точная идентичность строки для флагов СГТ (имя + установка + заказ). </summary>
-    public static string PartKey(PartContext p) => $"{p.PartName}§{p.Setup}§{p.Order}";
+    /// <summary> Идентичность строки для флагов СГТ: имя + установка + заказ.
+    /// ordinal (1-based) — номер строки в сутках; без него ключ неоднозначен
+    /// внутри дня (см. Evaluate). </summary>
+    public static string PartKey(PartContext p, int ordinal) =>
+        $"{p.PartName}§{p.Setup}§{p.Order}§#{ordinal}";
 
     public static HardRuleResult Evaluate(AnalyzeRequest req)
     {
@@ -79,9 +82,14 @@ public static class HardRuleEvaluator
         // КПД изготовления не оценивается НИ В ОДНОМ контуре. null = серийный.
         var checkProductionKpd = req.IsSerialMachine != false;
 
-        foreach (var p in req.Parts)
+        for (var partIndex = 0; partIndex < req.Parts.Count; partIndex++)
         {
-            var key = PartKey(p);
+            var p = req.Parts[partIndex];
+            // Ключ флага — с номером строки: «деталь+установка+заказ» внутри дня
+            // не уникален (работа разбита на отрезки), и без номера клиент брал
+            // первую по списку (кейс 30.09.2026, SKT21 25.09 «Винт…»). Здесь строка
+            // известна точно — сразу пишем её номер.
+            var key = PartKey(p, partIndex + 1);
             void AddHard(string signal) { hard.Add(signal); hardKeys.Add(key); }
             void AddSoft(string signal) { soft.Add(signal); softFlagged.Add((signal, key)); }
             var hasOrder = !string.IsNullOrWhiteSpace(p.Order)
@@ -214,7 +222,12 @@ public static class HardRuleEvaluator
             if (p.MachiningTime > 0.5 && p.SingleProductionTimePlan > 0
                 && p.MachiningTime >= p.SingleProductionTimePlan
                 && !p.NoProductionHappened
-                && !p.IsSmallBatch)
+                && !p.IsSmallBatch
+                // Клиент прислал то же самое по этой строке («Машинное время X
+                // >= штучного норматива Y») — второй сигнал о том же факте в
+                // ответе только шумит (кейс 30.09.2026, SKT21 27.09: клиент
+                // «4.7мин (117%)» + сервер «4,7мин (118%)» рядом).
+                && !p.Signals.Any(s => s.Contains("Машинное время", StringComparison.OrdinalIgnoreCase)))
             {
                 var signal =
                     $"[{p.PartName}] Машинное время {p.MachiningTime:0.#}мин >= " +

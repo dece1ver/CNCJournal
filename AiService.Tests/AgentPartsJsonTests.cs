@@ -83,6 +83,22 @@ public class AgentPartsJsonTests
         // Пустые комментарии/причины в JSON не попадают — только непустые.
         var parts = Render(true, Part("Кольцо", "З1", 0.45, 86));
         Assert.False(parts[0].TryGetProperty("причинаОтклоненияВНаладке", out _));
-        Assert.False(parts[0].TryGetProperty("operatorComment", out _));
+        Assert.False(parts[0].TryGetProperty("комментарийОператора", out _));
+    }
+
+    [Fact]
+    public void PartialSetupMinutes_VisiblePerRow()
+    {
+        // Кейс 24.09.2026, SKT21 «Гайка нажимная…»: частичная 3 мин была во
+        // ВТОРОЙ строке, а модель без этого числа не могла отличить строки.
+        var first = Part("Гайка", "З1", null, 86);
+        first.PartialSetup = 0;
+        var second = Part("Гайка", "З1", null, 57);
+        second.PartialSetup = 3;
+
+        var parts = Render(true, first, second);
+
+        Assert.Equal(0, parts[0].GetProperty("частичнаяНаладкиМин").GetDouble());
+        Assert.Equal(3, parts[1].GetProperty("частичнаяНаладкиМин").GetDouble());
     }
 }

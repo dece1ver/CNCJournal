@@ -3117,7 +3117,7 @@ namespace remeLog.ViewModels
                 .Distinct()
                 .ToList();
             var flaggedPreview = aiFlagged
-                .Select(p => $"{p.PartName} | М/Л: {p.Order} | Уст.{p.Setup}")
+                .Select(p => $"{p.PartName} | М/Л: {p.Order} | Уст.{p.Setup} | {p.StartSetupTime:dd.MM HH:mm}")
                 .ToList();
 
             string alreadyReviewedHint = string.Empty;

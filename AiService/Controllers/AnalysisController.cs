@@ -996,27 +996,63 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
     /// выдумка модели: галка по умолчанию стоит, неверное основание превратилось бы
     /// в неверное исключение из К1 (см. <see cref="ExcludeTriggerValidator"/>).
     /// </summary>
-    private static List<string> FilterExcludeSuggestions(List<string> entries, AnalyzeRequest request)
+    private List<string> FilterExcludeSuggestions(List<string> entries, AnalyzeRequest request)
     {
         if (entries.Count == 0) return entries;
 
-        return [.. entries.Where(e =>
+        return [.. entries.Select(e => FilterExcludeSuggestion(e, request)).OfType<string>()];
+    }
+
+    /// <summary>
+    /// Одна запись exclude. Неоднозначный ключ (несколько строк суток с одним
+    /// именем/установкой/заказом — кейс 30.09.2026, SKT21 25.09 «Винт…») решается
+    /// по доказательствам строки, а не по порядку; вердикт клиенту уходит с
+    /// хвостом «§#N», иначе галка встала бы на первую по списку (кейс 24.09,
+    /// «Гайка нажимная АР32-01-002»: частичная наладка во второй строке).
+    /// Выбрать единственную строку нельзя — запись не привязываем вовсе.
+    /// </summary>
+    private string? FilterExcludeSuggestion(string entry, AnalyzeRequest request)
+    {
+        // Форматный мусор («Уст.1» вместо цифры, голая причина вместо конкретики)
+        // режем до привязки: иначе запись проходит как «непривязанная» мимо всех
+        // содержательных проверок (кейс пилота 25.09, QTS350 23.09).
+        if (!ExcludeTriggerValidator.IsWellFormedExcludeEntry(entry)) return null;
+
+        var seg = entry.Split('§');
+        if (seg.Length < 3) return entry; // нераспознанный формат — не трогаем
+
+        var reason = ExcludeTriggerValidator.ReasonOf(entry);
+        var candidates = ExcludeTriggerValidator.FindAllParts(request.Parts, seg[0], seg[1], seg[2]);
+        if (candidates.Count == 0) return entry; // консервативно: клиент покажет непривязанной
+        if (candidates.Count == 1)
         {
-            // Форматный мусор («Уст.1» вместо цифры, голая причина вместо конкретики)
-            // режем до привязки: иначе запись проходит как «непривязанная» мимо всех
-            // содержательных проверок (кейс пилота 25.09, QTS350 23.09).
-            if (!ExcludeTriggerValidator.IsWellFormedExcludeEntry(e)) return false;
+            var only = candidates[0].Part;
+            if (!AffectsReports(only)) return null;
+            if (!ExcludeTriggerValidator.HasGroundedReason(only, reason)) return null;
+            if (!ExcludeTriggerValidator.HasGrounds(only, reason)) return null;
+            return entry;
+        }
 
-            var seg = e.Split('§');
-            if (seg.Length < 3) return true; // нераспознанный формат — не трогаем
-
-            var part = ExcludeTriggerValidator.FindPart(request.Parts, seg[0], seg[1], seg[2]);
-            if (part == null) return true; // консервативно: клиент покажет непривязанной
-            if (!AffectsReports(part)) return false;
-            var reason = string.Join("§", seg.Skip(3));
-            if (!ExcludeTriggerValidator.HasGroundedReason(part, reason)) return false;
-            return ExcludeTriggerValidator.HasGrounds(part, reason);
-        })];
+        var picked = ExcludeTriggerValidator.PickRowForExclude(candidates, reason);
+        if (picked == null)
+        {
+            logger.LogWarning(
+                "Exclude не привязан: {Entry} — строк с таким ключом {N}, выбор неоднозначен",
+                entry, candidates.Count);
+            return null;
+        }
+        if (!AffectsReports(picked.Value.Part))
+        {
+            logger.LogInformation(
+                "Exclude снят: {Entry} — строка #{Ordinal} не влияет на отчёты (нет считаемого КПД)",
+                entry, picked.Value.Ordinal);
+            return null;
+        }
+        if (!ExcludeTriggerValidator.HasGroundedReason(picked.Value.Part, reason)) return null;
+        if (!ExcludeTriggerValidator.HasGrounds(picked.Value.Part, reason)) return null;
+        logger.LogInformation(
+            "Exclude привязан к строке #{Ordinal}: {Entry}", picked.Value.Ordinal, entry);
+        return ExcludeTriggerValidator.WithOrdinal(entry, picked.Value.Ordinal);
     }
 
     private static bool AffectsReports(PartContext p)
@@ -1061,30 +1097,61 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
     /// + детали, явно названные в уцелевших сигналах модели (иначе вердикт
     /// «про Гильзу» не подсвечивает ни одну строку — кейс 22.09.2026 Mazak).
     /// Пониженные soft-сигналы считаются объяснёнными — их детали не флагуются.
-    /// Несопоставленные имена (галлюцинации) игнорируются; одно имя на
-    /// нескольких установках флагуются все строки — лишнее аналитик снимет.
+    /// Несопоставленные имена (галлюцинации) игнорируются.
+    /// hard/soft-ключи приходят с номером строки (HardRuleEvaluator.PartKey) —
+    /// привязка точная. Ключи, собранные по ИМЕНИ из текста сигнала модели, строку
+    /// не различают: при нескольких совпадениях выбираем по доказательствам
+    /// (ExcludeRowScore), а НЕ флагуем все строки дубля — иначе аналитику
+    /// прилетало по флагу на каждую строку (жалоба 30.09.2026, SKT21 27.09:
+    /// 7 строк → 9). Выбрать строку нельзя — флаг не ставим: сам сигнал идёт
+    /// в диалоге и без флага.
     /// </summary>
     public static List<string> CollectFlaggedPartKeys(
         HardRuleResult hardRules, List<string> notDowngraded,
         AnalyzeRequest request, IEnumerable<string> modelSignals)
     {
         var surviving = notDowngraded.ToHashSet();
-        var namedKeys = modelSignals
-            .SelectMany(s =>
-            {
-                var lower = s.ToLowerInvariant();
-                return request.Parts
-                    .Where(p => p.PartName.Trim().Length > 0
-                        && lower.Contains(p.PartName.Trim().ToLowerInvariant()))
-                    .Select(HardRuleEvaluator.PartKey);
-            });
-        return [.. hardRules.HardFlaggedPartKeys
+        var exact = hardRules.HardFlaggedPartKeys
             .Concat(hardRules.SoftFlagged
                 .Where(t => surviving.Contains(t.Signal))
                 .Select(t => t.PartKey))
-            .Concat(namedKeys)
-            .Distinct()];
+            .ToHashSet();
+        var named = modelSignals
+            .SelectMany(s => ResolveNamedKeys(s, request.Parts))
+            .Where(k => !exact.Contains(k));
+        return [.. exact.Concat(named).Distinct()];
     }
+
+    /// <summary>
+    /// Ключи строк, названных в сигнале модели. Имя совпало с несколькими
+    /// строками — берём ту, где есть доказательства (сигнал/причина/КПД/
+    /// частичная наладка); иначе не привязываем вовсе.
+    /// </summary>
+    private static IEnumerable<string> ResolveNamedKeys(string signal, List<PartContext> parts)
+    {
+        var lower = signal.ToLowerInvariant();
+        var named = parts
+            .Select((p, i) => (Ordinal: i + 1, Part: p))
+            .Where(x => x.Part.PartName.Trim().Length > 0
+                && lower.Contains(x.Part.PartName.Trim().ToLowerInvariant()))
+            .ToList();
+        if (named.Count == 0)
+            return [];
+        if (named.Count == 1)
+            return [KeyWithOrdinal(named[0].Part, named[0].Ordinal)];
+
+        var scored = named
+            .Select(x => (x.Ordinal, x.Part,
+                Score: ExcludeTriggerValidator.ExcludeRowScore(x.Part, signal)))
+            .OrderByDescending(x => x.Score)
+            .ToList();
+        if (scored[0].Score <= 0 || (scored.Count > 1 && scored[1].Score == scored[0].Score))
+            return [];
+        return [KeyWithOrdinal(scored[0].Part, scored[0].Ordinal)];
+    }
+
+    private static string KeyWithOrdinal(PartContext p, int ordinal) =>
+        ExcludeTriggerValidator.WithOrdinal($"{p.PartName}§{p.Setup}§{p.Order}", ordinal);
 
     /// <summary>
     /// Вторые мнения агента в общий downstream: True-несогласия верифаеров сливаются

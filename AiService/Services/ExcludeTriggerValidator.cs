@@ -34,17 +34,90 @@ public static partial class ExcludeTriggerValidator
     /// </summary>
     public static PartContext? FindPart(
         List<PartContext> parts, string name, string setup, string order)
+        => FindAllParts(parts, name, setup, order) is { Count: 1 } only ? only[0].Part : null;
+
+    /// <summary>
+    /// ВСЕ строки суток по ключу «имя§установка§заказ» с их номерами (1-based).
+    /// Ключ не уникален внутри дня: одна и та же деталь/установка/заказ может быть
+    /// разбита на несколько строк (ночная и дневная, повторная обработка) — тогда
+    /// «первая по списку» не значит «проблемная» (кейс 30.09.2026, SKT21 25.09
+    /// «Винт позиционирующий…»: строк две с одинаковым ключом, проблема во второй).
+    /// </summary>
+    public static List<(int Ordinal, PartContext Part)> FindAllParts(
+        List<PartContext> parts, string name, string setup, string order)
     {
-        var exact = parts.FirstOrDefault(p =>
-            p.PartName == name && p.Setup.ToString() == setup && p.Order == order);
-        if (exact != null) return exact;
+        var exact = parts
+            .Select((p, i) => (Ordinal: i + 1, Part: p))
+            .Where(x => x.Part.PartName == name
+                && x.Part.Setup.ToString() == setup
+                && x.Part.Order == order)
+            .ToList();
+        if (exact.Count > 0)
+            return exact;
 
         var norm = NormalizeName(name);
-        if (norm.Length == 0) return null;
-        var candidates = parts.Where(p =>
-            p.Setup.ToString() == setup && p.Order == order
-            && NormalizeName(p.PartName) == norm).ToList();
-        return candidates.Count == 1 ? candidates[0] : null;
+        if (norm.Length == 0)
+            return [];
+        return parts
+            .Select((p, i) => (Ordinal: i + 1, Part: p))
+            .Where(x => x.Part.Setup.ToString() == setup
+                && x.Part.Order == order
+                && NormalizeName(x.Part.PartName) == norm)
+            .ToList();
+    }
+
+    /// <summary> Хвост «§#N» — порядковый номер строки в сутках (для клиента). </summary>
+    public static string WithOrdinal(string entry, int ordinal)
+    {
+        var seg = (entry ?? "").Split('§').ToList();
+        while (seg.Count > 3 && OrdinalPattern().IsMatch(seg[^1].Trim()))
+            seg.RemoveAt(seg.Count - 1);
+        seg.Add("#" + ordinal);
+        return string.Join('§', seg);
+    }
+
+    /// <summary> Причина из записи без хвоста «#N» (иначе номер попадёт в текст). </summary>
+    public static string ReasonOf(string entry)
+    {
+        var seg = (entry ?? "").Split('§');
+        var tail = seg.Length > 3 ? seg[3..] : [];
+        if (tail.Length > 0 && OrdinalPattern().IsMatch(tail[^1].Trim()))
+            tail = tail[..^1];
+        return string.Join("§", tail).Trim();
+    }
+
+    /// <summary>
+    /// Выбор строки среди одинаковых ключей по доказательствам, а не по порядку:
+    /// причина grounded в текстах строки (4), клиентский сигнал на строке (2),
+    /// «частичная» в причине при частичной наладке строки (2), КПД вне диапазона (1).
+    /// 0 — строка не тянет запись (значит, запись уйдёт в непривязанные).
+    /// </summary>
+    public static int ExcludeRowScore(PartContext p, string reason)
+    {
+        var r = (reason ?? "").ToLowerInvariant();
+        var score = 0;
+        if (HasGroundedReason(p, reason) && HasGrounds(p, reason)) score += 4;
+        if (p.Signals.Count > 0) score += 2;
+        if (r.Contains("частичн") && p.PartialSetup > 0) score += 2;
+        if (p.SetupRatio is < 0.7 or > 2.0) score += 1;
+        return score;
+    }
+
+    /// <summary>
+    /// Единственная строка-«нарушитель» среди совпавших по ключу. null — выбрать
+    /// нельзя (ничья или ноль очков): вызывающий код не привязывает запись вообще,
+    /// лучше кандидат без строки, чем галка на неверной строке.
+    /// </summary>
+    public static (int Ordinal, PartContext Part)? PickRowForExclude(
+        List<(int Ordinal, PartContext Part)> candidates, string reason)
+    {
+        var scored = candidates
+            .Select(c => (c.Ordinal, c.Part, Score: ExcludeRowScore(c.Part, reason)))
+            .OrderByDescending(x => x.Score)
+            .ToList();
+        if (scored.Count == 0 || scored[0].Score <= 0) return null;
+        if (scored.Count > 1 && scored[1].Score == scored[0].Score) return null;
+        return (scored[0].Ordinal, scored[0].Part);
     }
 
     /// <summary>
@@ -82,10 +155,13 @@ public static partial class ExcludeTriggerValidator
         var seg = (entry ?? "").Split('§');
         if (seg.Length < 4) return true;
         if (!int.TryParse(seg[1].Trim(), out _)) return false;
-        var reason = string.Join("§", seg.Skip(3)).Trim();
+        var reason = ReasonOf(entry);
         if (reason.Length == 0) return false;
         return !AgentTools.IsKnownReasonName(reason);
     }
+
+    [GeneratedRegex(@"^#\d{1,3}$")]
+    private static partial Regex OrdinalPattern();
 
     private static bool IsApprenticeReason(PartContext p) =>
         ApprenticeReason.Equals(p.MasterSetupComment?.Trim(), StringComparison.OrdinalIgnoreCase)

@@ -111,6 +111,65 @@ public static class FalsePositiveFilter
         !requiresReview && filteredSignals.Count > 0;
 
     /// <summary>
+    /// <summary>
+    /// Пересказ клиентского сигнала своими словами. Модель часто цитирует сигнал
+    /// почти дословно, но с искажёнными числами и без префикса детали — в ответе
+    /// появляется дубль факта, который система уже показала точно (кейс
+    /// 30.09.2026, SKT21 27.09: клиент «Машинное время 4.7мин >= штучного
+    /// норматива 4мин (117%)» против model's «4,7мин >= норматива 4мин (118%)»).
+    /// Сравнение по СКЕЛЕТУ СЛОВ (без чисел): та же деталь, совпадение ≥0.6 слов
+    /// значимых → это дубль, а новая находка. Настоящие новые сигналы про ту же
+    /// деталь («КПД наладки 40%») скелета не делят и остаются.
+    /// </summary>
+    public static bool IsClientSignalEcho(string signal, AnalyzeRequest request)
+    {
+        var lower = signal.ToLowerInvariant();
+        // Слова названия детали из сигнала убираем: иначе пересказ «[Седло…]
+        // Машинное время…» отличается от клиентского «Машинное время…» именем
+        // и дубль проходит (кейс 30.09.2026, SKT21 27.09).
+        var model = SignalSkeleton(signal);
+        foreach (var p in request.Parts)
+        {
+            if (p.PartName.Trim().Length == 0
+                || !lower.Contains(p.PartName.Trim().ToLowerInvariant()))
+                continue;
+            model.ExceptWith(SignalSkeleton(p.PartName));
+        }
+        if (model.Count < 3) return false;
+
+        var clientPool = new List<HashSet<string>>();
+        // Клиентские сигналы детали — только этой детали (иначе «машинное время»
+        // одной строки поймало бы пересказ по другой).
+        foreach (var p in request.Parts)
+        {
+            if (p.PartName.Trim().Length == 0
+                || !lower.Contains(p.PartName.Trim().ToLowerInvariant()))
+                continue;
+            foreach (var s in p.Signals)
+                clientPool.Add(SignalSkeleton(s));
+        }
+        // Сигналы дня — всем строкам: в них детали может не быть вовсе.
+        foreach (var s in request.Signals)
+            clientPool.Add(SignalSkeleton(s));
+        if (clientPool.Count == 0) return false;
+
+        return clientPool.Any(c => c.Count >= 3 && Jaccard(model, c) >= 0.6);
+    }
+
+    /// <summary> Значимые слова фразы: длина ≥3, буквы, без чисел. </summary>
+    private static HashSet<string> SignalSkeleton(string text) => new(
+        Regex.Split((text ?? "").ToLowerInvariant().Replace('ё', 'е'), @"[^a-zа-я0-9]+")
+            .Where(w => w.Length >= 3 && !w.Any(char.IsDigit))
+            .Select(w => w),
+        StringComparer.Ordinal);
+
+    private static double Jaccard(HashSet<string> a, HashSet<string> b)
+    {
+        var common = a.Count(w => b.Contains(w));
+        return (double)common / (a.Count + b.Count - common);
+    }
+
+    /// <summary>
     /// Удаляет из ответа LLM сигналы-галлюцинации, которые модель стабильно
     /// генерирует вопреки промпту:
     ///  1. «отсутствие наладки/изготовления» для частей, помеченных б/н / б/и —
@@ -201,6 +260,7 @@ public static class FalsePositiveFilter
                 IsMisaddressedReasonDemand(signal, request.Parts) ? "требование подтверждения невыбранной причины" :
                 hasConfirmedMastering && IsUnconfirmedMasteringClaim(signal) ? "освоение подтверждено детерминированно" :
                 IsNoOrderPlan0Claim(signal, request.Parts) ? "plan=0 без заказа — норма" :
+                IsClientSignalEcho(signal, request) ? "пересказ клиентского сигнала (цитировать дословно)" :
                 (string?)null;
 
             if (reason != null)
