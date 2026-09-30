@@ -174,10 +174,15 @@ public class OperatorStatsTests
         var text = OperatorStatsFormatter.FormatShiftReview(
             Review(marked: 500, minutes: 660), "Хомутов А. Б.");
         Assert.Contains("Не отмечено 160 мин", text);
-        Assert.Contains("больше 10%", text);
-        Assert.Contains("мастер обязан указать причину простоя", text);
-        // Нюанс инструкции: отработал не всю смену — отмечать не обязательно.
-        Assert.Contains("отработал не всю смену", text);
+        Assert.Contains("длительности смены", text);
+        // Ключевое по инструкции: отмечать только если потребность возникла во время
+        // работы; если станок уже на ремонте — не отмечать ничего, заполнит мастер.
+        Assert.Contains("ВО ВРЕМЯ твоей работы", text);
+        Assert.Contains("станок уже на ремонте", text);
+        Assert.Contains("НИЧЕГО отмечать не надо", text);
+        Assert.Contains("заполнит мастер", text);
+        // Требования «закрыть время» быть не должно — это противоречит инструкции.
+        Assert.DoesNotContain("Закрой время простоями", text);
     }
 
     [Fact]
@@ -225,8 +230,9 @@ public class OperatorStatsTests
             Review(marked: 0, records: 0), "Хомутов А. Б.");
         Assert.Contains("Записей в журнале за эту смену нет", text);
         Assert.DoesNotContain("Отмечено времени", text);
-        // Инструкция разрешает не отмечать ничего, если оператор отработал часть смены.
-        Assert.Contains("можно ничего не отмечать", text);
+        // Инструкция: либо простои при прерывании работы, либо ничего при ремонте.
+        Assert.Contains("ничего не отмечается", text);
+        Assert.Contains("открывать деталь и потом ставить простой", text);
     }
 
     [Fact]

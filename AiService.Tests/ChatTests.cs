@@ -426,6 +426,32 @@ public class ChatTests
     }
 
     [Theory]
+    [InlineData("замечания по смене?", true)]
+    [InlineData("моя смена", true)]
+    [InlineData("что я делаю сейчас?", true)]
+    [InlineData("сегодняшняя смена начата?", true)]
+    [InlineData("а 25 сентября?", false)]
+    [InlineData("что делал во вторник?", false)]
+    [InlineData("Что делать при простое?", false)]
+    public void ВопросПроТекущуюСмену_Узнаётся(string question, bool expected)
+    {
+        Assert.Equal(expected, ChatAgentService.AsksAboutCurrentShift(question));
+    }
+
+    [Theory]
+    [InlineData("замечания по смене?", false)]     // текущая смена, не прошлый день
+    [InlineData("моя смена", false)]
+    [InlineData("что я делаю сейчас?", false)]
+    [InlineData("а 25 сентября?", true)]
+    [InlineData("что делал во вторник?", true)]
+    [InlineData("что делал вчера?", true)]
+    [InlineData("что я делал на прошлой неделе?", true)]
+    public void ПрошлыйДень_ОтличаетсяОтТекущейСмены(string question, bool expected)
+    {
+        Assert.Equal(expected, ChatAgentService.AsksAboutPastDay(question));
+    }
+
+    [Theory]
     [InlineData("а за неделю покажи", true)]
     [InlineData("покажи за месяц", true)]
     [InlineData("итоги за период", true)]

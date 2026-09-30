@@ -268,10 +268,28 @@ namespace eLog.ViewModels
                 Status = "";
                 await Infrastructure.Extensions.Util.WriteLogAsync(ex);
             }
+            catch (Exception ex)
+            {
+                // Любое другое исключение (обрыв сокета, таймаут, ошибка разбора
+                // потока) раньше уходило наружу: индикатор «⚙ смотрю журнал…»
+                // оставался висеть после ответа, а облако ответа — с
+                // «размышляю…». Сбрасываем оба и показываем текст ошибки.
+                assistantItem.IsThinking = false;
+                if (string.IsNullOrWhiteSpace(assistantItem.Text))
+                    assistantItem.Text = "Связь с ИИ-помощником прервалась.";
+                assistantItem.IsError = true;
+                Status = "";
+                await Infrastructure.Extensions.Util.WriteLogAsync(ex);
+            }
             finally
             {
                 _cts?.Dispose();
                 _cts = null;
+                // Незакрытый шаг дозора («⚙ смотрю смену…», «Очередь к ИИ…») не должен
+                // висеть после ответа: это последний прогон, всё, что началось, кончено.
+                if (Status.StartsWith("⚙", StringComparison.Ordinal)
+                    || Status.StartsWith("Очередь", StringComparison.Ordinal))
+                    Status = "";
                 IsBusy = false;
             }
         }

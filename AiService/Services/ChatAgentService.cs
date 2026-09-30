@@ -163,6 +163,7 @@ public class ChatAgentService(
                     // Рассказ о прошлом без вызова истории — принудительный раунд:
                     // иначе модель отвечает из головы (кейс CNC-513).
                     if (historyCalls == 0 && historyForcedLeft > 0
+                        && !AsksAboutCurrentShift(lastQuestion)
                         && ClaimsPastShifts(lastContent))
                     {
                         historyForcedLeft--;
@@ -327,7 +328,7 @@ public class ChatAgentService(
                     // текущую смену). Отсутствие данных — это то, что вернул тул.
                     if (emptyDayForcedLeft > 0
                         && historyEmptyCalls > 0
-                        && AsksAboutPastShifts(lastQuestion)
+                        && AsksAboutPastDay(lastQuestion)
                         && HidesEmptyDay(lastContent))
                     {
                         emptyDayForcedLeft--;
@@ -353,7 +354,7 @@ public class ChatAgentService(
                     // Конкретный день без истории: «а 25 сентября?» — модель отвечает
                     // про текущую смену, журнал не открывая (кейс B.3).
                     if (datedForcedLeft > 0 && historyCalls == 0
-                        && AsksAboutPastShifts(lastQuestion))
+                        && AsksAboutPastDay(lastQuestion))
                     {
                         datedForcedLeft--;
                         toolProgress?.Report("⚙ смотрю журнал за этот день…");
@@ -926,6 +927,26 @@ public class ChatAgentService(
             || q.Contains("семиднев")) return 7;
         return null;
     }
+
+    /// <summary>Вопрос про текущую смену, а не про прошлое. Нужно, чтобы поручень
+    /// «рассказ о прошлом без инструмента» не уводил в историю смен на вопросах
+    /// вида «замечания по смене?» — там get_shift_review уже вызван, а ответ с
+    /// датой в детали считался выдумкой и тянул за собой get_operator_history.</summary>
+    public static bool AsksAboutCurrentShift(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        var t = question.ToLowerInvariant();
+        string[] now =
+        [
+            "сейчас", "сегодня", "текущ", "моя смена", "эта смена", "по смене",
+            "замечани", "в работе",
+        ];
+        return now.Any(k => t.Contains(k, StringComparison.Ordinal));
+    }
+
+    /// <summary>Вопрос именно о ПРОШЛОМ дне, а не о текущей смене.</summary>
+    public static bool AsksAboutPastDay(string? question) =>
+        AsksAboutPastShifts(question) && !AsksAboutCurrentShift(question);
 
     /// <summary>Ответ на личный вопрос, где оператор не назван: «вы на станке …»
     /// вместо «Хомутов А. Б. на станке …». Оператор себя должен узнать — иначе
