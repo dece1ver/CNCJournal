@@ -35,8 +35,23 @@ public static class OperatorStatsFormatter
             return sb.ToString().TrimEnd();
         }
 
-        sb.AppendLine($"Отмечено времени: {review.MarkedMinutes:0} из {review.ShiftMinutes} мин. " +
-                      $"Не отмечено: {review.UnmarkedMinutes:0} мин.");
+        if (review.MarkedMinutes > review.ShiftMinutes)
+        {
+            // Отмечено больше, чем длится смена: минус — это брак ввода, а не
+            // «недомарка». Мастер в суточном отчёте называет это переполнением
+            // журнала; оператору так и надо сказать, иначе он увидит «-5 мин
+            // неотмеченных» и решит, что это нормально (кейс проверки A2/D1).
+            sb.AppendLine($"Отмечено времени: {review.MarkedMinutes:0} мин при длительности " +
+                          $"смены {review.ShiftMinutes} мин — на " +
+                          $"{review.MarkedMinutes - review.ShiftMinutes:0} мин больше. " +
+                          "Это переполнение журнала: интервалы наклад��ются друг на друга. " +
+                          "Проверь, не остались ли незакрытыми интервалы, и обратись к мастеру.");
+        }
+        else
+        {
+            sb.AppendLine($"Отмечено времени: {review.MarkedMinutes:0} из {review.ShiftMinutes} мин. " +
+                          $"Не отмечено: {review.UnmarkedMinutes:0} мин.");
+        }
         sb.AppendLine($"Отмеченные простои: {review.SpecifiedDowntimeMinutes:0} мин " +
                       $"({review.SpecifiedDowntimeRatio:0.#%} рабочего времени).");
         if (review.PartialSetupMinutes > 0)
@@ -49,7 +64,8 @@ public static class OperatorStatsFormatter
                 review.DowntimeRemarks.Select(d => $"{d.Type} {d.Minutes:0} мин")) + ".");
 
         sb.AppendLine();
-        sb.AppendLine("ЧТО ТРЕБУЕТ ДЕЙСТВИЙ ОПЕРАТОРА (пороги те же, что у мастера):");
+        sb.AppendLine("ЧТО ПРОВЕРИТЬ ОПЕРАТОРУ (это не вердикт мастера, а то, что он увидит " +
+            "в суточном отчёте; пороги — те же, что применяет мастер):");
         var actions = new List<string>();
         var unmarkedRatio = review.ShiftMinutes > 0
             ? review.UnmarkedMinutes / review.ShiftMinutes : 0;

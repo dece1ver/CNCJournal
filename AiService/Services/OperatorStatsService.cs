@@ -260,10 +260,16 @@ public sealed class OperatorStatsService(
         }
 
         // Аномалии строк — ровно те, что мастер увидит при проверке.
+        // Аномалии строк — те же, что увидит мастер. КПД 0% при отсутствии
+        // норматива отбрасываем: это следствие отсутствия норматива (оно уже
+        // в списке отдельной строкой), а не отдельная проблема оператора —
+        // иначе он видит «КПД 0% вне нормы 70–120%» и пугается зря (кейс
+        // проверки на прочность A2/D1).
         var anomalies = own
             .SelectMany(p => p.GetAiCheckAnomalies().Select(a =>
                 (Part: $"{p.PartName}{(string.IsNullOrWhiteSpace(p.Order) ? "" : $" ({p.Order})")}",
-                 Text: a.Description)))
+                 Text: a.Description, NoNorm: NoNormative(p))))
+            .Where(x => !(x.NoNorm && x.Text.Contains("КПД", StringComparison.Ordinal)))
             .GroupBy(x => x.Part + "|" + x.Text, StringComparer.Ordinal)
             .Select(g => (Field: g.First().Part, Description: g.First().Text))
             .ToList();
@@ -361,6 +367,11 @@ public sealed class OperatorStatsService(
 
     private static double Round3(double v) =>
         double.IsNaN(v) || double.IsInfinity(v) ? 0 : Math.Round(v, 3);
+
+    /// <summary>В строке нет ни одного норматива — тогда «КПД 0%» беспредметно
+    /// и в список замечаний оператору попадать не должен.</summary>
+    private static bool NoNormative(JournalPart p) =>
+        p.SetupTimePlanForCalc <= 0 && p.ProductionTimePlanForCalc <= 0;
 
     /// <summary>Название смены — только «День» или «Ночь», иначе null
     /// (в аргументах модели бывает мусор вида «{}» или «смена»).</summary>

@@ -82,6 +82,13 @@ public class ChatAgentService(
         // ответ про цифры запрещён (см. блок СТАТИСТИКА в промпте).
         var statsCalls = 0;
         var historyForcedLeft = 1;
+        // Общий бюджет принудительных раундов. Их восемь, а раундов цикла
+        // MaxIterations + 2: без общего ограничения модель могла четыре раунда
+        // подряд только слушать поручения и ни разу не ответить — оператор
+        // получал 500 «4 раунда только звала инструменты» (кейс проверки B6).
+        var forcedRounds = 0;
+        const int MaxForcedRounds = 2;
+        bool CanForce() => forcedRounds < MaxForcedRounds;
         // Поручень периода: «а за неделю покажи» без get_my_stats — цифры из головы.
         var periodForcedLeft = 1;
         // Поручень личного вопроса: «а я?» без get_shift_info/get_active_part.
@@ -99,6 +106,14 @@ public class ChatAgentService(
         var lastStatsDays = 0;
         // Поручень конкретной даты: «а 25 сентября?» без get_operator_history.
         var datedForcedLeft = 1;
+        // Поручни из проверки на прочность: вопрос про простой без списка типов
+        // (кейс C2/C4) и «придумай цифры» (кейс A7).
+        var downtimeForcedLeft = 1;
+        var statsNumbersForcedLeft = 1;
+        // Поручни: вопрос о деньгах (данных нет) и служебные имена тулов в ответе.
+        var payForcedLeft = 1;
+        var toolNameForcedLeft = 1;
+        var downtimeTypesCalls = 0;
         // Поручень «нет данных без тула» и поручень чисел — по одному раунду.
         var noDataForcedLeft = 1;
         var countForcedLeft = 1;
@@ -137,9 +152,10 @@ public class ChatAgentService(
                     // ссылки и цены из головы (кейсы 404/410). Один доп-раунд
                     // на принудительную проверку, максимум дважды.
                     var unverified = FindUnverifiedDesignations(lastContent, messages);
-                    if (unverified.Count > 0 && verifyRoundsLeft > 0)
+                    if (CanForce() && unverified.Count > 0 && verifyRoundsLeft > 0)
                     {
-                        verifyRoundsLeft--;
+                        forcedRounds++;
+                    verifyRoundsLeft--;
                         toolProgress?.Report($"🌐 проверяю {unverified[0]}…");
                         messages.Add(new ChatMessage
                         {
@@ -162,11 +178,12 @@ public class ChatAgentService(
                         verifiedNote = " (обозначение не подтверждено поиском — проверьте у поставщика)";
                     // Рассказ о прошлом без вызова истории — принудительный раунд:
                     // иначе модель отвечает из головы (кейс CNC-513).
-                    if (historyCalls == 0 && historyForcedLeft > 0
+                    if (CanForce() && historyCalls == 0 && historyForcedLeft > 0
                         && !AsksAboutCurrentShift(lastQuestion)
                         && ClaimsPastShifts(lastContent))
                     {
-                        historyForcedLeft--;
+                        forcedRounds++;
+                    historyForcedLeft--;
                         toolProgress?.Report("⚙ проверяю прошлое…");
                         messages.Add(new ChatMessage
                         {
@@ -190,10 +207,11 @@ public class ChatAgentService(
                     // ответила «нет данных» по смене, вообще не открыв журнал).
                     // Поручень бьёт только по вопросам про прошлое: на вопрос про
                     // склад он однажды увёл модель в историю смены (регресс C.4).
-                    if (historyCalls == 0 && noDataForcedLeft > 0
+                    if (CanForce() && historyCalls == 0 && noDataForcedLeft > 0
                         && AsksAboutPastShifts(lastQuestion) && ClaimsNoData(lastContent))
                     {
-                        noDataForcedLeft--;
+                        forcedRounds++;
+                    noDataForcedLeft--;
                         toolProgress?.Report("⚙ проверяю по журналу…");
                         messages.Add(new ChatMessage
                         {
@@ -219,9 +237,10 @@ public class ChatAgentService(
                     // промпта: «Вызову get_shift_info и get_active_part» — и тишина).
                     // Проверяем только когда за весь запрос не было ни одного вызова:
                     // тогда это чистая имитация, а не отсылка к уже сделанному.
-                    if (toolRounds == 0 && promiseForcedLeft > 0 && AnnouncesToolCall(lastContent))
+                    if (CanForce() && toolRounds == 0 && promiseForcedLeft > 0 && AnnouncesToolCall(lastContent))
                     {
-                        promiseForcedLeft--;
+                        forcedRounds++;
+                    promiseForcedLeft--;
                         toolProgress?.Report("⚙ выполняю обещанную проверку…");
                         messages.Add(new ChatMessage
                         {
@@ -245,10 +264,11 @@ public class ChatAgentService(
                     // на «наврал, ты неправ» модель ответила «Да, я ошибся. Проверяю
                     // факты… Что перепроверить?» — признание без единого вызова.
                     // Признание не проверяет журнал: инструмент обязателен.
-                    if (correctionVerifyForcedLeft > 0
+                    if (CanForce() && correctionVerifyForcedLeft > 0
                         && NeedsCorrectionVerify(lastQuestion, toolRounds))
                     {
-                        correctionVerifyForcedLeft--;
+                        forcedRounds++;
+                    correctionVerifyForcedLeft--;
                         toolProgress?.Report("⚙ перепроверяю по журналу…");
                         messages.Add(new ChatMessage
                         {
@@ -272,11 +292,12 @@ public class ChatAgentService(
                         continue;
                     }
                     // Личный вопрос без инструмента: «а я?» — ответ из головы (кейс A.2).
-                    if (selfForcedLeft > 0
+                    if (CanForce() && selfForcedLeft > 0
                         && AsksAboutSelf(lastQuestion)
                         && shiftInfoCalls == 0 && activePartCalls == 0)
                     {
-                        selfForcedLeft--;
+                        forcedRounds++;
+                    selfForcedLeft--;
                         toolProgress?.Report("⚙ смотрю свою смену…");
                         messages.Add(new ChatMessage
                         {
@@ -299,12 +320,13 @@ public class ChatAgentService(
                     }
                     // Личный вопрос, а оператор не назван (кейс A.2: «вы на станке
                     // …» вместо «Хомутов А. Б. на станке …»).
-                    if (selfNameForcedLeft > 0
+                    if (CanForce() && selfNameForcedLeft > 0
                         && shiftInfoCalls > 0
                         && AsksAboutSelf(lastQuestion)
                         && OmitsOperator(lastContent, ctx?.OperatorName))
                     {
-                        selfNameForcedLeft--;
+                        forcedRounds++;
+                    selfNameForcedLeft--;
                         toolProgress?.Report("⚙ уточняю, кто вы…");
                         messages.Add(new ChatMessage
                         {
@@ -326,12 +348,13 @@ public class ChatAgentService(
                     // Инструмент по дню вернул пусто, а ответ ушёл в другую тему
                     // (кейс B.3: на «а 25 сентября?» история пуста, а ответ — про
                     // текущую смену). Отсутствие данных — это то, что вернул тул.
-                    if (emptyDayForcedLeft > 0
+                    if (CanForce() && emptyDayForcedLeft > 0
                         && historyEmptyCalls > 0
                         && AsksAboutPastDay(lastQuestion)
                         && HidesEmptyDay(lastContent))
                     {
-                        emptyDayForcedLeft--;
+                        forcedRounds++;
+                    emptyDayForcedLeft--;
                         toolProgress?.Report("⚙ проверяю, есть ли записи…");
                         messages.Add(new ChatMessage
                         {
@@ -353,10 +376,11 @@ public class ChatAgentService(
                     }
                     // Конкретный день без истории: «а 25 сентября?» — модель отвечает
                     // про текущую смену, журнал не открывая (кейс B.3).
-                    if (datedForcedLeft > 0 && historyCalls == 0
+                    if (CanForce() && datedForcedLeft > 0 && historyCalls == 0
                         && AsksAboutPastDay(lastQuestion))
                     {
-                        datedForcedLeft--;
+                        forcedRounds++;
+                    datedForcedLeft--;
                         toolProgress?.Report("⚙ смотрю журнал за этот день…");
                         messages.Add(new ChatMessage
                         {
@@ -380,10 +404,11 @@ public class ChatAgentService(
                     // Период назван, а days в вызове другой: «за неделю» ушло в 30
                     // дней (кейс B.2). Число дней — из вопроса, не по умолчанию.
                     var wantDays = ExpectedDays(lastQuestion);
-                    if (periodDaysForcedLeft > 0 && statsCalls > 0 && wantDays.HasValue
+                    if (CanForce() && periodDaysForcedLeft > 0 && statsCalls > 0 && wantDays.HasValue
                         && lastStatsDays != wantDays.Value)
                     {
-                        periodDaysForcedLeft--;
+                        forcedRounds++;
+                    periodDaysForcedLeft--;
                         toolProgress?.Report($"⚙ пересчитываю за {wantDays} дн…");
                         messages.Add(new ChatMessage
                         {
@@ -405,11 +430,125 @@ public class ChatAgentService(
                             machine, lastStatsDays, wantDays.Value);
                         continue;
                     }
-                    // Вопрос про период без инструмента — цифры из головы (кейс B.2).
-                    if (statsCalls == 0 && periodForcedLeft > 0
+                                                    // Вопрос о зарплате: таких данных в журнале нет (кейс B2 —
+                    // модель отвечала количеством деталей).
+                    if (CanForce() && payForcedLeft > 0 && AsksAboutPay(lastQuestion))
+                    {
+                        payForcedLeft--;
+                        forcedRounds++;
+                        toolProgress?.Report("⚙ поясняю, что есть в журнале…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». Вопрос о деньгах, а таких " +
+                                "данных в электронном журнале нет: зарплата, премии, " +
+                                "штрафы и увольнение ведутся не здесь. Ответь одним-" +
+                                "двумя предложениями: таких данных в ЭЖ нет, это знает " +
+                                "мастер и отдел кадров. Количество деталей, смен и время " +
+                                "не приводи и новых вызовов не делай.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка вопроса о деньгах", machine);
+                        continue;
+                    }
+                    // Служебные имена инструментов в ответе — переписываем текст.
+                    if (toolNameForcedLeft > 0 && LeaksToolName(lastContent))
+                    {
+                        toolNameForcedLeft--;
+                        forcedRounds++;
+                        toolProgress?.Report("⚙ убираю служебные слова…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Перепиши тот же ответ по исходному " +
+                                "вопросу «" + Trunc(lastQuestion, 100) + "» без новых " +
+                                "вызовов инструментов. В тексте остались внутренние имена " +
+                                "инструментов — оператор про них не знает, и в его вопросе " +
+                                "мастеру это выглядит как служебная белиберда. Замени на " +
+                                "слова: «смотрю смену», «читаю инструкцию», «смотрю " +
+                                "остатки на складе». Смысл ответа и цифры не меняй.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка имён тулов в ответе", machine);
+                        continue;
+                    }
+    // Вопрос про простой без списка типов (кейс C2/C4): правило
+                    // инструкции живёт в ответе list_operator_downtime_types.
+                    if (CanForce() && downtimeForcedLeft > 0
+                        && downtimeTypesCalls == 0
+                        && AsksAboutDowntime(lastQuestion))
+                    {
+                        forcedRounds++;
+                    downtimeForcedLeft--;
+                        forcedRounds++;
+                        toolProgress?.Report("⚙ смотрю типы простоя…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». Простой отмечается только " +
+                                "типами из списка клиента — вызови " +
+                                "list_operator_downtime_types и ответь по нему: какой тип " +
+                                "подходит и отмечать ли его вообще. Важно: простой " +
+                                "отмечают, только если потребность возникла во время " +
+                                "работы; если станок уже был сломан, когда оператор " +
+                                "пришёл, ничего отмечать не надо — это заполнит мастер.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка простоя без типов", machine);
+                        continue;
+                    }
+                    // «Придумай цифры» / «приведи пример» — в журнал такие числа
+                    // попадут как настоящие (кейс A7).
+                    // Правка текста: новых вызовов не требуется, поэтому бюджет
+                    // поручней не тратим — иначе утечка имён оставалась (кейс A4/D3).
+                    if (statsNumbersForcedLeft > 0
+                        && statsCalls == 0 && historyCalls == 0 && shiftInfoCalls == 0
+                        && ShowsHypotheticalNumbers(lastContent))
+                    {
+                        forcedRounds++;
+                    statsNumbersForcedLeft--;
+                        forcedRounds++;
+                        toolProgress?.Report("⚙ сверяю цифры…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». В твоём ответе есть цифры, " +
+                                "поданные как пример или гипотеза, а инструмент не " +
+                                "вызван. Примеры и «допустимые значения» запрещены: " +
+                                "оператор переносит их в отчёт. Либо вызови " +
+                                "get_my_stats / get_operator_history и назови реальные " +
+                                "цифры, либо прямо скажи, что данных нет. Своих чисел не " +
+                                "выдумывать.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка выдуманных цифр", machine);
+                        continue;
+                    }
+    // Вопрос про период без инструмента — цифры из головы (кейс B.2).
+                    if (CanForce() && statsCalls == 0 && periodForcedLeft > 0
                         && AsksAboutPeriod(lastQuestion))
                     {
-                        periodForcedLeft--;
+                        forcedRounds++;
+                    periodForcedLeft--;
                         toolProgress?.Report("⚙ считаю за период…");
                         messages.Add(new ChatMessage
                         {
@@ -436,11 +575,12 @@ public class ChatAgentService(
                     // но текстом оно держится не всегда (кейс регресса D.3: на «всё
                     // не так, проверь ещё раз» модель ответила «Дозор бдит — смена под
                     // присмотром» — ни «ошибся», ни «прав»).
-                    if (correctionForcedLeft > 0
+                    if (CanForce() && correctionForcedLeft > 0
                         && WebSearchService.IsCorrection(lastQuestion)
                         && !AcknowledgesMistake(lastContent))
                     {
-                        correctionForcedLeft--;
+                        forcedRounds++;
+                    correctionForcedLeft--;
                         toolProgress?.Report("⚙ исправляюсь…");
                         messages.Add(new ChatMessage
                         {
@@ -463,9 +603,10 @@ public class ChatAgentService(
                     // инструментов, — цифра из головы (кейс B.4: «Итого: 3 детали
                     // (7 штук)» при четырёх строках и 7.2 шт. в туле).
                     var invented = FindUnverifiedCounts(lastContent, messages);
-                    if (invented.Count > 0 && countForcedLeft > 0)
+                    if (CanForce() && invented.Count > 0 && countForcedLeft > 0)
                     {
-                        countForcedLeft--;
+                        forcedRounds++;
+                    countForcedLeft--;
                         toolProgress?.Report($"⚙ сверяю {invented[0]}…");
                         messages.Add(new ChatMessage
                         {
@@ -721,6 +862,7 @@ public class ChatAgentService(
                         toolProgress?.Report(DescribeCall(call.Name));
                         if (call.Name == "get_shift_info") shiftInfoCalls++;
                         if (call.Name == "get_active_part") activePartCalls++;
+                        if (call.Name == "list_operator_downtime_types") downtimeTypesCalls++;
                         var result = ChatTools.Execute(ctx, call.Name, call.Arguments);
                         messages.Add(new ChatMessage { Role = "tool", Content = result });
                         logger.LogInformation(
@@ -737,8 +879,45 @@ public class ChatAgentService(
                 return new ChatAgentResult(lastContent.Trim(), toolRounds)
                 { WebSources = webSources };
             }
-            return new ChatAgentResult("", toolRounds,
-                $"Модель {MaxIterations} раунда подряд только звала инструменты без ответа.")
+            // Раунды кончились, а текста нет: вместо отказаoperator'у — один
+            // финальный раунд «ответь по уже собранным данным», без новых вызовов.
+            // Раньше оператор получал HTTP 500 «4 раунда только звала инструменты»
+            // (кейс проверки на прочность B6).
+            if (toolRounds > 0)
+            {
+                try
+                {
+                    messages.Add(new ChatMessage
+                    {
+                        Role = "user",
+                        Content = "[Итог] Инструменты уже вызваны, их результаты выше. " +
+                            "Новых вызовов не делай. Ответь текстом по тому, что вернули " +
+                            "инструменты, коротко и по делу. Если данных нет — так и скажи.",
+                    });
+                    // Пустой список, а не null: OllamaService разворачивает tools
+                    // через Select и на null падал (финальный раунд не запускался).
+                    var final = await chat.ChatAsync(
+                        messages, [], format: null, think: Thinking, cts.Token,
+                        model: model, temperature: temperature ?? Temperature,
+                        thinkingProgress: null, tokenProgress: tokenProgress);
+                    if (!string.IsNullOrWhiteSpace(final.Content))
+                    {
+                        lastContent = StripSearchDump(final.Content!);
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): финальный раунд по собранным данным", machine);
+                        return new ChatAgentResult(lastContent.Trim(), toolRounds)
+                        { WebSources = webSources };
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogWarning(ex, "Чат-агент ({Machine}): финальный раунд не удался", machine);
+                }
+            }
+            return new ChatAgentResult("",
+                toolRounds,
+                $"Не удалось собрать ответ: инструменты отработали, но текст не получился. " +
+                $"Спросите ещё раз или сформулируйте вопрос покороче.")
             { WebSources = webSources };
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested && !ct.IsCancellationRequested)
@@ -928,6 +1107,78 @@ public class ChatAgentService(
         return null;
     }
 
+    /// <summary>Вопрос про отметку простоя: какой тип, отмечать ли, машина уже
+    /// сломана. Список типов приходит инструментом, и именно там живёт правило
+    /// инструкции «отмечать только если потребность возникла во время работы».
+    /// Без вызова модель отвечала по складу или уходила в историю смен
+    /// (кейсы проверки C2 и C4). Чистая функция.</summary>
+    public static bool AsksAboutDowntime(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        var t = question.ToLowerInvariant();
+        // Основы слов, а не словоформы: «сломал», «сломало», «сломан» — одно
+        // и то же (кейс проверки C2 «станок был уже сломан» не попадал в список).
+        string[] downtime =
+        [
+            "простой", "простои", "отмет", "ремонт", "слом", "полом", "не работает",
+            "не крутит", "не включа", "не запуска", "не тянет", "течёт", "течет", "сож",
+            "подтека", "завис", "застрял", "перегрев", "ошибк", "авария", "отказ",
+            "жду техподдержку", "жду ремонт", "жду мастера", "не могу найти инструмент",
+            "инструмента нет", "инструмент не", "подождал", "ждали",
+        ];
+        if (downtime.Any(k => t.Contains(k, StringComparison.Ordinal))) return true;
+        // «на складе нет инструмента» — тоже простой поиска и получения.
+        return t.Contains("складе", StringComparison.Ordinal)
+            && t.Contains("инструмент", StringComparison.Ordinal);
+    }
+
+    /// <summary>Вопрос о деньгах вне журнала: зарплата, премия, штраф, оклад,
+    /// увольнение, разнарядка. Таких данных в ЭЖ нет, и модель на такие вопросы
+    /// отвечала количеством деталей (кейс проверки B2). Чистая функция.</summary>
+    public static bool AsksAboutPay(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        var t = question.ToLowerInvariant();
+        string[] pay =
+        [
+            "зарплат", "оклад", "преми", "штраф", "поощрен", "увол", "распоряжение",
+            "разнарядк", "заработал", "заработать", "получу", "выплат", "оклад",
+        ];
+        return pay.Any(k => t.Contains(k, StringComparison.Ordinal));
+    }
+
+    /// <summary>Внутренние имена инструментов в ответе оператору — брак: он не
+    /// знает про тулы и переносит служебные слова в свой вопрос мастеру
+    /// (кейса проверки: «Проверьте через `check_db`», «открой документ через
+    /// `read_doc`»). Чистая функция.</summary>
+    public static bool LeaksToolName(string? reply)
+    {
+        if (string.IsNullOrWhiteSpace(reply)) return false;
+        return ToolNames.Any(name => reply.Contains(name, StringComparison.Ordinal));
+    }
+
+    private static readonly string[] ToolNames =
+    [
+        "get_shift_info", "get_active_part", "get_operator_info", "get_operator_history",
+        "get_shift_review", "get_my_stats", "list_operator_downtime_types", "list_docs",
+        "search_docs", "read_doc", "stock_search", "check_db", "web_search",
+        // файл инструкции — тоже внутреннее имя: оператору достаточно «инструкция».
+        "instrukciya_operatora.md", "reglament.md",
+    ];
+
+    /// <summary>В ответе цифры поданы как пример или гипотеза, а инструмент
+    /// статистики не вызывался: в журнале такие числа всё равно окажутся в
+    /// отчёте (кейс проверки A7: «Пример гипотетических значений: смен 20»).
+    /// Чистая функция.</summary>
+    public static bool ShowsHypotheticalNumbers(string? reply)
+    {
+        if (string.IsNullOrWhiteSpace(reply)) return false;
+        var t = reply.ToLowerInvariant();
+        string[] marks = ["гипотетич", "пример", "допустим", "условно", "предположим", "для ознакомления"];
+        if (!marks.Any(k => t.Contains(k, StringComparison.Ordinal))) return false;
+        return System.Text.RegularExpressions.Regex.IsMatch(t, @"\d");
+    }
+
     /// <summary>Вопрос про текущую смену, а не про прошлое. Нужно, чтобы поручень
     /// «рассказ о прошлом без инструмента» не уводил в историю смен на вопросах
     /// вида «замечания по смене?» — там get_shift_review уже вызван, а ответ с
@@ -944,9 +1195,27 @@ public class ChatAgentService(
         return now.Any(k => t.Contains(k, StringComparison.Ordinal));
     }
 
-    /// <summary>Вопрос именно о ПРОШЛОМ дне, а не о текущей смене.</summary>
-    public static bool AsksAboutPastDay(string? question) =>
-        AsksAboutPastShifts(question) && !AsksAboutCurrentShift(question);
+    /// <summary>Вопрос именно о ПРОШЛОМ дне. Только явные признаки прошлого:
+    /// прошедшее время, вчера/дни недели, «прошл…», конкретная дата. Слова «смен»,
+    /// «неделя», «месяц» без такого признака сюда не годят — «пришёл на смену»
+    /// это прошлое время смены, а не прошлый день (кейс проверки C2).</summary>
+    public static bool AsksAboutPastDay(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        if (AsksAboutCurrentShift(question)) return false;
+        var t = question.ToLowerInvariant();
+        string[] strong =
+        [
+            "делал", "делала", "делали", "работал", "работала", "работали", "работать",
+            "вчера", "позавчера", "на прошлой", "в прошлом", "прошлый", "прошлой",
+            "прошлые", "прошлых", "неделю назад", "месяц назад", "год назад",
+            "истори", "раньше", "успевал", "успевала", "было", "были", "сделал",
+            "вторник", "понедельник", "вторник", "сред", "среда", "среду", "четверг",
+            "пятниц", "суббот", "воскресень",
+        ];
+        if (strong.Any(k => t.Contains(k, StringComparison.Ordinal))) return true;
+        return DateInQuestion.IsMatch(t);
+    }
 
     /// <summary>Ответ на личный вопрос, где оператор не назван: «вы на станке …»
     /// вместо «Хомутов А. Б. на станке …». Оператор себя должен узнать — иначе
@@ -973,14 +1242,15 @@ public class ChatAgentService(
     public static bool AsksAboutSelf(string? question)
     {
         if (string.IsNullOrWhiteSpace(question)) return false;
-        var t = question.ToLowerInvariant().Trim(' ', '?', '.', '!');
+        var t = question.ToLowerInvariant();
+        // Только целые слова: «когд**а я** пришёл» — это не «а я?».
         string[] self =
         [
-            "а я", "кто я", "я кто", "моя смена", "моя деталь", "моя работа",
-            "что я делаю", "чем я занят", "где я", "моё место", "мое место",
+            "кто я", "я кто", "моя смена", "моя деталь", "моя работа", "моё место",
+            "мое место", "чем я занят", "что я делаю", "где я",
         ];
-        return self.Any(k => t == k || t.StartsWith(k + " ", StringComparison.Ordinal)
-            || t.Contains(k, StringComparison.Ordinal));
+        if (self.Any(k => t.Contains(k, StringComparison.Ordinal))) return true;
+        return System.Text.RegularExpressions.Regex.IsMatch(t, @"(^|\W)а я($|\W)");
     }
 
     /// <summary>Вопрос про период («за неделю покажи», «итоги за месяц»,

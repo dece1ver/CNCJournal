@@ -56,7 +56,15 @@ public class ChatController(
                 toolProgress: null, tokenProgress: null, ct: ct);
 
             if (outcome.Error != null)
-                return StatusCode(500, new ChatResponse { Error = outcome.Error });
+            {
+                // Ответ не собрался (модель молчала или упала) — это не сбой сервиса,
+                // а исход модели: отдаём 200 с текстом, иначе клиент покажет оператору
+                // «получить ответ не удалось» вместо внятной просьбы повторить.
+                logger.LogWarning(
+                    "Чат ({Machine}): ответ не собран — {Reason}",
+                    request.Context?.Machine ?? "(chat)", outcome.Error);
+                return Ok(new ChatResponse { Reply = outcome.Error, PromptVersion = build.Version });
+            }
 
             var response = ToResponse(request, build.Version, webResults, outcome);
             logger.LogInformation(
