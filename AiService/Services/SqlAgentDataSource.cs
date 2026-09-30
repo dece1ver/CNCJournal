@@ -241,30 +241,9 @@ public sealed class SqlAgentDataSource(IConfiguration config, ILogger<SqlAgentDa
         }
     }
 
-    public async Task<IReadOnlyList<string>> GetDowntimeReasonsAsync(CancellationToken ct)
-    {
-        try
-        {
-            await using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync(ct);
-            const string sql = "SELECT Reason FROM cnc_downtime_reasons ORDER BY Reason;";
-            var result = new List<string>();
-            await using var cmd = new SqlCommand(sql, connection);
-            cmd.CommandTimeout = _timeoutSecs;
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct) && result.Count < _maxRows)
-            {
-                if (!reader.IsDBNull(0))
-                    result.Add(reader.GetString(0));
-            }
-            return result;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "БД недоступна (справочник простоев), отвечаем пустотой");
-            return [];
-        }
-    }
+    // Чтения cnc_downtime_reasons здесь намеренно нет: справочник причин простоя
+    // ЦЕЛОЙ смены нужен мастеру, а не оператору, и в чат оператора он не должен
+    // попадать (см. IAgentDataSource).
 
     // Зеркало PartsDb.ReadPartsHistoryAsync: TOP N по (деталь, чужой заказ,
     // станок, установка, окно дат), сортировка ShiftDate/StartSetupTime DESC.

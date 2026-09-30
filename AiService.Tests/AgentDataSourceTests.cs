@@ -27,9 +27,6 @@ public class AgentDataSourceTests
 
         public Task<DbStatusDto> GetDbStatusAsync(CancellationToken ct)
             => Task.FromResult(new DbStatusDto(false, "stub", 0, 0));
-
-        public Task<IReadOnlyList<string>> GetDowntimeReasonsAsync(CancellationToken ct)
-            => Task.FromResult<IReadOnlyList<string>>([]);
     }
 
     private static AnalyzeRequest Request(params PartContext[] parts) => new()

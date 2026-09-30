@@ -43,6 +43,13 @@ public class ElogChatContext
     public bool ShiftStarted { get; set; }
     public int PartsCount { get; set; }
     public ChatActivePartDto? ActivePart { get; set; }
+
+    /// <summary> Типы простоя, которые оператор отмечает у себя в eLog (список
+    /// клиента: eLog/Infrastructure/Text.cs, DownTimes). НЕ путать со справочником
+    /// cnc_downtime_reasons — это причины простоя ЦЕЛОЙ смены, их выбирает мастер.
+    /// Пустой список означает, что клиент его не прислал: тогда модель не имеет
+    /// права называть типы и говорит «отметь по своей инструкции». </summary>
+    public List<string> OperatorDowntimeTypes { get; set; } = [];
 }
 
 public class ChatRequest

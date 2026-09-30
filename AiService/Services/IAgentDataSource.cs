@@ -38,8 +38,9 @@ public interface IAgentDataSource
     /// </summary>
     Task<DbStatusDto> GetDbStatusAsync(CancellationToken ct);
 
-    /// <summary>
-    /// Справочник типов простоев (cnc_downtime_reasons). Пусто — нет источника.
-    /// </summary>
-    Task<IReadOnlyList<string>> GetDowntimeReasonsAsync(CancellationToken ct);
+    // Справочника причин простоя целой смены (cnc_downtime_reasons) тут нет
+    // намеренно: это список МАСТЕРА, а чат обслуживает оператора, чьи типы
+    // простоя живут в клиенте (eLog → ElogChatContext.OperatorDowntimeTypes).
+    // Пока метод существовал, модель получала мастерский список и предлагала
+    // оператору «Ремонт оборудования» — варианта, которого в его ЭЖ нет.
 }

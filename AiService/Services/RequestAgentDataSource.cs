@@ -28,7 +28,4 @@ public sealed class RequestAgentDataSource : IAgentDataSource
 
     public Task<DbStatusDto> GetDbStatusAsync(CancellationToken ct)
         => Task.FromResult(new DbStatusDto(false, "Нет строки подключения", 0, 0));
-
-    public Task<IReadOnlyList<string>> GetDowntimeReasonsAsync(CancellationToken ct)
-        => Task.FromResult<IReadOnlyList<string>>([]);
 }

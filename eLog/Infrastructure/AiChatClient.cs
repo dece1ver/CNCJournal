@@ -63,6 +63,10 @@ namespace eLog.Infrastructure
         public bool ShiftStarted { get; set; }
         [JsonPropertyName("partsCount")]
         public int PartsCount { get; set; }
+        /// <summary> Типы простоя оператора из Text.DownTimes: мастерский справочник
+        /// причин простоя целой смены сюда НЕ попадает. </summary>
+        [JsonPropertyName("operatorDowntimeTypes")]
+        public List<string> OperatorDowntimeTypes { get; set; } = new();
         [JsonPropertyName("activePart")]
         public ChatActivePartDto? ActivePart { get; set; }
     }

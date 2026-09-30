@@ -536,8 +536,7 @@ public class ChatTests
     private sealed class StubDataSource(
         IReadOnlyList<OperatorInfo>? operators = null,
         OperatorHistoryDto? operatorHistory = null,
-        DbStatusDto? dbStatus = null,
-        IReadOnlyList<string>? downtimeReasons = null) : IAgentDataSource
+        DbStatusDto? dbStatus = null) : IAgentDataSource
     {
         public Task<PartsHistoryDto?> GetPartHistoryAsync(
             AnalyzeRequest request, string partName, int? setup, CancellationToken ct)
@@ -552,9 +551,6 @@ public class ChatTests
 
         public Task<DbStatusDto> GetDbStatusAsync(CancellationToken ct)
             => Task.FromResult(dbStatus ?? new DbStatusDto(false, "stub", 0, 0));
-
-        public Task<IReadOnlyList<string>> GetDowntimeReasonsAsync(CancellationToken ct)
-            => Task.FromResult(downtimeReasons ?? []);
     }
 
     [Fact]
@@ -840,10 +836,12 @@ public class ChatTests
     [Fact]
     public void FormatDowntimeReasons_ClosedList()
     {
+        // Метод остался для диагностики и агентом НЕ вызывается: мастерский
+        // справочник не должен попадать в ответ оператору.
         var text = ChatAgentService.FormatDowntimeReasons(["Другое", "Ремонт оборудования"]);
 
         Assert.Contains("Другое", text);
-        Assert.Contains("закрытый список", text);
+        Assert.Contains("мастера", text);
     }
 
     [Fact]
@@ -851,7 +849,59 @@ public class ChatTests
     {
         var text = ChatAgentService.FormatDowntimeReasons([]);
 
-        Assert.Contains("не выдумывай", text);
+        Assert.Contains("список мастера", text);
+    }
+
+    [Fact]
+    public async Task Agent_OperatorDowntimeTypes_FromClientContext()
+    {
+        // Кейс кампании A.6: мастерский справочник кормил модель, и на «сломался
+        // патрон» она отвечала «Ремонт оборудования» — варианта, которого в ЭЖ
+        // оператора нет. Теперь список приходит от клиента.
+        var ctx = new ElogChatContext
+        {
+            Machine = "Mazak QTS350", OperatorName = "Хомутов А. Б.",
+            OperatorDowntimeTypes =
+            [
+                "Написание УП", "Обслуживание", "Поиск и получение инструмента",
+                "Замена инструмента", "Помощь / обучение", "Обращение в другие службы",
+                "Изготовление оснастки и калибров", "Отказ оборудования",
+            ],
+        };
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult
+            {
+                Content = "",
+                ToolCalls = [new AgentToolCall
+                    { Id = "c1", Name = "list_operator_downtime_types", Arguments = "{}" }],
+            },
+            new ChatResult { Content = "Отмечай «Отказ оборудования»." },
+        ]));
+        var build = Builder().BuildChatMessages(Request(), [], 20, 12000);
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, ctx, null, null, null, null, CancellationToken.None);
+
+        Assert.Null(res.Error);
+        Assert.Equal("Отмечай «Отказ оборудования».", res.Reply);
+        var toolMsg = Assert.Single(stub.SeenMessages[^1], m => m.Role == "tool");
+        Assert.Contains("Отказ оборудования", toolMsg.Content);
+        // Мастерские названия в списке типов оператора быть не должны.
+        Assert.DoesNotContain(" • Ремонт оборудования", toolMsg.Content);
+        Assert.DoesNotContain(" • Другое", toolMsg.Content);
+        Assert.Contains("список мастера", toolMsg.Content);
+    }
+
+    [Fact]
+    public void OperatorDowntimeTypes_WithoutClientList_NoNames()
+    {
+        // Старый клиент или тест: списка нет — типы не называем, а говорим, что
+        // отметить по своей инструкции.
+        var text = ChatTools.Execute(new ElogChatContext(), "list_operator_downtime_types", "{}");
+
+        Assert.Contains("не пришёл", text);
+        Assert.Contains("инструкции", text);
+        Assert.DoesNotContain("Отказ оборудования", text);
     }
 
     [Fact]
@@ -880,26 +930,14 @@ public class ChatTests
     }
 
     [Fact]
-    public async Task Agent_DowntimeReasons_UsesList()
+    public void Agent_NoMasterDowntimeTool()
     {
-        var stub = new StubChat(new Queue<ChatResult>([
-            new ChatResult
-            {
-                Content = "",
-                ToolCalls = [new AgentToolCall { Id = "c1", Name = "list_downtime_reasons", Arguments = "{}" }],
-            },
-            new ChatResult { Content = "Отмечай Другое." },
-        ]));
-        var source = new StubDataSource(downtimeReasons: ["Другое", "Ремонт оборудования"]);
-        var build = Builder().BuildChatMessages(Request(), [], 20, 12000);
+        // Справочника причин простоя целой смены в чате оператора быть не должно:
+        // именно он предлагал оператору «Ремонт оборудования», которого в его ЭЖ нет.
+        var names = ChatTools.Definitions.Select(d => d.Name).ToList();
 
-        var res = await Agent(stub, source: source).RunAsync(
-            build.System, build.Messages, Context(), null, null, null, null, CancellationToken.None);
-
-        Assert.Null(res.Error);
-        Assert.Equal("Отмечай Другое.", res.Reply);
-        var toolMsg = Assert.Single(stub.SeenMessages[^1], m => m.Role == "tool");
-        Assert.Contains("Ремонт оборудования", toolMsg.Content);
+        Assert.DoesNotContain("list_downtime_reasons", names);
+        Assert.Contains("list_operator_downtime_types", names);
     }
 
     private static (DocsService Svc, string Dir) TempDocs(params (string Name, string Text)[] files)

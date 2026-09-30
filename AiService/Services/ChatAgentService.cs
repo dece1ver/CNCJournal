@@ -425,18 +425,6 @@ public class ChatAgentService(
                             "Чат-агент ({Machine}): check_db → available={A}",
                             machine, status.Available);
                     }
-                    else if (call.Name == "list_downtime_reasons")
-                    {
-                        toolProgress?.Report("⚙ смотрю справочник простоев…");
-                        var reasons = await dataSource.GetDowntimeReasonsAsync(cts.Token);
-                        messages.Add(new ChatMessage
-                        {
-                            Role = "tool", Content = FormatDowntimeReasons(reasons),
-                        });
-                        logger.LogInformation(
-                            "Чат-агент ({Machine}): list_downtime_reasons → {N}",
-                            machine, reasons.Count);
-                    }
                     else
                     {
                         toolProgress?.Report(DescribeCall(call.Name));
@@ -1086,12 +1074,20 @@ public class ChatAgentService(
     /// Справочник типов простоя: закрытый список, выбирать только из него.
     /// Пусто — справочник недоступен, тип не выдумывать, спросить мастера.
     /// </summary>
+    /// <summary>
+    /// Справочник причин простоя целой смены (мастерский, cnc_downtime_reasons)
+    /// в чат оператора НЕ выводится: оператор такие типы не выбирает. Метод оставлен
+    /// только для диагностических нужд и намеренно не вызывается агентом — раньше он
+    /// кормил модель мастерским списком, и она советовала «Ремонт оборудования» там,
+    /// где оператор такого варианта в ЭЖ не видит.
+    /// </summary>
     public static string FormatDowntimeReasons(IReadOnlyList<string> reasons)
     {
         if (reasons.Count == 0)
-            return "Справочник типов простоя недоступен. Тип не выдумывай — " +
-                   "попроси оператора уточнить у мастера.";
-        return "Типы простоя (закрытый список, выбирай только из него):\n" +
+            return "Справочник причин простоя ЦЕЛОЙ смены недоступен. Это список мастера; " +
+                   "оператор такие типы не выбирает и называть их не нужно.";
+        return "Причины простоя целой смены (справочник мастера, cnc_downtime_reasons) — " +
+               "оператор их не отмечает, не предлагай их как вариант:\n" +
                string.Join("\n", reasons.Select(r => $" • {r}"));
     }
 }

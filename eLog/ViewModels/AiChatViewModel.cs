@@ -306,6 +306,21 @@ namespace eLog.ViewModels
                 OperatorName = settings.CurrentOperator?.DisplayName ?? "",
                 ShiftStarted = settings.IsShiftStarted,
                 PartsCount = parts?.Count ?? 0,
+                // Типы простоя, которые оператор отмечает у себя, — из клиента:
+                // список захардкожен в eLog (Text.DownTimes), и он НЕ совпадает
+                // со справочником причин простоя целой смены (cnc_downtime_reasons),
+                // который выбирает мастер. Единственный источник — здесь.
+                OperatorDowntimeTypes = new List<string>
+                {
+                    Text.DownTimes.CreateNcProgram,
+                    Text.DownTimes.Maintenance,
+                    Text.DownTimes.ToolSearching,
+                    Text.DownTimes.ToolChanging,
+                    Text.DownTimes.Mentoring,
+                    Text.DownTimes.ContactingDepartments,
+                    Text.DownTimes.FixtureMaking,
+                    Text.DownTimes.HardwareFailure,
+                },
                 ActivePart = active == null ? null : new ChatActivePartDto
                 {
                     Name = active.Name ?? "",
