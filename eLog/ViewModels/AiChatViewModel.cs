@@ -288,14 +288,22 @@ namespace eLog.ViewModels
         /// Снимок «происходящего»: станок, смена, оператор, активная деталь
         /// (первая незавершённая, иначе верхняя) + её последние простои.
         /// </summary>
-        /// <summary> Дата смены по календарю: ночная смена после 08:00 относится
-    /// к предыдущим суткам (принимает смену в 02:00 и записывает её за вчера). </summary>
+        /// <summary> Дата смены по её началу: ночная смена, которая идёт после полуночи
+    /// (до 09:00), относится к предыдущим суткам — так же, как пишет в базу сам
+    /// eLog (Infrastructure/Extensions/Parts.cs: ночная смена, завершённая раньше
+    /// 09:00, dated предыдущим днём). Пример: закончил в 3 часа 21-го — смена
+    /// началась 20-го в 19:00, детали относятся к 20-му. </summary>
+    /// <summary>Час, после которого ночная смена считается сегодняшней (09:00).
+    /// Держим в одном числе с записью в базу — Infrastructure/Extensions/Parts.cs.</summary>
+    private const int ShiftDateNightCutoverHour = 9;
+
     private static string ShiftDateOfToday(string? shift)
     {
-        var date = DateTime.Now.Hour < 8
+        var now = DateTime.Now;
+        var date = now.Hour < ShiftDateNightCutoverHour
             && string.Equals(shift, Text.NightShift, StringComparison.OrdinalIgnoreCase)
-            ? DateTime.Today.AddDays(-1)
-            : DateTime.Today;
+            ? now.Date.AddDays(-1)
+            : now.Date;
         return date.ToString("yyyy-MM-dd");
     }
 

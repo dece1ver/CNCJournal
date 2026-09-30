@@ -1,4 +1,5 @@
 using AiService.Models;
+using Shifts = remeLog.Infrastructure.Types.Shifts;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -81,11 +82,31 @@ public class ChatAgentService(
         // ответ про цифры запрещён (см. блок СТАТИСТИКА в промпте).
         var statsCalls = 0;
         var historyForcedLeft = 1;
+        // Поручень периода: «а за неделю покажи» без get_my_stats — цифры из головы.
+        var periodForcedLeft = 1;
+        // Поручень личного вопроса: «а я?» без get_shift_info/get_active_part.
+        var selfForcedLeft = 1;
+        var shiftInfoCalls = 0;
+        var activePartCalls = 0;
+        // Поручень фамилии: личный вопрос без имени оператора (кейс A.2).
+        var selfNameForcedLeft = 1;
+        // Поручень пустого дня: инструмент по конкретной дате вернул 0 строк,
+        // а в ответе нет слов про отсутствие данных (кейс B.3).
+        var emptyDayForcedLeft = 1;
+        var historyEmptyCalls = 0;
+        // Поручень периода: days в вызове не совпал с названным в вопросе.
+        var periodDaysForcedLeft = 1;
+        var lastStatsDays = 0;
+        // Поручень конкретной даты: «а 25 сентября?» без get_operator_history.
+        var datedForcedLeft = 1;
         // Поручень «нет данных без тула» и поручень чисел — по одному раунду.
         var noDataForcedLeft = 1;
         var countForcedLeft = 1;
         var promiseForcedLeft = 1;
         var correctionForcedLeft = 1;
+        // Поручень «признал, но не перепроверил»: поправка оператора обязана быть
+        // проверена инструментом, иначе это извинение вместо исправления.
+        var correctionVerifyForcedLeft = 1;
         // Последний вопрос оператора нужен нуджам обоих поручней: без цитаты
         // модель уходит с исходной темы (кейс C.4).
         var lastQuestion = LastUserQuestion(messages);
@@ -217,6 +238,197 @@ public class ChatAgentService(
                         });
                         logger.LogInformation(
                             "Чат-агент ({Machine}): автопроверка обещанного вызова", machine);
+                        continue;
+                    }
+                    // Признал ошибку, но факты не перепроверил. Кейс кампании D.2:
+                    // на «наврал, ты неправ» модель ответила «Да, я ошибся. Проверяю
+                    // факты… Что перепроверить?» — признание без единого вызова.
+                    // Признание не проверяет журнал: инструмент обязателен.
+                    if (correctionVerifyForcedLeft > 0
+                        && NeedsCorrectionVerify(lastQuestion, toolRounds))
+                    {
+                        correctionVerifyForcedLeft--;
+                        toolProgress?.Report("⚙ перепроверяю по журналу…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Оператор сказал, что ответ неверный: «" +
+                                Trunc(lastQuestion, 100) + "». Признание ошибки — это половина " +
+                                "ответа: факты проверяются инструментом. Вызови инструмент " +
+                                "по теме исходного вопроса (прошлые смены — " +
+                                "get_operator_history, моя смена — get_shift_info или " +
+                                "get_active_part, замечания по смене — get_shift_review, " +
+                                "цифры за период — get_my_stats) и ответь по его результату. " +
+                                "Извиниться и закончить без вызова нельзя. " +
+                                ShiftFacts(ctx),
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка поправки без перепроверки", machine);
+                        continue;
+                    }
+                    // Личный вопрос без инструмента: «а я?» — ответ из головы (кейс A.2).
+                    if (selfForcedLeft > 0
+                        && AsksAboutSelf(lastQuestion)
+                        && shiftInfoCalls == 0 && activePartCalls == 0)
+                    {
+                        selfForcedLeft--;
+                        toolProgress?.Report("⚙ смотрю свою смену…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». Кто оператор, какая смена и " +
+                                "что он делает — это get_shift_info, а про активную " +
+                                "деталь — get_active_part; из контекста смены. Вызови " +
+                                "инструмент сейчас и ответь по его результату: станок, " +
+                                "смена, ФИО и запись в минутах — только оттуда. " +
+                                ShiftFacts(ctx),
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка личного вопроса", machine);
+                        continue;
+                    }
+                    // Личный вопрос, а оператор не назван (кейс A.2: «вы на станке
+                    // …» вместо «Хомутов А. Б. на станке …»).
+                    if (selfNameForcedLeft > 0
+                        && shiftInfoCalls > 0
+                        && AsksAboutSelf(lastQuestion)
+                        && OmitsOperator(lastContent, ctx?.OperatorName))
+                    {
+                        selfNameForcedLeft--;
+                        toolProgress?.Report("⚙ уточняю, кто вы…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». Ты ответил «вы на станке…», " +
+                                "не назвав оператора. Оператор должен узнать себя: назови " +
+                                "фамилию и инициалы из get_shift_info (например, «Хомутов " +
+                                "А. Б.») и закончи ответ по фактам инструмента. " + ShiftFacts(ctx),
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка фамилии", machine);
+                        continue;
+                    }
+                    // Инструмент по дню вернул пусто, а ответ ушёл в другую тему
+                    // (кейс B.3: на «а 25 сентября?» история пуста, а ответ — про
+                    // текущую смену). Отсутствие данных — это то, что вернул тул.
+                    if (emptyDayForcedLeft > 0
+                        && historyEmptyCalls > 0
+                        && AsksAboutPastShifts(lastQuestion)
+                        && HidesEmptyDay(lastContent))
+                    {
+                        emptyDayForcedLeft--;
+                        toolProgress?.Report("⚙ проверяю, есть ли записи…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». get_operator_history по " +
+                                "этому дню не вернул ни одной строки. Значит, данных нет — " +
+                                "так и скажи прямо («за этот день записей нет»). Про " +
+                                "текущую смену и другие дни не пиши, если о них не " +
+                                "спрашивали.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка пустого дня", machine);
+                        continue;
+                    }
+                    // Конкретный день без истории: «а 25 сентября?» — модель отвечает
+                    // про текущую смену, журнал не открывая (кейс B.3).
+                    if (datedForcedLeft > 0 && historyCalls == 0
+                        && AsksAboutPastShifts(lastQuestion))
+                    {
+                        datedForcedLeft--;
+                        toolProgress?.Report("⚙ смотрю журнал за этот день…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». Это вопрос про конкретный " +
+                                "день, а журнал ты не открывал. Вызови get_operator_history " +
+                                "(имя — из контекста смены, date — этот день YYYY-MM-DD) и " +
+                                "ответь по его результату: есть записи — перечисли их, " +
+                                "нет — так и скажи. Про текущую смену не пиши, если о ней " +
+                                "не спрашивали.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка дня без истории", machine);
+                        continue;
+                    }
+                    // Период назван, а days в вызове другой: «за неделю» ушло в 30
+                    // дней (кейс B.2). Число дней — из вопроса, не по умолчанию.
+                    var wantDays = ExpectedDays(lastQuestion);
+                    if (periodDaysForcedLeft > 0 && statsCalls > 0 && wantDays.HasValue
+                        && lastStatsDays != wantDays.Value)
+                    {
+                        periodDaysForcedLeft--;
+                        toolProgress?.Report($"⚙ пересчитываю за {wantDays} дн…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». В вопросе назван период, а " +
+                                $"ты посчитал его за {lastStatsDays} дн. Период «из " +
+                                $"вопроса» — это days: {wantDays.Value}. Вызови get_my_stats " +
+                                "ещё раз с days=" + wantDays.Value + " и ответь по его " +
+                                "результату, назвав период так, как его посчитал тул. " +
+                                "Другие цифры не выдумывай.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка периода days={Got} → ждали {Want}",
+                            machine, lastStatsDays, wantDays.Value);
+                        continue;
+                    }
+                    // Вопрос про период без инструмента — цифры из головы (кейс B.2).
+                    if (statsCalls == 0 && periodForcedLeft > 0
+                        && AsksAboutPeriod(lastQuestion))
+                    {
+                        periodForcedLeft--;
+                        toolProgress?.Report("⚙ считаю за период…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». Ты ответил за период, не " +
+                                "вызвав ни одного инструмента — а цифры за период берутся " +
+                                "только из get_my_stats, и days подбирай по вопросу: " +
+                                "«за неделю» — 7, «за месяц» — 30, «за три месяца» — 90 " +
+                                "(допустимо 1-92; по умолчанию 30 — это месяц, а не " +
+                                "неделя). Ни своих дат, ни своих чисел: вызови инструмент " +
+                                "и ответь по его результату, назови период так, как его " +
+                                "посчитал инструмент. Про другие темы не пиши.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка периода без тула", machine);
                         continue;
                     }
                     // Поправка без признания. Правило 7 требует начинать с признания,
@@ -353,6 +565,8 @@ public class ChatAgentService(
                         var (opName, corrected) = CorrectOperatorArg(name, ctx, messages);
                         toolProgress?.Report($"⚙ смотрю прошлые смены «{Trunc(opName)}»…");
                         var opHistory = await dataSource.GetOperatorHistoryAsync(opName, days, day, cts.Token);
+                        if (opHistory is null || opHistory.Lines.Count == 0)
+                            historyEmptyCalls++;
                         messages.Add(new ChatMessage
                         {
                             Role = "tool",
@@ -392,7 +606,7 @@ public class ChatAgentService(
                             });
                             logger.LogInformation(
                                 "Чат-агент ({Machine}): get_shift_review {Op} date={Date} shift={Shift} → не отмечено {Un} мин",
-                                machine, Trunc(who), day?.ToString("yyyy-MM-dd") ?? "-",
+                                machine, Trunc(who), day.ToString("yyyy-MM-dd"),
                                 string.IsNullOrWhiteSpace(shift) ? "-" : shift,
                                 review?.UnmarkedMinutes ?? 0);
                         }
@@ -421,6 +635,7 @@ public class ChatAgentService(
                             // расширяет выборку на все станки.
                             var wantAll = IsAllMachines(ExtractArg(call.Arguments, "machine"));
                             toolProgress?.Report($"⚙ считаю статистику «{Trunc(who)}»…");
+                            lastStatsDays = days;
                             var period = await stats.LoadPeriodStatsAsync(
                                 who, wantAll ? null : ctx?.Machine, days, from, to, cts.Token);
                             messages.Add(new ChatMessage
@@ -503,6 +718,8 @@ public class ChatAgentService(
                     else
                     {
                         toolProgress?.Report(DescribeCall(call.Name));
+                        if (call.Name == "get_shift_info") shiftInfoCalls++;
+                        if (call.Name == "get_active_part") activePartCalls++;
                         var result = ChatTools.Execute(ctx, call.Name, call.Arguments);
                         messages.Add(new ChatMessage { Role = "tool", Content = result });
                         logger.LogInformation(
@@ -649,6 +866,14 @@ public class ChatAgentService(
     }
 
     /// <summary>
+    /// <summary>Поправка оператора, на которую за весь запрос не вызвано ни одного
+    /// инструмента: факты не проверены, каким бы точным ни было признание.
+    /// Считаем вызовы за запрос, а не за раунд: после удачной проверки модель
+    /// отвечает без нового вызова, и это нормально.
+    /// Чистая функция — покрыта тестами.</summary>
+    public static bool NeedsCorrectionVerify(string? question, int toolRounds) =>
+        toolRounds == 0 && WebSearchService.IsCorrection(question);
+
     /// Признал ли ответ свою ошибку. Поправка оператора обязана начинаться с
     /// признания (правило 7 промпта), иначе он читает прежний ответ как верный.
     /// Чистая функция.
@@ -678,6 +903,86 @@ public class ChatAgentService(
     /// вопросам: на вопрос про склад или документы «нет данных» — это нормальный
     /// ответ, и требование звать историю увозило модель не туда.
     /// </summary>
+    /// <summary>Сколько дней просит вопрос: «за неделю» — 7, «за месяц» — 30,
+    /// «за три месяца» — 90. null — период не назван или назван неоднозначно.
+    /// Нужен, чтобы «за неделю» не превратилось в 30 дней по умолчанию
+    /// (кейс кампании B.2). Чистая функция.</summary>
+    public static int? ExpectedDays(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return null;
+        var q = question.ToLowerInvariant();
+        // Прямо названное число дней («за 30 дней», «за 10 дней») — самый точный
+        // источник: месяц и неделя в нём тоже считаются днями.
+        var m = System.Text.RegularExpressions.Regex.Match(q, @"(\d{1,3})\s*(дн|день|дней)");
+        if (m.Success && int.TryParse(m.Groups[1].Value, out var days)
+            && days is >= 1 and <= 92)
+            return days;
+        if (q.Contains("полгода") || q.Contains("6 месяцев") || q.Contains("шесть месяцев")) return null;
+        if (q.Contains("год")) return null;
+        if (q.Contains("три месяца") || q.Contains("3 месяца") || q.Contains("квартал")) return 90;
+        if (q.Contains("два месяца") || q.Contains("2 месяца")) return 60;
+        if (q.Contains("месяц")) return 30;
+        if (q.Contains("неделю") || q.Contains("неделе") || q.Contains("неделя")
+            || q.Contains("семиднев")) return 7;
+        return null;
+    }
+
+    /// <summary>Ответ на личный вопрос, где оператор не назван: «вы на станке …»
+    /// вместо «Хомутов А. Б. на станке …». Оператор себя должен узнать — иначе
+    /// ответ негодный (кейс кампании A.2). Чистая функция.</summary>
+    public static bool OmitsOperator(string? reply, string? operatorName)
+    {
+        if (string.IsNullOrWhiteSpace(operatorName)) return false;
+        var surname = operatorName.Trim()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+        if (surname.Length < 3) return false;
+        return !(reply ?? "").Contains(surname, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Инструмент по конкретному дню вернул пусто, а в ответе нет и слова
+    /// про отсутствие данных — модель ушла в текущую смену (кейс B.3: на «а 25
+    /// сентября?» инструмент дал 0 строк, а ответ был про сегодняшнюю смену).
+    /// Чистая функция.</summary>
+    public static bool HidesEmptyDay(string? reply) => !ClaimsNoData(reply);
+
+    /// <summary>Личный вопрос об операторе и его смене («а я?», «кто я», «моя
+    /// смена», «что я делаю»). Ответ — только из get_shift_info / get_active_part:
+    /// без них модель отвечает о станке и смене из головы (кейс A.2: «а я?» то
+    /// звала инструмент, то нет). Чистая функция — покрыта тестами.</summary>
+    public static bool AsksAboutSelf(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        var t = question.ToLowerInvariant().Trim(' ', '?', '.', '!');
+        string[] self =
+        [
+            "а я", "кто я", "я кто", "моя смена", "моя деталь", "моя работа",
+            "что я делаю", "чем я занят", "где я", "моё место", "мое место",
+        ];
+        return self.Any(k => t == k || t.StartsWith(k + " ", StringComparison.Ordinal)
+            || t.Contains(k, StringComparison.Ordinal));
+    }
+
+    /// <summary>Вопрос про период («за неделю покажи», «итоги за месяц»,
+    /// «сколько наработал»). Отвечать на него можно только по get_my_stats:
+    /// без инструмента модель называет выдуманные даты и дни (кейс кампании B.2:
+    /// на «а за неделю покажи» — ни одного вызова и даты 01.09/30.09 из головы).
+    /// Чистая функция — покрыта тестами.</summary>
+    public static bool AsksAboutPeriod(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        var t = question.ToLowerInvariant();
+        string[] other = ["склад", "остатк", "наличие", "есть ли", "цена", "стоимость", "курс"];
+        if (other.Any(k => t.Contains(k, StringComparison.Ordinal))) return false;
+        string[] period =
+        [
+            "за неделю", "за неделе", "неделю", "за месяц", "за месяца", "месяц",
+            "за год", "за полгода", "за квартал", "за период", "за смену",
+            "итого", "итоги", "статистик", "наработал", "наработала", "сколько я",
+            "покажи за", "покажи по", "за всё время", "за все время",
+        ];
+        return period.Any(k => t.Contains(k, StringComparison.Ordinal));
+    }
+
     public static bool AsksAboutPastShifts(string question)
     {
         if (string.IsNullOrWhiteSpace(question)) return false;
@@ -695,8 +1000,19 @@ public class ChatAgentService(
             "четверг", "пятниц", "суббот", "воскресень", "истори", "прошл",
             "неделю", "неделе", "месяц", "тогда", "раньше", "было", "успевал",
         ];
-        return past.Any(k => t.Contains(k, StringComparison.Ordinal));
+        if (past.Any(k => t.Contains(k, StringComparison.Ordinal))) return true;
+    // Конкретная дата в вопросе — это тоже прошлое: «а 25 сентября?»,
+    // «что было 12.09». Без этого поручни прошлого и «нет данных» молчали,
+    // и модель отвечала по памяти (кейс кампании B.3).
+    return DateInQuestion.IsMatch(t);
     }
+
+    /// <summary>Дата в вопросе: «25 сентября», «12.09», «12.09.2026».
+    /// Короткая запись вида «2.5» датой не считается — это количество.</summary>
+    private static readonly System.Text.RegularExpressions.Regex DateInQuestion =
+        new(@"\b\d{1,2}\.\d{1,2}\.(\d{2,4})?\b" +
+            @"|\b\d{1,2}\s*(январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Утверждение, что данных нет, по конкретной сущности: «нет данных о Крафт»,
@@ -815,6 +1131,27 @@ public class ChatAgentService(
     private static int ParseDays(string raw) =>
         int.TryParse(raw, out var days) ? Math.Clamp(days, 7, 365) : 30;
 
+    /// <summary>Факты смены строкой — из контекста клиента. Кладём их прямо в
+    /// поручень: на поправку малая модель часто извиняется, но инструмент не
+    /// зовёт (кейс D.2), и оператору уходит извинение вместо ответа.</summary>
+    public static string ShiftFacts(ElogChatContext? ctx)
+    {
+        if (ctx == null) return "Факты смены: клиент их не прислал.";
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"Смена: станок {ctx.Machine}, тип «{ctx.Shift}», начата: ");
+        sb.Append(ctx.ShiftStarted ? "да" : "нет");
+        sb.Append($", оператор {ctx.OperatorName}, записей деталей: {ctx.PartsCount}.");
+        var part = ctx.ActivePart;
+        if (part is { } p && !string.IsNullOrWhiteSpace(p.Name))
+        {
+            sb.Append($" Активная деталь: «{p.Name}»");
+            if (!string.IsNullOrWhiteSpace(p.Order)) sb.Append($", М/Л «{p.Order}», уст. {p.Setup}");
+            if (!string.IsNullOrWhiteSpace(p.StartSetupTime)) sb.Append($", наладка с {p.StartSetupTime}");
+            sb.Append('.');
+        }
+        return sb.ToString();
+    }
+
     /// <summary> Просил ли оператор все станки. Всё остальное (в том числе мусор
     /// вида «{}» или «Mazak») трактуется как «мой станок» — он и так известен
     /// из контекста клиента.</summary>
@@ -829,9 +1166,34 @@ public class ChatAgentService(
     private static int ParseDaysLoose(string raw) =>
         int.TryParse(raw, out var days) ? Math.Clamp(days, 1, 365) : 30;
 
-    /// <summary> Дата смены из контекста клиента; если не пришла — сегодня. </summary>
-    private static DateOnly? ShiftDateOf(ElogChatContext? ctx) =>
-        ParseDate(ctx?.ShiftDate ?? "") ?? DateOnly.FromDateTime(DateTime.Today);
+    /// <summary>Час, после которого ночная смена считается сегодняшней. Взят из
+    /// eLog (Infrastructure/Extensions/Parts.cs): ночная смена, завершённая раньше
+    /// этого часа, пишется в бату за предыдущие сутки. Пример: закончил в 3 часа
+    /// 21-го — смена началась 20-го в 19:00, детали относятся к 20-му.</summary>
+    public const int NightShiftCutoverHour = 9;
+
+    /// <summary> Дата смены из контекста клиента; если не пришла (старый клиент) —
+    /// по тому же правилу, что и eLog: ночная смена после полуночи — вчера. </summary>
+    public static DateOnly ShiftDateOf(ElogChatContext? ctx) => ShiftDateOf(ctx, DateTime.Now);
+
+    /// <summary>То же правило, но на заданном «сейчас» — для тестов.</summary>
+    public static DateOnly ShiftDateOf(ElogChatContext? ctx, DateTime now)
+    {
+        if (ParseDate(ctx?.ShiftDate ?? "") is { } fromClient)
+            return fromClient;
+        var date = ShiftDateFor(ctx, now);
+        return DateOnly.FromDateTime(date);
+    }
+
+    /// <summary>Дата смены по её началу: ночная до 09:00 — предыдущие сутки.</summary>
+    public static DateTime ShiftDateFor(ElogChatContext? ctx, DateTime now)
+    {
+        return now.Hour < NightShiftCutoverHour
+            && string.Equals((ctx?.Shift ?? "").Trim(), Shifts.Night,
+                StringComparison.OrdinalIgnoreCase)
+            ? now.Date.AddDays(-1)
+            : now.Date;
+    }
 
     /// <summary> Строгий разбор дня YYYY-MM-DD; мусор — null (тогда окно days). </summary>
     public static DateOnly? ParseDate(string raw) =>

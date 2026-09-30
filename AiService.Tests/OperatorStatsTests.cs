@@ -253,6 +253,42 @@ public class OperatorStatsTests
         Assert.Equal(all, ChatAgentService.IsAllMachines(raw));
     }
 
+    /// <summary>Дата смены — по её началу. Ночная смена после полуночи (до 09:00)
+    /// относится к предыдущим суткам: закончил в 3 часа 21-го — смена началась
+    /// 20-го в 19:00, детали пишутся за 20-е. Правило взято из eLog
+    /// (Infrastructure/Extensions/Parts.cs) и зафиксировано тестом.</summary>
+    [Fact]
+    public void ЧасПереходаНочнойСмены_СовпадаетСЗаписьюВБазу()
+    {
+        Assert.Equal(9, ChatAgentService.NightShiftCutoverHour);
+    }
+
+    [Theory]
+    [InlineData(0, "Ночь", -1)]   // полночь — ещё вчерашняя смена
+    [InlineData(3, "Ночь", -1)]
+    [InlineData(8, "Ночь", -1)]   // до 09:00 — тоже вчера
+    [InlineData(9, "Ночь", 0)]    // с 09:00 — сегодняшняя
+    [InlineData(23, "Ночь", 0)]
+    [InlineData(0, "День", 0)]    // дневная всегда сегодня
+    [InlineData(3, "День", 0)]
+    [InlineData(8, "День", 0)]
+    public void ДатаСмены_СчитаетсяПоНачалуСмены(int hour, string shift, int dayOffset)
+    {
+        var now = new DateTime(2026, 9, 30, hour, 30, 0);
+        var expected = now.Date.AddDays(dayOffset);
+        var date = ChatAgentService.ShiftDateFor(
+            new ElogChatContext { Shift = shift }, now);
+        Assert.Equal(expected, date);
+    }
+
+    [Fact]
+    public void ДатаСмены_ИзКонтекстаКлиента_ВажнееРасчёта()
+    {
+        // Клиент прислал дату — берём её, даже если она «нелогичная» для текущего часа.
+        var ctx = new ElogChatContext { Shift = "Ночь", ShiftDate = "2026-09-20" };
+        Assert.Equal(new DateOnly(2026, 9, 20), ChatAgentService.ShiftDateOf(ctx, new DateTime(2026, 9, 21, 3, 0, 0)));
+    }
+
     // ───────── Статистика за период ─────────
 
     private static PeriodStatsResult Stats(

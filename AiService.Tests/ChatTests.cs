@@ -344,8 +344,126 @@ public class ChatTests
     [Fact]
     public async Task Agent_PlainAnswerWithoutTools_NotForced()
     {
-        // Обычный ответ без инструментов — не имитация: поручень молчит.
+        // Обычный вопрос без инструментов — не имитация: поручень молчит.
         var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "Сейчас ничего не делаю, жду задания." },
+        ]));
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user", Content = "а ты кто?" }]),
+            [], 20, 12000);
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null, CancellationToken.None);
+
+        Assert.Equal(0, res.ToolRounds);
+        Assert.Equal("Сейчас ничего не делаю, жду задания.", res.Reply);
+    }
+
+    /// <summary>Кейс кампании D.2 на проде: на «наврал, ты неправ» модель ответила
+    /// «Да, я ошибся. Проверяю факты…» — признание есть, вызова нет. Оператор
+    /// получил извинение вместо исправления: поправка обязана быть проверена
+    /// инструментом.</summary>
+    [Theory]
+    [InlineData("а за неделю покажи", 7)]
+    [InlineData("неделя", 7)]
+    [InlineData("за 7 дней", 7)]
+    [InlineData("за месяц", 30)]
+    [InlineData("статистика за 30 дней", 30)]
+    [InlineData("за три месяца", 90)]
+    [InlineData("за два месяца", 60)]
+    [InlineData("за полгода", null)]
+    [InlineData("за год", null)]
+    [InlineData("какой у меня КПД", null)]
+    [InlineData("", null)]
+    public void ПериодИзВопроса_Опознаётся(string question, int? expected)
+    {
+        Assert.Equal(expected, ChatAgentService.ExpectedDays(question));
+    }
+
+    [Theory]
+    [InlineData("Вы на станке Mazak QTS350, смена не начата.", "Хомутов А. Б.", true)]
+    [InlineData("Вы Хомутов А. Б., смена не начата.", "Хомутов А. Б.", false)]
+    [InlineData("вы хомутов на станке", "Хомутов А. Б.", false)]
+    [InlineData("Отвечаю по инструкции", "", false)]
+    public void ЛичныйОтвет_БезФамилии_Опознаётся(string reply, string op, bool omits)
+    {
+        Assert.Equal(omits, ChatAgentService.OmitsOperator(reply, op));
+    }
+
+    [Theory]
+    [InlineData("За 25 сентября записей нет.", false)]
+    [InlineData("Данных нет", false)]
+    [InlineData("Сегодня вы на станке Mazak QTS350, смена не начата.", true)]
+    public void ПустойДень_СкрытыйВОтвете(string reply, bool hides)
+    {
+        Assert.Equal(hides, ChatAgentService.HidesEmptyDay(reply));
+    }
+
+    [Theory]
+    [InlineData("а 25 сентября?", true)]
+    [InlineData("что было 12.09?", true)]
+    [InlineData("за 01.09.2026", true)]
+    [InlineData("а 5 августа", true)]
+    [InlineData("а сколько деталей 2.5?", false)]   // «2.5» — количество, не дата
+    [InlineData("а я?", false)]
+    public void ВопросСДатой_СчитаетсяВопросомОПрошлом(string question, bool expected)
+    {
+        Assert.Equal(expected, ChatAgentService.AsksAboutPastShifts(question));
+    }
+
+    [Theory]
+    [InlineData("а я?", true)]
+    [InlineData("кто я?", true)]
+    [InlineData("а я ?", true)]
+    [InlineData("моя смена", true)]
+    [InlineData("что я делаю?", true)]
+    [InlineData("какой простой отметить?", false)]
+    [InlineData("сколько пластин на складе?", false)]
+    [InlineData("", false)]
+    public void ЛичныйВопрос_Узнаётся(string question, bool expected)
+    {
+        Assert.Equal(expected, ChatAgentService.AsksAboutSelf(question));
+    }
+
+    [Theory]
+    [InlineData("а за неделю покажи", true)]
+    [InlineData("покажи за месяц", true)]
+    [InlineData("итоги за период", true)]
+    [InlineData("статистика за 30 дней", true)]
+    [InlineData("сколько я наработал", true)]
+    [InlineData("сколько деталей по цеху за неделю", true)]
+    [InlineData("что делал во вторник?", false)]
+    [InlineData("какой простой отметить?", false)]
+    [InlineData("сколько пластин на складе?", false)]
+    [InlineData("", false)]
+    public void ВопросПроПериод_Узнаётся(string question, bool expected)
+    {
+        Assert.Equal(expected, ChatAgentService.AsksAboutPeriod(question));
+    }
+
+    [Theory]
+    [InlineData("наврал, ты неправ", 0, true)]
+    [InlineData("всё не так, проверь ещё раз", 0, true)]
+    [InlineData("ты неправ", 0, true)]
+    [InlineData("наврал, ты неправ", 1, false)]   // уже проверено инструментом
+    [InlineData("какой простой отметить?", 0, false)]
+    [InlineData("", 0, false)]
+    public void Поправка_БезПроверкиИнструментом_ТребуетВызова(
+        string question, int toolRounds, bool expected)
+    {
+        Assert.Equal(expected, ChatAgentService.NeedsCorrectionVerify(question, toolRounds));
+    }
+
+    [Fact]
+    public async Task Agent_ПризнаниеБезПроверки_ФорсируетВызов()
+    {
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "Да, я ошибся. Проверяю факты, минуту." },
+            new ChatResult
+            {
+                Content = "",
+                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_shift_info", Arguments = "{}" }],
+            },
             new ChatResult { Content = "Да, я ошибся: смена выбрана, но не начата." },
         ]));
         var build = Builder().BuildChatMessages(
@@ -355,8 +473,12 @@ public class ChatTests
         var res = await Agent(stub).RunAsync(
             build.System, build.Messages, Context(), null, null, null, null, CancellationToken.None);
 
-        Assert.Equal(0, res.ToolRounds);
+        Assert.Equal(1, res.ToolRounds);
         Assert.Equal("Да, я ошибся: смена выбрана, но не начата.", res.Reply);
+        var nudge = stub.SeenMessages[^1].First(
+            m => m.Role == "user" && m.Content.Contains("[Автопроверка]"));
+        Assert.Contains("Признание ошибки", nudge.Content);
+        Assert.Contains("Вызови инструмент", nudge.Content);
     }
 
     [InlineData("какой курс доллара", false, false, true)]
@@ -462,12 +584,12 @@ public class ChatTests
         // Регресс D.3: на «всё не так, проверь ещё раз» ответ начался с «Дозор
         // бдит» — признания не было, и поправка выглядела как игнор.
         var stub = new StubChat(new Queue<ChatResult>([
-            new ChatResult { Content = "Дозор бдит — смена под присмотром. Уточните, что именно проверяете?" },
             new ChatResult
             {
                 Content = "",
                 ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_shift_info", Arguments = "{}" }],
             },
+            new ChatResult { Content = "Дозор бдит — смена под присмотром. Уточните, что именно проверяете?" },
             new ChatResult { Content = "Да, я ошибся: смена выбрана, но не начата." },
         ]));
         var build = Builder().BuildChatMessages(
@@ -891,7 +1013,7 @@ public class ChatTests
         // Мастерские названия в списке типов оператора быть не должны.
         Assert.DoesNotContain(" • Ремонт оборудования", toolMsg.Content);
         Assert.DoesNotContain(" • Другое", toolMsg.Content);
-        Assert.Contains("список мастера", toolMsg.Content);
+        Assert.Contains("у оператора их нет", toolMsg.Content);
     }
 
     [Fact]
