@@ -84,6 +84,10 @@ namespace eLog.Infrastructure
         public string? Model { get; set; }
         [JsonPropertyName("allowWebSearch")]
         public bool AllowWebSearch { get; set; }
+        /// <summary> null — сервер решает сам (Chat:Thinking). Автоприветствие
+        ///operatorу выключает: факты уже в контексте, размышления не нужны. </summary>
+        [JsonPropertyName("think")]
+        public bool? Think { get; set; }
     }
 
     public class ChatSourceDto

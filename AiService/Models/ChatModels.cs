@@ -68,6 +68,12 @@ public class ChatRequest
     /// если поиск включён в конфиге.
     /// </summary>
     public bool AllowWebSearch { get; set; }
+    /// <summary>
+    /// Рассуждения модели для этого запроса (null — как настроено в Chat:Thinking).
+    /// Клиент выключает их там, где ответ собирается из уже присланных данных:
+    /// автоприветствие оператора — по контексту смены, без размышлений (быстрее).
+    /// </summary>
+    public bool? Think { get; set; }
 }
 
 public class ChatSourceDto

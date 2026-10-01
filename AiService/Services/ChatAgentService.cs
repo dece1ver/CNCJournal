@@ -54,8 +54,12 @@ public class ChatAgentService(
         double? temperature,
         IProgress<string>? toolProgress,
         IProgress<string>? tokenProgress,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool? think = null)
     {
+        // null — берём настройку сервиса; клиент может выключить рассуждения
+        // для простых запросов (автоприветствие: факты уже в контексте).
+        var useThinking = think ?? Thinking;
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(Timeout);
 
@@ -131,7 +135,7 @@ public class ChatAgentService(
             {
                 var round = await chat.ChatAsync(
                     messages, ChatTools.Definitions, format: null,
-                    think: Thinking, cts.Token, model: model,
+                    think: useThinking, cts.Token, model: model,
                     temperature: temperature ?? Temperature,
                     thinkingProgress: null, tokenProgress: tokenProgress);
                 lastContent = round.Content ?? "";
@@ -897,7 +901,7 @@ public class ChatAgentService(
                     // Пустой список, а не null: OllamaService разворачивает tools
                     // через Select и на null падал (финальный раунд не запускался).
                     var final = await chat.ChatAsync(
-                        messages, [], format: null, think: Thinking, cts.Token,
+                        messages, [], format: null, think: useThinking, cts.Token,
                         model: model, temperature: temperature ?? Temperature,
                         thinkingProgress: null, tokenProgress: tokenProgress);
                     if (!string.IsNullOrWhiteSpace(final.Content))

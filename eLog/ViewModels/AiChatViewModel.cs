@@ -125,8 +125,12 @@ namespace eLog.ViewModels
                 Activity = "Сканирование биометрии…",
             };
             Messages.Add(assistantItem);
+            // Рассуждения выключены: приветствие собирается из присланного
+            // контекста (станок, смена, оператор, активная деталь), размышления
+            // только задерживают первый экран чата.
             await ExecuteChatAsync(assistantItem,
-                new List<ChatMessageDto> { new ChatMessageDto { Role = "user", Content = GreetingTrigger } });
+                new List<ChatMessageDto> { new ChatMessageDto { Role = "user", Content = GreetingTrigger } },
+                think: false);
         }
 
         // Формулировка без «Вы работаете»: смена может быть только выбрана, и
@@ -208,7 +212,7 @@ namespace eLog.ViewModels
         /// шаги — в Activity облака и статус, источники — отдельным блоком.
         /// </summary>
         private async Task ExecuteChatAsync(
-            ChatMessageItem assistantItem, List<ChatMessageDto> sendMessages)
+            ChatMessageItem assistantItem, List<ChatMessageDto> sendMessages, bool? think = null)
         {
             IsBusy = true;
             Status = assistantItem.Activity;
@@ -241,6 +245,7 @@ namespace eLog.ViewModels
                     Model = string.IsNullOrWhiteSpace(AppSettings.Instance.AiModel)
                         ? null : AppSettings.Instance.AiModel.Trim(),
                     AllowWebSearch = SearchInWeb,
+                    Think = think,
                 };
 
                 var result = await _client.ChatStreamAsync(request, progress, ct);

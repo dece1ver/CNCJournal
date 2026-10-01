@@ -53,7 +53,8 @@ public class ChatController(
             var outcome = await agent.RunAsync(
                 build.System, build.Messages, request.Context,
                 model: request.Model, temperature: request.Temperature,
-                toolProgress: null, tokenProgress: null, ct: ct);
+                toolProgress: null, tokenProgress: null, ct: ct,
+                think: request.Think);
 
             if (outcome.Error != null)
             {
@@ -166,7 +167,8 @@ public class ChatController(
             outcome = await agent.RunAsync(
                 build.System, build.Messages, request.Context,
                 model: request.Model, temperature: request.Temperature,
-                toolProgress: toolProgress, tokenProgress: tokenProgress, ct: ct);
+                toolProgress: toolProgress, tokenProgress: tokenProgress, ct: ct,
+                think: request.Think);
         }
         catch (OperationCanceledException ex)
         {

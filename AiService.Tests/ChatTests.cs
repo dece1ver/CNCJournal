@@ -351,6 +351,43 @@ public class ChatTests
     }
 
     [Fact]
+    public async Task Agent_ThinkFromRequest_OverridesServiceSetting()
+    {
+        // Автоприветствие приходит с think:false (факты уже в контексте) —
+        // рассуждения выключаются, несмотря на Chat:Thinking в конфиге.
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "Здравствуйте, Иван Петров! Станок Mazak QTS350, смена День." },
+        ]));
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user", Content = "[Автостарт] Поздоровайся" }]),
+            [], 20, 12000);
+
+        await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null,
+            CancellationToken.None, think: false);
+
+        Assert.All(stub.SeenThink, t => Assert.False(t));
+    }
+
+    [Fact]
+    public async Task Agent_ThinkNotGiven_UsesServiceSetting()
+    {
+        // Без флага в запросе — настройка сервиса (по умолчанию Chat:Thinking=true).
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "Здравствуйте!" },
+        ]));
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user", Content = "привет" }]),
+            [], 20, 12000);
+
+        await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null,
+            CancellationToken.None);
+
+        Assert.All(stub.SeenThink, t => Assert.True(t));
+    }
+
+    [Fact]
     public async Task Agent_PlainAnswerWithoutTools_NotForced()
     {
         // Обычный вопрос без инструментов — не имитация: поручень молчит.
@@ -699,6 +736,7 @@ public class ChatTests
     {
         public List<IReadOnlyList<ChatMessage>> SeenMessages { get; } = [];
         public List<IReadOnlyList<ChatTool>> SeenTools { get; } = [];
+        public List<bool> SeenThink { get; } = [];
 
         public Task<ChatResult> ChatAsync(
             IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool> tools,
@@ -709,6 +747,7 @@ public class ChatTests
         {
             SeenMessages.Add(messages);
             SeenTools.Add(tools);
+            SeenThink.Add(think);
             return Task.FromResult(script.Dequeue());
         }
     }
