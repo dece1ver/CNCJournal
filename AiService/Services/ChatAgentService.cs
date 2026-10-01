@@ -19,9 +19,11 @@ public record ChatAgentResult(string Reply, int ToolRounds, string? Error = null
 /// собранных обозначений прямо по ходу диалога, а не только пред-поиском сервера).
 /// Очередь Ollama занимается на каждый раунд отдельно (внутри ChatAsync) —
 /// между раундами её держат другие клиенты, голодания нет.
-/// Токены ответа стримятся живьём (tokenProgress) из КАЖДОГО раунда: tool-раунды
-/// обычно пустые, финал печатается по мере генерации. Шаги инструментов —
-/// в toolProgress («что дозор делает»: смотрит смену/ищет в сети).
+/// Текст наружу (tokenProgress) отдаётся ОДИН раз — финальным ответом: раунд,
+/// который заканчивается вызовом тула или поручнем, почти всегда начинается
+/// с «сейчас посмотрю…», и оператор видел 2–3 текста подряд, а финальный
+/// result затирал их (40% запросов по логам). Шаги инструментов — в
+/// toolProgress («что дозор делает»: смотрит смену/ищет в сети).
 /// </summary>
 public class ChatAgentService(
     IAgentChatClient chat,
@@ -47,6 +49,40 @@ public class ChatAgentService(
     public bool Thinking => config.GetValue("Chat:Thinking", true);
 
     public async Task<ChatAgentResult> RunAsync(
+        string system,
+        List<ChatMessage> history,
+        ElogChatContext? ctx,
+        string? model,
+        double? temperature,
+        IProgress<string>? toolProgress,
+        IProgress<string>? tokenProgress,
+        CancellationToken ct,
+        bool? think = null)
+    {
+        // Раунды наружу не стримятся: текст tool-раунда — это зачинка
+        // («сейчас посмотрю смену»), а не ответ, и клиент её показывал
+        // оператору, пока финальный result затирал оба текста (40% запросов).
+        // Публикует ответ контроллер — уже после очистки markdown.
+        var sink = new AnswerTextSink();
+        var result = await RunCoreAsync(system, history, ctx, model, temperature,
+            toolProgress, sink, ct, think);
+        return result;
+    }
+
+    /// <summary>
+    /// Раунды наружу не стримятся: пока раунд не закончился, неизвестно, ответ
+    /// это или зачинка («сейчас посмотрю смену») перед вызовом тула. Ответ
+    /// публикует контроллер — одним куском и уже после очистки markdown.
+    /// </summary>
+    private sealed class AnswerTextSink : IProgress<string>
+    {
+        public void Report(string? value)
+        {
+            // Намеренно пусто.
+        }
+    }
+
+    private async Task<ChatAgentResult> RunCoreAsync(
         string system,
         List<ChatMessage> history,
         ElogChatContext? ctx,

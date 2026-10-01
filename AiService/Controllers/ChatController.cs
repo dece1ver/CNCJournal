@@ -131,16 +131,9 @@ public class ChatController(
         AppendCalendarHint(request);
         var build = BuildChatMessages(request, webResults);
 
-        // Живые токены ответа и шаги инструментов — разными SSE-событиями:
-        // UI печатает token в пузырь, tool показывает в статусе («⚙ смотрю смену…»).
-        // Синхронный прогресс: Progress<T> постит в пул, финалы терялись (см. AnalysisController).
-        var tokenChannel = System.Threading.Channels.Channel.CreateBounded<string>(
-            new System.Threading.Channels.BoundedChannelOptions(256)
-            {
-                SingleReader = true,
-                SingleWriter = true,
-                FullMode = System.Threading.Channels.BoundedChannelFullMode.Wait,
-            });
+        // Живые шаги инструментов — SSE-событиями: UI показывает их в статусе
+        // («⚙ смотрю смену…»). Синхронный прогресс: Progress<T> постит в пул,
+        // финалы терялись (см. AnalysisController).
         var toolChannel = System.Threading.Channels.Channel.CreateBounded<string>(
             new System.Threading.Channels.BoundedChannelOptions(32)
             {
@@ -148,13 +141,7 @@ public class ChatController(
                 SingleWriter = true,
                 FullMode = System.Threading.Channels.BoundedChannelFullMode.Wait,
             });
-        var tokenProgress = new SyncProgress(t => tokenChannel.Writer.TryWrite(t));
         var toolProgress = new SyncProgress(t => toolChannel.Writer.TryWrite(t));
-        var drainTokensTask = Task.Run(async () =>
-        {
-            await foreach (var token in tokenChannel.Reader.ReadAllAsync(ct))
-                await Send("token", JsonSerializer.Serialize(token));
-        }, ct);
         var drainToolsTask = Task.Run(async () =>
         {
             await foreach (var step in toolChannel.Reader.ReadAllAsync(ct))
@@ -167,14 +154,12 @@ public class ChatController(
             outcome = await agent.RunAsync(
                 build.System, build.Messages, request.Context,
                 model: request.Model, temperature: request.Temperature,
-                toolProgress: toolProgress, tokenProgress: tokenProgress, ct: ct,
+                toolProgress: toolProgress, tokenProgress: null, ct: ct,
                 think: request.Think);
         }
         catch (OperationCanceledException ex)
         {
-            tokenChannel.Writer.Complete();
             toolChannel.Writer.Complete();
-            await drainTokensTask;
             await drainToolsTask;
             logger.LogWarning("Чат-стрим отменён: {Machine}", machine);
             await requestLog.WriteFailureAsync(
@@ -183,18 +168,14 @@ public class ChatController(
         }
         catch (Exception ex)
         {
-            tokenChannel.Writer.Complete();
             toolChannel.Writer.Complete();
-            await drainTokensTask;
             await drainToolsTask;
             logger.LogError(ex, "Ошибка чат-стрима: {Machine}", machine);
             await Send("error", JsonSerializer.Serialize(ex.Message));
             return;
         }
 
-        tokenChannel.Writer.Complete();
         toolChannel.Writer.Complete();
-        await drainTokensTask;
         await drainToolsTask;
 
         if (outcome.Error != null)
@@ -213,6 +194,11 @@ public class ChatController(
             machine, outcome.ToolRounds, response.WebUsed, reply.Length, sw.ElapsedMilliseconds);
 
         await requestLog.WriteChatAsync(request, response);
+        // Текст — одним событием и уже финальный: раунды агента не стримятся
+        // (зачинка «сейчас посмотрю…» — не ответ), очистка markdown и блок
+        // источников применяются здесь. Иначе клиент печатал бы черновик,
+        // а потом result его затирал.
+        await Send("token", JsonSerializer.Serialize(response.Reply, _camelCase));
         await Send("result", JsonSerializer.Serialize(response, _camelCase));
     }
 

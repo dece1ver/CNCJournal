@@ -414,6 +414,61 @@ public class ChatTests
     }
 
     [Fact]
+    public async Task Agent_DoesNotStreamRoundTokens()
+    {
+        // Раунд перед вызовом тула почти всегда начинается с зачинки
+        // («сейчас посмотрю смену»). Раньше она уходила в облако ответа, потом
+        // приходил настоящий ответ, а финальный result затирал оба текста —
+        // оператор видел 2–3 ответа подряд (40% запросов по логам). Теперь
+        // раунды не стримятся: наружу уходит только Reply агента, и публикует
+        // его контроллер — уже после очистки markdown.
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult
+            {
+                Content = "Сейчас посмотрю вашу смену.",
+                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_shift_info", Arguments = "{}" }],
+            },
+            new ChatResult { Content = "Вот ваша смена: **Mazak QTS350**, День." },
+        ]));
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user", Content = "что у меня в смене?" }]),
+            [], 20, 12000);
+        var streamed = new List<string>();
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null,
+            new ListProgress(streamed), CancellationToken.None);
+
+        Assert.Equal(1, res.ToolRounds);
+        Assert.Equal("Вот ваша смена: **Mazak QTS350**, День.", res.Reply);
+        // Ни зачинки, ни черновиков: раунды наружу не идут.
+        Assert.Empty(streamed);
+        // Markdown снимает уже контроллер (ToResponse) — тут он ещё есть.
+        Assert.Equal("Вот ваша смена: Mazak QTS350, День.", ChatAgentService.CleanMarkdown(res.Reply));
+    }
+
+    [Fact]
+    public async Task Agent_StreamStaysEmpty_WhenAgentFails()
+    {
+        // Сбой агента — наружу нечего отдавать: «error»/«result» приедут отдельно,
+        // лишнего текста в облаке ответа не появится.
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "" },
+        ]));
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user", Content = "привет" }]),
+            [], 20, 12000);
+        var streamed = new List<string>();
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null,
+            new ListProgress(streamed), CancellationToken.None);
+
+        Assert.NotNull(res.Error);
+        Assert.Empty(streamed);
+    }
+
+    [Fact]
     public async Task Agent_PlainAnswerWithoutTools_NotForced()
     {
         // Обычный вопрос без инструментов — не имитация: поручень молчит.
@@ -757,6 +812,13 @@ public class ChatTests
     }
 
     // ── Цикл агента ──
+
+    /// <summary> Синхронный сборщик «стрима» — в тестах нужен, чтобы видеть,
+    /// что именно ушло бы в облако ответа у клиента. </summary>
+    private sealed class ListProgress(List<string> sink) : IProgress<string>
+    {
+        public void Report(string value) => sink.Add(value);
+    }
 
     private sealed class StubChat(Queue<ChatResult> script) : IAgentChatClient
     {
