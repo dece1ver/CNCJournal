@@ -379,7 +379,9 @@ public class AgentLoopService(
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"Станок: {request.Machine}" +
-                      (request.IsSerialMachine == false ? " [несерийный — КПД изготовления не оценивается]" : ""));
+                      (request.IsSerialMachine == false
+                           ? " [несерийный — изготовление не оценивается: ни КПД, ни машинное время]"
+                           : ""));
         sb.AppendLine($"Дата: {request.ShiftDate}");
         foreach (var s in request.Signals)
             sb.AppendLine($"Сигнал дня: {s}");

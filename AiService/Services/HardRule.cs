@@ -259,7 +259,12 @@ public static class HardRuleEvaluator
             // 2026-07-25: MasterComment разделён на MasterSetupDetail/MasterMachiningDetail — здесь
             // нужна именно детализация ИЗГОТОВЛЕНИЯ, поэтому предпочитаем MasterMachiningDetail;
             // MasterComment (архив) остаётся запасным путём для записей до разделения поля.
-            if (p.MachiningTime > 0.5 && p.SingleProductionTimePlan > 0
+            // Несерийный станок: правило отключено целиком (решение владельца
+            // 30.09.2026) — изготовление здесь не учитывается, поэтому время
+            // против норматива не показатель. Смотрим только на явные жалобы
+            // в комментариях и «не по техпроцессу» (см. JudgedOnNonSerialMachining).
+            if (checkProductionKpd
+                && p.MachiningTime > 0.5 && p.SingleProductionTimePlan > 0
                 && p.MachiningTime >= p.SingleProductionTimePlan
                 && !p.NoProductionHappened
                 && !p.IsSmallBatch

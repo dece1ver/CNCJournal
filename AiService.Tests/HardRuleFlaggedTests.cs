@@ -365,6 +365,49 @@ public class HardRuleFlaggedTests
     }
 
     [Fact]
+    public void Evaluate_NonSerial_SkipsMachiningTime()
+    {
+        // Несерийный станок (30.09.2026): «машинное время >= норматива» не оценивается,
+        // время на изготовление здесь не влияет. Клиентский сигнал при этом убирает
+        // RequestShaper, серверный — не создаётся здесь.
+        var part = new PartContext
+        {
+            PartName = "Седло",
+            Order = "З1",
+            Setup = 1,
+            MachiningTime = 4.7,
+            SingleProductionTimePlan = 4,
+            ProductionRatio = 0.53,
+            FinishedCount = 17,
+        };
+        var req = Request(part);
+        req.IsSerialMachine = false;
+
+        var result = HardRuleEvaluator.Evaluate(req);
+
+        Assert.DoesNotContain(result.HardSignals, s => s.Contains("Машинное время"));
+        Assert.DoesNotContain(result.SoftSignals, s => s.Contains("Машинное время"));
+    }
+
+    [Fact]
+    public void Shape_NonSerial_RemovesClientMachiningTimeSignal()
+    {
+        // Клиентский сигнал убирается на входе — иначе он попадёт и в правило
+        // «2+ сигналов от системы», и в промпт, и в список для аналитика.
+        var part = new PartContext { PartName = "Седло", Order = "З1", Setup = 1 };
+        part.Signals.Add("Машинное время 4.7мин >= штучного норматива 4мин (117%)");
+        part.Signals.Add("Оператор сообщает о некорректном нормативе или технологии");
+        var req = Request(part);
+        req.IsSerialMachine = false;
+
+        RequestShaper.Shape(req);
+
+        Assert.DoesNotContain(req.Parts[0].Signals, s => s.Contains("Машинное время"));
+        // Явная жалоба оператора остаётся — её на несерийном смотрим.
+        Assert.Contains(req.Parts[0].Signals, s => s.Contains("Оператор сообщает"));
+    }
+
+    [Fact]
     public void Evaluate_MachiningTime_NoClientSignal_HardFires()
     {
         // Клиентского сигнала нет (например, при КПД изготовления > 100% клиент

@@ -257,6 +257,7 @@ public static class FalsePositiveFilter
                 IsK1ExcludeEcho(signal) ? "эхо exclude-подсказки про К1" :
                 IsNonSerialProductionKpdClaim(signal, request) ? "КПД изготовления не оценивается (несерийный станок)" :
                 IsNonSerialMachiningNormativeClaim(signal, request) ? "норматив изготовления на несерийном станке не оценивается" :
+                IsNonSerialMachiningTimeClaim(signal, request) ? "машинное время на несерийном станке не оценивается" :
                 IsRefutedDrugoeClaim(signal, request.Parts) ? "«Другое» с детализацией — объяснено" :
                 IsMisaddressedReasonDemand(signal, request.Parts) ? "требование подтверждения невыбранной причины" :
                 hasConfirmedMastering && IsUnconfirmedMasteringClaim(signal) ? "освоение подтверждено детерминированно" :
@@ -544,6 +545,24 @@ public static class FalsePositiveFilter
             || (lower.Contains("отсутств") && lower.Contains("норматив")
                 && !lower.Contains("комментар") && !lower.Contains("мастер"));
         return vague;
+    }
+
+    /// <summary>
+    /// Несерийный станок: «машинное время >= норматива» не оценивается (решение
+    /// владельца 30.09.2026) — изготовление здесь не учитывается. Клиентский сигнал
+    /// убирает RequestShaper, серверный HardRule не создаёт, но модель всё равно может
+    /// написать сравнение по времени (числа строки она видит). Режем претензию к
+    /// времени; жалобу оператора/мастера с числами («12мин вместо 5, деталь делали
+    /// не по техпроцессу») не задеваем — её убирает IsNonSerialMachiningNormativeClaim
+    /// только если это спор о нормативе.
+    /// </summary>
+    private static bool IsNonSerialMachiningTimeClaim(string signal, AnalyzeRequest request)
+    {
+        if (request.IsSerialMachine != false) return false;
+        var lower = signal.ToLowerInvariant();
+        if (!lower.Contains("машинное время") && !lower.Contains("машвремя")) return false;
+        return lower.Contains("норматив") || lower.Contains("превыш")
+            || lower.Contains(">=") || lower.Contains("больше") || lower.Contains("выше");
     }
 
     /// <summary>

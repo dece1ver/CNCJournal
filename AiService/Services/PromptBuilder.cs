@@ -243,7 +243,9 @@ public class PromptBuilder
 
         sb.AppendLine();
         sb.AppendLine($"Станок: {req.Machine}" +
-                      (req.IsSerialMachine == false ? " [несерийный — КПД изготовления не оценивается]" : ""));
+                      (req.IsSerialMachine == false
+                      ? " [несерийный — изготовление не оценивается: ни КПД, ни машинное время]"
+                      : ""));
         sb.AppendLine($"Дата: {req.ShiftDate}");
         sb.AppendLine($"Записей: {req.Parts.Count}");
 
