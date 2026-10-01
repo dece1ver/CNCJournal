@@ -9,6 +9,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Input;
 
 namespace eLog.ViewModels
@@ -219,7 +220,7 @@ namespace eLog.ViewModels
             _cts = new CancellationTokenSource();
             var ct = _cts.Token;
 
-            var progress = new Progress<ChatProgress>(u =>
+            var progress = new InlineProgress<ChatProgress>(u =>
             {
                 // Шаги дозора (очередь, инструменты) видны прямо в облаке ответа,
                 // а не только в строке статуса внизу: пустого облака больше нет.
@@ -250,6 +251,12 @@ namespace eLog.ViewModels
 
                 var result = await _client.ChatStreamAsync(request, progress, ct);
                 assistantItem.IsThinking = false;
+                // Прогресс отработал синхронно (InlineProgress), поэтому в облаке
+                // уже ровно один напечатанный текст. Финальный Reply — тот же
+                // самый, но без markdown; присваивание его перезаписывает, а не
+                // дописывает. При Progress<T> (пост в Dispatcher) это было гонкой:
+                // присваивание успевало раньше отложенных дописываний, и текст
+                // дублировался — на скриншотах было видно два ответа подряд.
                 assistantItem.Text = result.Reply;
                 assistantItem.SetSources(result.Sources);
                 _history.Add(new ChatMessageDto { Role = "assistant", Content = result.Reply });
@@ -383,6 +390,29 @@ namespace eLog.ViewModels
                         }).ToList(),
                 },
             };
+        }
+
+        /// <summary>
+        /// Прогресс, который отрабатывает на месте, а не постом в Dispatcher.
+        /// Progress&lt;T&gt; всегда ставит обработчик в очередь UI, даже когда
+        /// вызов идёт с UI-потока: тогда финальное присваивание Text успевало
+        /// раньше отложенных дописываний токенов, и в облаке оставался дубль
+        /// ответа (приветствие, напечатанное дважды). Чтение SSE идёт в
+        /// продолжениях await, то есть на UI-потоке, поэтому достаточно
+        /// вызвать напрямую; если поток чужой — Invoke, чтобы порядок сохранился.
+        /// </summary>
+        private sealed class InlineProgress<T> : IProgress<T>
+        {
+            private readonly Action<T> _handler;
+
+            public InlineProgress(Action<T> handler) => _handler = handler;
+
+            public void Report(T value)
+            {
+                var dispatcher = Application.Current?.Dispatcher;
+                if (dispatcher == null || dispatcher.CheckAccess()) _handler(value);
+                else dispatcher.Invoke(() => _handler(value));
+            }
         }
     }
 }
