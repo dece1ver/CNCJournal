@@ -34,7 +34,10 @@
                          SnapsToDevicePixels="True">
                     <Ellipse.RenderTransform>
                         <TransformGroup>
-                            <ScaleTransform CenterX="500" CenterY="278.292"/>
+                            <!-- Центр масштабирования — локальный, а не координаты Canvas:
+                                  RenderTransform живёт в системе самого овала (0..172), и точка
+                                  (500; 278.292) уводила зрачок при пульсе влево-вверх. -->
+                             <ScaleTransform CenterX="86" CenterY="86"/>
                             <TranslateTransform/>
                         </TransformGroup>
                     </Ellipse.RenderTransform>

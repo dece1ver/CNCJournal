@@ -19,7 +19,14 @@
                          StrokeThickness="0"
                          SnapsToDevicePixels="True">
                     <Ellipse.RenderTransform>
-                        <ScaleTransform CenterX="500" CenterY="278.292"/>
+                        <!-- Порядок как в remeLog: сначала масштаб, потом сдвиг.
+                             Центр масштабирования — локальный, а не координаты Canvas:
+                             RenderTransform живёт в системе самого овала (0..172), и точка
+                             (500; 278.292) уводила зрачок при пульсе влево-вверх. -->
+                        <TransformGroup>
+                            <ScaleTransform CenterX="86" CenterY="86"/>
+                            <TranslateTransform/>
+                        </TransformGroup>
                     </Ellipse.RenderTransform>
                     <Ellipse.Style>
                         <Style TargetType="Ellipse">
@@ -30,14 +37,32 @@
                                     <DataTrigger.EnterActions>
                                         <BeginStoryboard x:Name="ThinkingPulse">
                                             <Storyboard RepeatBehavior="Forever">
-                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
                                                                  From="1" To="1.35" Duration="0:0:1.4" AutoReverse="True">
                                                     <DoubleAnimation.EasingFunction>
                                                         <SineEase EasingMode="EaseInOut"/>
                                                     </DoubleAnimation.EasingFunction>
                                                 </DoubleAnimation>
-                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
                                                                  From="1" To="1.35" Duration="0:0:1.4" AutoReverse="True">
+                                                    <DoubleAnimation.EasingFunction>
+                                                        <SineEase EasingMode="EaseInOut"/>
+                                                    </DoubleAnimation.EasingFunction>
+                                                </DoubleAnimation>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                        <!-- Осматривание: зрачок идёт слева направо и обратно,
+                                             как в remeLog (TransformGroup.Children[1]), плюс моргание. -->
+                                        <BeginStoryboard x:Name="EyeLook">
+                                            <Storyboard RepeatBehavior="Forever">
+                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.X)"
+                                                                 From="-130" To="130" Duration="0:0:1.8" AutoReverse="True">
+                                                    <DoubleAnimation.EasingFunction>
+                                                        <SineEase EasingMode="EaseInOut"/>
+                                                    </DoubleAnimation.EasingFunction>
+                                                </DoubleAnimation>
+                                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                 From="1" To="0.2" Duration="0:0:0.7" AutoReverse="True">
                                                     <DoubleAnimation.EasingFunction>
                                                         <SineEase EasingMode="EaseInOut"/>
                                                     </DoubleAnimation.EasingFunction>
@@ -47,6 +72,7 @@
                                     </DataTrigger.EnterActions>
                                     <DataTrigger.ExitActions>
                                         <StopStoryboard BeginStoryboardName="ThinkingPulse"/>
+                                        <StopStoryboard BeginStoryboardName="EyeLook"/>
                                     </DataTrigger.ExitActions>
                                 </DataTrigger>
                             </Style.Triggers>
