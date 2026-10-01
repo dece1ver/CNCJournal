@@ -1224,7 +1224,19 @@ public class ChatAgentService(
         var t = reply.ToLowerInvariant();
         string[] marks = ["гипотетич", "пример", "допустим", "условно", "предположим", "для ознакомления"];
         if (!marks.Any(k => t.Contains(k, StringComparison.Ordinal))) return false;
-        return System.Text.RegularExpressions.Regex.IsMatch(t, @"\d");
+        // Маркер и число — в одном предложении, и число не нумерация шага.
+        // Раньше хватало «где-то в тексте есть "пример" и где-то есть цифра», и
+        // процедурный ответ («3. Отметка простоев: если перерыв (например,
+        // поломка)…») считался выдумкой: лишний раунд перегенерации, 34 с и
+        // 1200 символов рассуждений впустую (кейс «как правильно отметить
+        // смену?», прод 01.10 15:48 — 146 с на 4 раунда).
+        foreach (var sentence in t.Split(new[] { '.', '!', '?', ';', '\n', '\r' }))
+        {
+            if (!marks.Any(k => sentence.Contains(k, StringComparison.Ordinal))) continue;
+            var bare = System.Text.RegularExpressions.Regex.Replace(sentence, @"(^|\s)\d+[.)]\s", " ");
+            if (System.Text.RegularExpressions.Regex.IsMatch(bare, @"\d")) return true;
+        }
+        return false;
     }
 
     /// <summary>Вопрос про текущую смену, а не про прошлое. Нужно, чтобы поручень

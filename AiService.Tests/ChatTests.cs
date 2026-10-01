@@ -468,6 +468,17 @@ public class ChatTests
         Assert.Empty(streamed);
     }
 
+    [Theory]
+    // Процедурный ответ с нумерованными шагами и «например» внутри — не
+    // выдуманные цифры: раньше детектор срабатывал и гонял лишний раунд.
+    [InlineData("Выполните шаги: 1. Запуск смены. 3. Отметка простоев: если перерыв " +
+                "(например, поломка оборудования), нажмите кнопку простоя.", false)]
+    // А вот это — настоящий пример с числом: поручень нужен.
+    [InlineData("Пример гипотетических значений: смен 20", true)]
+    [InlineData("Например, КПД изготовления выходит 80 процентов", true)]
+    public void ShowsHypotheticalNumbers_RequiresNumberNearMarker(string reply, bool expected)
+        => Assert.Equal(expected, ChatAgentService.ShowsHypotheticalNumbers(reply));
+
     [Fact]
     public async Task Agent_PlainAnswerWithoutTools_NotForced()
     {
