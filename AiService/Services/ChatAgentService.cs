@@ -86,13 +86,24 @@ public class ChatAgentService(
         // ответ про цифры запрещён (см. блок СТАТИСТИКА в промпте).
         var statsCalls = 0;
         var historyForcedLeft = 1;
+        // Последний вопрос оператора нужен нуджам обоих поручней: без цитаты
+        // модель уходит с исходной темы (кейс C.4).
+        var lastQuestion = LastUserQuestion(messages);
         // Общий бюджет принудительных раундов. Их восемь, а раундов цикла
         // MaxIterations + 2: без общего ограничения модель могла четыре раунда
         // подряд только слушать поручения и ни разу не ответить — оператор
         // получал 500 «4 раунда только звала инструменты» (кейс проверки B6).
         var forcedRounds = 0;
         const int MaxForcedRounds = 2;
-        bool CanForce() => forcedRounds < MaxForcedRounds;
+        // Автоприветствие («[Автостарт]») — поручням тут нечего проверять: факты
+        // смены подставлены детерминированно (ChatController.AugmentGreetingAsync).
+        // А дата наладки в снимке смены («наладка с 30.09.2026 08:12») попадает
+        // под DateInQuestion, и поручни принимали приветствие за вопрос про этот
+        // день: гоняли get_operator_history и ещё три раунда — на старте оператор
+        // видел 4 запроса подряд вместо одного, а ответ уходил в «за этот день
+        // записей нет» вместо приветствия.
+        var isGreeting = (lastQuestion ?? "").StartsWith("[Автостарт]", StringComparison.Ordinal);
+        bool CanForce() => !isGreeting && forcedRounds < MaxForcedRounds;
         // Поручень периода: «а за неделю покажи» без get_my_stats — цифры из головы.
         var periodForcedLeft = 1;
         // Поручень личного вопроса: «а я?» без get_shift_info/get_active_part.
@@ -126,9 +137,6 @@ public class ChatAgentService(
         // Поручень «признал, но не перепроверил»: поправка оператора обязана быть
         // проверена инструментом, иначе это извинение вместо исправления.
         var correctionVerifyForcedLeft = 1;
-        // Последний вопрос оператора нужен нуджам обоих поручней: без цитаты
-        // модель уходит с исходной темы (кейс C.4).
-        var lastQuestion = LastUserQuestion(messages);
         try
         {
             for (var i = 1; i <= MaxIterations + 2; i++)

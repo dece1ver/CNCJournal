@@ -388,6 +388,32 @@ public class ChatTests
     }
 
     [Fact]
+    public async Task Agent_Greeting_NoForcedRounds()
+    {
+        // Автоприветствие: снимок смены содержит дату наладки («наладка с 30.09.2026
+        // 08:12»), и поручень «вопрос про этот день» принимал приветствие за вопрос
+        // про журнал — гонял get_operator_history и ещё три раунда. Факты смены и
+        // так подставлены детерминированно, проверять нечего: один раунд.
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "Здравствуйте, Ермаков Алексей Сергеевич! Станок Mazak QTS350." },
+        ]));
+        var greeting = "[Автостарт] Оператор только что открыл чат. Поздоровайся.\n\n" +
+            "Контекст смены (eLog):\nСтанок: Mazak QTS350 | Смена: День | Оператор: Ермаков А. С.\n" +
+            "Активная деталь: «Шестерня А-47» (А-47), наладка с 30.09.2026 08:12";
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user", Content = greeting }]),
+            [], 20, 12000);
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null,
+            CancellationToken.None);
+
+        Assert.Single(stub.SeenMessages);
+        Assert.Equal(0, res.ToolRounds);
+        Assert.StartsWith("Здравствуйте", res.Reply);
+    }
+
+    [Fact]
     public async Task Agent_PlainAnswerWithoutTools_NotForced()
     {
         // Обычный вопрос без инструментов — не имитация: поручень молчит.
