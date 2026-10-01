@@ -90,17 +90,37 @@ public class AgentToolsTests
     [Fact]
     public void ReasonSemantics_NonSerialMachining_NotJudged()
     {
-        // Несерийный станок: причины изготовления не разбираем (кроме hard-фактов).
+        // Несерийный станок: причины изготовления не разбираем — изготовление
+        // не оценивается. Разбираются только те, что проверяются на любом станке:
+        // «не по техпроцессу» (отклонение от технологии) и «Некорректное
+        // заполнение» (достоверность данных). Причины про нормативы — нет.
         var req = Request(BnPart());
         req.IsSerialMachine = false;
         var r = AgentTools.Execute(req, "get_reason_semantics",
             """{"reason":"Штучная/длительная работа","category":"machining"}""");
         Assert.Contains("НЕ оценивается", r);
 
-        // Hard-факт («не по техпроцессу») — разбирается как обычно.
-        var r2 = AgentTools.Execute(req, "get_reason_semantics",
+        var normative = AgentTools.Execute(req, "get_reason_semantics",
+            """{"reason":"Некорректные нормативы","category":"machining"}""");
+        Assert.Contains("НЕ оценивается", normative);
+
+        var missingNormatives = AgentTools.Execute(req, "get_reason_semantics",
+            """{"reason":"Отсутствие нормативов","category":"machining"}""");
+        Assert.Contains("НЕ оценивается", missingNormatives);
+
+        // Отклонение от технологии и недостоверные данные — разбираются как обычно.
+        var techProcess = AgentTools.Execute(req, "get_reason_semantics",
             """{"reason":"Изготовление не по техпроцессу","category":"machining"}""");
-        Assert.DoesNotContain("НЕ оценивается", r2);
+        Assert.DoesNotContain("НЕ оценивается", techProcess);
+
+        var badFill = AgentTools.Execute(req, "get_reason_semantics",
+            """{"reason":"Некорректное заполнение","category":"machining"}""");
+        Assert.DoesNotContain("НЕ оценивается", badFill);
+
+        // Нормативная причина НАЛАДКИ на несерийном разбирается (глушится только изготовление).
+        var setupNormatives = AgentTools.Execute(req, "get_reason_semantics",
+            """{"reason":"Некорректные нормативы","category":"setup"}""");
+        Assert.DoesNotContain("НЕ оценивается", setupNormatives);
     }
 
     [Theory]

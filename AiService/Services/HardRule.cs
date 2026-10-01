@@ -31,10 +31,13 @@ public record HardRuleResult(
 
 public static class HardRuleEvaluator
 {
+    private const string MissingNormativesReason = "Отсутствие нормативов";
+    private const string BadFillReason = "Некорректное заполнение";
+
     // Фиксированные строки из комбобокса MasterSetupComment/MasterMachiningComment,
     // которые однозначно требуют эскалации — это работа технологов/нормировщиков,
     // которые подключаются именно после эскалации.
-    // internal: читается AgentTools (hard-факты на несерийных станках разбираются как обычно).
+    // internal: читается AgentTools (какие из них разбираются на несерийных — см. ниже).
     internal static readonly HashSet<string> EscalationReasons = new(StringComparer.OrdinalIgnoreCase)
     {
         "Изготовление не по техпроцессу",
@@ -47,8 +50,36 @@ public static class HardRuleEvaluator
         "Некорректное заполнение",
     };
 
-    private const string MissingNormativesReason = "Отсутствие нормативов";
-    private const string BadFillReason = "Некорректное заполнение";
+    /// <summary>
+    /// Причины ИЗГОТОВЛЕНИЯ, которые на несерийном станке НЕ разбираются
+    /// (решение владельца 30.09.2026): «норматив неточный» и «норматив отсутствует»
+    /// — спор о времени, которое на несерийном станке всё равно не учитывается,
+    /// поэтому эскалация по нему бессмысленна. «Отсутствие нормативов» в новых
+    /// клиентах выбирается только для наладки, в наборе остаётся для старых клиентов
+    /// и ранее сохранённых данных. Остальное на несерийном остаётся:
+    /// «Изготовление не по техпроцессу» — отклонение от технологии (человеку надо
+    /// смотреть в любом случае), «Некорректное заполнение» — вопрос к достоверности
+    /// данных. Норматив=0 при заказе без комментария мастера (HardRule ниже) —
+    /// тоже вопрос к данным, поэтому остаётся.
+    /// </summary>
+    internal static readonly HashSet<string> MachiningReasonsSuppressedOnNonSerial = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Некорректные нормативы",
+        MissingNormativesReason,
+    };
+
+    /// <summary>
+    /// Разбирается ли эта причина ИЗГОТОВЛЕНИЯ на несерийном станке: да, только если
+    /// она эскалационная (иначе изготовление просто не оценивается) и не подавлена
+    /// (MachiningReasonsSuppressedOnNonSerial). Зеркало AgentTools.ReasonSemantics —
+    /// правило одно, чтобы модель и правила не разошлись.
+    /// </summary>
+    internal static bool JudgedOnNonSerialMachining(string? machiningReason)
+    {
+        var reason = machiningReason ?? "";
+        return EscalationReasons.Contains(reason)
+            && !MachiningReasonsSuppressedOnNonSerial.Contains(reason);
+    }
 
     // Причины из комбобокса MasterMachiningComment, при наличии которых и непустого
     // MasterComment правило "машинное время >= норматива" понижается до soft — решает
@@ -126,7 +157,16 @@ public static class HardRuleEvaluator
             }
 
             if (!string.IsNullOrWhiteSpace(p.MasterMachiningComment)
-                && EscalationReasons.Contains(p.MasterMachiningComment))
+                && EscalationReasons.Contains(p.MasterMachiningComment)
+                // Несерийный станок: «норматив неточный/отсутствует» пропускаем —
+                // это спор о времени, которое здесь не учитывается. «не по
+                // техпроцессу» и «Некорректное заполнение» остаются: отклонение
+                // от технологии и достоверность данных проверяются на любом станке
+                // (см. MachiningReasonsSuppressedOnNonSerial). Норматив=0 при
+                // заказе без комментария мастера (строка выше) — тоже вопрос к
+                // данным, поэтому на несерийном остаётся.
+                && (checkProductionKpd
+                    || HardRuleEvaluator.JudgedOnNonSerialMachining(p.MasterMachiningComment)))
             {
                 if (p.MasterMachiningComment.Equals(MissingNormativesReason, StringComparison.OrdinalIgnoreCase)
                     && !hasOrder)

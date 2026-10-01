@@ -117,6 +117,72 @@ public class HardRuleFlaggedTests
         Assert.Contains(result.HardSignals, s => s.Contains("наладки"));
     }
 
+    [Theory]
+    [InlineData("Некорректные нормативы")]
+    [InlineData("Отсутствие нормативов")]
+    public void Evaluate_NonSerial_SuppressesMachiningNormativeReasons(string reason)
+    {
+        // Несерийный станок: «норматив неточный/отсутствует» по изготовлению —
+        // спор о времени, которое здесь не учитывается. Эскалации нет.
+        var req = Request(MachiningReasonPart(reason));
+        req.IsSerialMachine = false;
+
+        var result = HardRuleEvaluator.Evaluate(req);
+
+        Assert.False(result.MustEscalate);
+        Assert.DoesNotContain(result.HardSignals, s => s.Contains("пересмотр") || s.Contains("норматив"));
+        Assert.Empty(result.HardFlaggedPartKeys);
+    }
+
+    [Theory]
+    [InlineData("Изготовление не по техпроцессу")]
+    [InlineData("Некорректное заполнение")]
+    public void Evaluate_NonSerial_KeepsMachiningTechProcessAndBadFill(string reason)
+    {
+        // Отклонение от технологии и достоверность данных проверяются на любом станке.
+        var req = Request(MachiningReasonPart(reason));
+        req.IsSerialMachine = false;
+
+        var result = HardRuleEvaluator.Evaluate(req);
+
+        Assert.True(result.MustEscalate);
+        Assert.NotEmpty(result.HardSignals);
+        Assert.Contains("Деталь§1§З1§#1", result.HardFlaggedPartKeys);
+    }
+
+    [Fact]
+    public void Evaluate_NonSerial_KeepsSetupNormativeReason()
+    {
+        // Глушится только изготовление: нормативная причина наладки — как обычно.
+        var req = Request(new PartContext
+        {
+            PartName = "Деталь",
+            Order = "З1",
+            Setup = 1,
+            SetupTimePlan = 60,
+            SetupTimeFact = 50,
+            SingleProductionTimePlan = 5,
+            MasterSetupComment = "Некорректные нормативы",
+        });
+        req.IsSerialMachine = false;
+
+        var result = HardRuleEvaluator.Evaluate(req);
+
+        Assert.Contains("Деталь§1§З1§#1", result.HardFlaggedPartKeys);
+    }
+
+    [Fact]
+    public void Evaluate_Serial_KeepsMachiningNormativeReasons()
+    {
+        // Серийный станок: ничего не глушится.
+        var req = Request(MachiningReasonPart("Некорректные нормативы"));
+        req.IsSerialMachine = true;
+
+        var result = HardRuleEvaluator.Evaluate(req);
+
+        Assert.Contains("Деталь§1§З1§#1", result.HardFlaggedPartKeys);
+    }
+
     [Fact]
     public void Evaluate_SerialOrUnknown_Unchanged()
     {
@@ -132,6 +198,20 @@ public class HardRuleFlaggedTests
             Assert.Contains(result.HardSignals, s => s.Contains("норматив наладки"));
         }
     }
+
+    private static PartContext MachiningReasonPart(string reason) => new()
+    {
+        PartName = "Деталь",
+        Order = "З1",
+        Setup = 1,
+        SetupTimePlan = 60,
+        SetupTimeFact = 50,
+        SetupRatio = 1.2,
+        SingleProductionTimePlan = 5,
+        ProductionTimeFact = 100,
+        ProductionRatio = 20,
+        MasterMachiningComment = reason,
+    };
 
     private static PartContext OperatorPart(string operatorComment) => new()
     {

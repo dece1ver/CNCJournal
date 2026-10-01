@@ -256,6 +256,7 @@ public static class FalsePositiveFilter
                 !hasNonSmallBatchShtuchnaya && IsSmallBatchThresholdClaim(signal) ? "пороги штучной партии пересчитаны моделью" :
                 IsK1ExcludeEcho(signal) ? "эхо exclude-подсказки про К1" :
                 IsNonSerialProductionKpdClaim(signal, request) ? "КПД изготовления не оценивается (несерийный станок)" :
+                IsNonSerialMachiningNormativeClaim(signal, request) ? "норматив изготовления на несерийном станке не оценивается" :
                 IsRefutedDrugoeClaim(signal, request.Parts) ? "«Другое» с детализацией — объяснено" :
                 IsMisaddressedReasonDemand(signal, request.Parts) ? "требование подтверждения невыбранной причины" :
                 hasConfirmedMastering && IsUnconfirmedMasteringClaim(signal) ? "освоение подтверждено детерминированно" :
@@ -518,6 +519,31 @@ public static class FalsePositiveFilter
         var lower = signal.ToLowerInvariant();
         if (!lower.Contains(ProductionMarker) || !lower.Contains("кпд")) return false;
         return lower.Contains('%') || lower.Contains("норм");
+    }
+
+    /// <summary>
+    /// Несерийный станок: эскалация по причинам ИЗГОТОВЛЕНИЯ про нормативы
+    /// («Некорректные нормативы», «Отсутствие нормативов») не разбирается —
+    /// время на таком станке не учитывается (решение владельца 30.09.2026, см.
+    /// HardRule.MachiningReasonsSuppressedOnNonSerial). Модель при этом видит саму
+    /// причину в данных и стабильно пишет по ней сигнал, даже когда tool ответил
+    /// «не оценивается» (кейс 30.09.2026, SKT21 27.09) — режем на выходе.
+    /// Узко: только нормативная претензия + изготовление. «не по техпроцессу» и
+    /// «Некорректное заполнение» (технология/достоверность данных) не задеваются,
+    /// как и «норматив отсутствует» без комментария мастера — это вопрос к данным,
+    /// и его система эскалирует сама (такой сигнал мимо Apply не идёт).
+    /// </summary>
+    private static bool IsNonSerialMachiningNormativeClaim(string signal, AnalyzeRequest request)
+    {
+        if (request.IsSerialMachine != false) return false;
+        var lower = signal.ToLowerInvariant();
+        if (!lower.Contains(ProductionMarker)) return false;
+        if (!lower.Contains("норматив")) return false;
+        var vague = lower.Contains("некоррект") || lower.Contains("неточн")
+            || lower.Contains("неверн") || lower.Contains("ошиб")
+            || (lower.Contains("отсутств") && lower.Contains("норматив")
+                && !lower.Contains("комментар") && !lower.Contains("мастер"));
+        return vague;
     }
 
     /// <summary>

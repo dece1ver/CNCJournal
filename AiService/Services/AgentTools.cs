@@ -168,12 +168,14 @@ public static class AgentTools
 
         var trimmed = reason.Trim();
 
-        // Несерийный станок: причины изготовления не разбираем — изготовление
-        // не оценивается (v7 скелета). Исключение: модель сверяет hard-факт
-        // («не по техпроцессу»/нормативы) — по ним отвечаем как обычно.
+        // Несерийный станок: изготовление не оценивается — не заводим сигналы и
+        // exclude. Разбираются только те причины, что в HardRule проверяются на
+        // любом станке: «не по техпроцессу» (отклонение от технологии) и
+        // «Некорректное заполнение» (достоверность данных). Причины про нормативы
+        // не разбираются — спор о времени, которое здесь не учитывается.
         if (req.IsSerialMachine == false
             && category.Trim().Equals("machining", StringComparison.OrdinalIgnoreCase)
-            && !HardRuleEvaluator.EscalationReasons.Contains(trimmed))
+            && !HardRuleEvaluator.JudgedOnNonSerialMachining(trimmed))
             return $"«{trimmed}» — изготовление на этом станке НЕ оценивается (несерийный): "
                 + "аномалии изготовления не проверяй, в signals не пиши, в exclude не предлагай.";
 
