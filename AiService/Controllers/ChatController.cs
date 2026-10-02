@@ -298,11 +298,26 @@ public class ChatController(
         var isAutostart = request.Messages.Any(m =>
             !string.IsNullOrWhiteSpace(m.Content)
             && m.Content.StartsWith("[Автостарт]", StringComparison.Ordinal));
-        if (!WebSearchService.ShouldPreSearch(query, request.AllowWebSearch, isAutostart))
+        // Вопрос о работе программы и учёта (К1/К2, наладка, нормативы, порядок
+        // запуска и завершения) — это наша инструкция, а не интернет: пред-поиск
+        // тратил 10 с и не давал результатов (кейс «как правильно отметить
+        // смену?», 01.10). Такие вопросы агент решает через search_docs.
+        // Оцениваем по последнему вопросу, а не по собранному запросу: тот
+        // включает историю, где любая старая фраза про смену дала бы ложное
+        // «это вопрос про программу».
+        var lastUserQuestion = request.Messages.LastOrDefault(m =>
+            !string.IsNullOrWhiteSpace(m.Content)
+            && !(m.Role ?? "").Trim().Equals("assistant", StringComparison.OrdinalIgnoreCase))
+            ?.Content ?? "";
+        var isProgramQuestion = ChatAgentService.AsksAboutProgramDocs(lastUserQuestion);
+        if (!WebSearchService.ShouldPreSearch(
+                query, request.AllowWebSearch, isAutostart, isProgramQuestion))
         {
-            if (isAutostart)
-                logger.LogInformation("Чат ({Machine}): пред-поиск пропущен (автостарт)",
-                    request.Context?.Machine ?? "(без контекста)");
+            logger.LogInformation(
+                "Чат ({Machine}): пред-поиск пропущен ({Reason}) «{Q}»",
+                request.Context?.Machine ?? "(без контекста)",
+                isAutostart ? "автостарт" : isProgramQuestion ? "вопрос о программе" : "эвристика",
+                query[..Math.Min(60, query.Length)]);
             return [];
         }
         var results = await webSearch.SearchAsync(query, ct);

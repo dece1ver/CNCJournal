@@ -165,6 +165,16 @@ public class ChatAgentService(
         var payForcedLeft = 1;
         var toolNameForcedLeft = 1;
         var downtimeTypesCalls = 0;
+        // Обращения к корпусу инструкций: поручень ниже не даст ответить о
+        // программе из головы.
+        var docsCalls = 0;
+        var docsForcedLeft = 1;
+        // Повторно платить за рассуждения незачем там, где модель уже
+        // подумала и её просят только переписать текст (убрать имена тулов,
+        // выдуманные цифры). Там thinking — это время и токены без выигрыша.
+        // Где есть риск (выбор инструмента, разбор данных, реш��ние по
+        // результату тула), рассуждения включаются обратно.
+        var thinkNextRound = true;
         // Поручень «нет данных без тула» и поручень чисел — по одному раунду.
         var noDataForcedLeft = 1;
         var countForcedLeft = 1;
@@ -179,7 +189,7 @@ public class ChatAgentService(
             {
                 var round = await chat.ChatAsync(
                     messages, ChatTools.Definitions, format: null,
-                    think: useThinking, cts.Token, model: model,
+                    think: useThinking && thinkNextRound, cts.Token, model: model,
                     temperature: temperature ?? Temperature,
                     thinkingProgress: null, tokenProgress: tokenProgress);
                 lastContent = round.Content ?? "";
@@ -224,6 +234,35 @@ public class ChatAgentService(
                     }
                     if (unverified.Count > 0)
                         verifiedNote = " (обозначение не подтверждено поиском — проверьте у поставщика)";
+                    // Вопрос о работе программы и учёта — из инструкции, не из головы
+                    // и не из сети: К1/К2, наладка, нормативы, маршруты, порядок
+                    // запуска и завершения смены, кнопки журнала, простои.
+                    if (CanForce() && docsForcedLeft > 0 && docsCalls == 0
+                        && AsksAboutProgramDocs(lastQuestion))
+                    {
+                        forcedRounds++;
+                        docsForcedLeft--;
+                        toolProgress?.Report("📄 иду в инструкцию…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». Это вопрос о работе " +
+                                "программы и учёта, а инструкцию ты не открывал. " +
+                                "Вызови search_docs по ключевым словам вопроса " +
+                                "(при нужде — read_doc) и ответь по найденному, " +
+                                "указав документ. В сеть за такими ответами не ходи: " +
+                                "там чужие инструкции. В документах нужного нет — " +
+                                "так и скажи.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка вопроса о программе", machine);
+                        continue;
+                    }
                     // Рассказ о прошлом без вызова истории — принудительный раунд:
                     // иначе модель отвечает из головы (кейс CNC-513).
                     if (CanForce() && historyCalls == 0 && historyForcedLeft > 0
@@ -525,6 +564,8 @@ public class ChatAgentService(
                                 "слова: «смотрю смену», «читаю инструкцию», «смотрю " +
                                 "остатки на складе». Смысл ответа и цифры не меняй.",
                         });
+                        // Правка текста: рассуждения не нужны, модель уже думала.
+                        thinkNextRound = false;
                         logger.LogInformation(
                             "Чат-агент ({Machine}): автопроверка имён тулов в ответе", machine);
                         continue;
@@ -565,6 +606,7 @@ public class ChatAgentService(
                     // поручней не тратим — иначе утечка имён оставалась (кейс A4/D3).
                     if (statsNumbersForcedLeft > 0
                         && statsCalls == 0 && historyCalls == 0 && shiftInfoCalls == 0
+                        && !AsksAboutExternalData(lastQuestion)
                         && ShowsHypotheticalNumbers(lastContent))
                     {
                         forcedRounds++;
@@ -587,6 +629,8 @@ public class ChatAgentService(
                                 "цифры, либо прямо скажи, что данных нет. Своих чисел не " +
                                 "выдумывать.",
                         });
+                        // Правка текста: рассуждения не нужны, модель уже думала.
+                        thinkNextRound = false;
                         logger.LogInformation(
                             "Чат-агент ({Machine}): автопроверка выдуманных цифр", machine);
                         continue;
@@ -683,6 +727,9 @@ public class ChatAgentService(
                     { WebSources = webSources };
                 }
 
+                // Инструменты вызваны: дальше снова нужны рассуждения (выбор,
+                // разбор результата) — восстанавливаем бюджет мысли.
+                thinkNextRound = true;
                 toolRounds += round.ToolCalls.Count;
                 messages.Add(new ChatMessage
                 {
@@ -843,6 +890,7 @@ public class ChatAgentService(
                     }
                     else if (call.Name == "list_docs")
                     {
+                        docsCalls++;
                         toolProgress?.Report("📄 смотрю документы…");
                         var list = docs.List(OperatorDocs);
                         messages.Add(new ChatMessage
@@ -854,6 +902,7 @@ public class ChatAgentService(
                     }
                     else if (call.Name == "search_docs")
                     {
+                        docsCalls++;
                         var query = ExtractArg(call.Arguments, "query");
                         toolProgress?.Report($"📄 ищу в документах «{Trunc(query)}»…");
                         var hits = docs.Search(query, allowed: OperatorDocs);
@@ -867,6 +916,7 @@ public class ChatAgentService(
                     }
                     else if (call.Name == "read_doc")
                     {
+                        docsCalls++;
                         var name = ExtractArg(call.Arguments, "name");
                         var offset = ParseInt(ExtractArg(call.Arguments, "offset"));
                         var length = ParseInt(ExtractArg(call.Arguments, "length"));
@@ -945,7 +995,7 @@ public class ChatAgentService(
                     // Пустой список, а не null: OllamaService разворачивает tools
                     // через Select и на null падал (финальный раунд не запускался).
                     var final = await chat.ChatAsync(
-                        messages, [], format: null, think: useThinking, cts.Token,
+                        messages, [], format: null, think: useThinking && thinkNextRound, cts.Token,
                         model: model, temperature: temperature ?? Temperature,
                         thinkingProgress: null, tokenProgress: tokenProgress);
                     if (!string.IsNullOrWhiteSpace(final.Content))
@@ -1160,6 +1210,28 @@ public class ChatAgentService(
     /// инструкции «отмечать только если потребность возникла во время работы».
     /// Без вызова модель отвечала по складу или уходила в историю смен
     /// (кейсы проверки C2 и C4). Чистая функция.</summary>
+    /// <summary>
+    /// Вопрос о внешних данных, которых в ЭЖ нет: цены, поставщики, погода,
+    /// курсы, производители, аналоги, новинки, ГОСТ. Для них приблизительные
+    /// числа законны («от 500 до 2000 у поставщиков»), и поручень «выдуманные
+    /// цифры» не должен уводить такой ответ в «данных в журнале нет».
+    /// </summary>
+    public static bool AsksAboutExternalData(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        var t = question.ToLowerInvariant();
+        string[] marks =
+        [
+            "цена", "цены", "цену", "стоимост", "стоит", "стоят", "почем", "почём",
+            "купить", "продать", "поставщик", "дилер", "магазин",
+            "курс", "доллар", "евро", "рубл", "валют",
+            "погод", "прогноз", "температур",
+            "производител", "аналог", "гост", "iso", "новинк", "модель",
+            "в интернете", "в инете", "в сети", "погугли", "поищи", "загугли",
+        ];
+        return marks.Any(k => t.Contains(k, StringComparison.Ordinal));
+    }
+
     public static bool AsksAboutDowntime(string? question)
     {
         if (string.IsNullOrWhiteSpace(question)) return false;
@@ -1174,6 +1246,20 @@ public class ChatAgentService(
             "жду техподдержку", "жду ремонт", "жду мастера", "не могу найти инструмент",
             "инструмента нет", "инструмент не", "подождал", "ждали",
         ];
+        // «как отметить СМЕНУ» — это про порядок работы (идём в инструкцию),
+        // а не про простой: без этой оговорки поручень за списком типов простоя
+        // уводил ответ с процедуры отметки смены на один только простой и
+        // стоил лишнего раунда с инструментом (кейс 01.10, 77 с на вопрос).
+        if (t.Contains("смен", StringComparison.Ordinal)
+            && !t.Contains("простоя", StringComparison.Ordinal)
+            && !t.Contains("простоев", StringComparison.Ordinal)
+            && !t.Contains("простой", StringComparison.Ordinal)
+            && !t.Contains("простои", StringComparison.Ordinal))
+        {
+            var other = downtime.Where(k => k != "отмет").Any(k =>
+                t.Contains(k, StringComparison.Ordinal));
+            if (!other) return false;
+        }
         if (downtime.Any(k => t.Contains(k, StringComparison.Ordinal))) return true;
         // «на складе нет инструмента» — тоже простой поиска и получения.
         return t.Contains("складе", StringComparison.Ordinal)
@@ -1243,6 +1329,39 @@ public class ChatAgentService(
     /// «рассказ о прошлом без инструмента» не уводил в историю смен на вопросах
     /// вида «замечания по смене?» — там get_shift_review уже вызван, а ответ с
     /// датой в детали считался выдумкой и тянул за собой get_operator_history.</summary>
+    /// <summary>
+    /// Вопрос о работе программы и учёта: К1/К2, нормативы, наладка, маршруты и
+    /// М/Л, разметка и припуски, чек-лист передачи смены, порядок запуска,
+    /// завершения и отметки смены, типы простоев, нарядный допуск, инструкция и
+    /// регламент. Ответ на такой вопрос — из нашей инструкции (search_docs),
+    /// а не из головы и не из сети: пред-поиск в интернет по «как правильно
+    /// отметить смену?» давал 10 с ожидания и ноль результатов (прод 01.10).
+    /// Список намеренно предметный: широкие слова («смена», «деталь», «журнал»,
+    /// «простой») ловили вопросы про собственные данные оператора — их решают
+    /// инструменты смены, а не инструкция.
+    /// </summary>
+    public static bool AsksAboutProgramDocs(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        var t = question.ToLowerInvariant();
+        string[] marks =
+        [
+            // производственный учёт
+            // «коэффициент» здесь НЕ про КПД: «какой у меня коэффициент
+            // эффективности» — вопрос про данные оператора, их решают
+            // инструменты смены. К1/К2 ловим по «к1»/«к2».
+            "к1", "к2", "норматив", "маршрут", "м/л",
+            "разметк", "припуск", "допуск", "технологическ", "наладк",
+            "наряд", "заказ-наряд",
+            // порядок работы и правила
+            "инструкци", "регламент", "правил", "порядок", "чек-лист", "чек лист",
+            "как отмет", "как запуст", "как нача", "как заверш", "как закры",
+            "как провести", "как оформ", "как правильно", "что делать",
+            "куда нажать", "что нажимать", "простои",
+        ];
+        return marks.Any(k => t.Contains(k, StringComparison.Ordinal));
+    }
+
     public static bool AsksAboutCurrentShift(string? question)
     {
         if (string.IsNullOrWhiteSpace(question)) return false;

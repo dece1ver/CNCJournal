@@ -42,9 +42,13 @@ public class ChatTests
         },
     };
 
+    // Вопрос по умолчанию — нейтральный, про данные смены. «Что делать при
+    // простое?» — это вопрос о работе программы, и поручень «иди в инструкцию»
+    // (AsksAboutProgramDocs) добавлял бы к каждому такому тесту лишний раунд,
+    // которого в сценарии нет. Тесты про документы задают вопрос явно.
     private static ChatRequest Request(List<ChatMessageDto>? messages = null) => new()
     {
-        Messages = messages ?? [new ChatMessageDto { Role = "user", Content = "Что делать при простое?" }],
+        Messages = messages ?? [new ChatMessageDto { Role = "user", Content = "что у меня в смене?" }],
         Context = Context(),
     };
 
@@ -62,7 +66,7 @@ public class ChatTests
         Assert.DoesNotContain("Гильза", res.System);
         Assert.Single(res.Messages);
         Assert.Equal("user", res.Messages[0].Role);
-        Assert.Contains("Что делать при простое?", res.Messages[0].Content);
+        Assert.Contains("что у меня в смене?", res.Messages[0].Content);
     }
 
     [Fact]
@@ -478,6 +482,92 @@ public class ChatTests
     [InlineData("Например, КПД изготовления выходит 80 процентов", true)]
     public void ShowsHypotheticalNumbers_RequiresNumberNearMarker(string reply, bool expected)
         => Assert.Equal(expected, ChatAgentService.ShowsHypotheticalNumbers(reply));
+
+    [Theory]
+    [InlineData("как правильно отметить смену?", false)]
+    [InlineData("как отметить простой", true)]
+    [InlineData("сломался патрон, что делать?", true)]
+    [InlineData("как отметить простой при сломанном станке", true)]
+    [InlineData("смена не начата, что делать?", false)]
+    public void AsksAboutDowntime_ShiftMarkingIsNotDowntime(string question, bool expected)
+        => Assert.Equal(expected, ChatAgentService.AsksAboutDowntime(question));
+
+    [Theory]
+    // Приблизительные числа законны там, где данных в ЭЖ нет: цены, погода.
+    [InlineData("сколько стоит фреза 5мм?", true)]
+    [InlineData("какая цена на пластину", true)]
+    [InlineData("какая погода в цехе", true)]
+    [InlineData("почём кобальтовая пластина", true)]
+    [InlineData("сколько деталей я сделал?", false)]
+    [InlineData("какой у меня КПД", false)]
+    public void AsksAboutExternalData_Shapes(string question, bool expected)
+        => Assert.Equal(expected, ChatAgentService.AsksAboutExternalData(question));
+
+    [Theory]
+    // Вопросы о работе программы и учёта — инструкция, а не сеть.
+    [InlineData("как правильно отметить смену?", true)]
+    [InlineData("Что делать при простое?", true)]
+    [InlineData("какие К1/К2 применяются", true)]
+    [InlineData("где в программе нормативы наладки", true)]
+    [InlineData("какой М/Л у детали", true)]
+    [InlineData("как запустить смену", true)]
+    // А это — про собственные данные оператора, их решают инструменты смены.
+    [InlineData("что у меня в смене?", false)]
+    [InlineData("сколько деталей я сделал вчера?", false)]
+    [InlineData("какой у меня коэффициент эффективности?", false)]
+    [InlineData("привет", false)]
+    public void AsksAboutProgramDocs_Shapes(string question, bool expected)
+        => Assert.Equal(expected, ChatAgentService.AsksAboutProgramDocs(question));
+
+    [Theory]
+    // Галки «Искать в сети» больше нет: сеть включается фразой в вопросе или
+    // эвристикой (цены, погода, поставщики), а вопрос о программе — нет.
+    [InlineData("как правильно отметить смену?", false, false)]
+    // Явная просьба «поищи в интернете» сильнее правила «вопрос о программе».
+    [InlineData("поищи в интернете, как правильно отметить смену", true, true)]
+    [InlineData("сколько стоит фреза 5мм?", false, true)]
+    [InlineData("какая погода в цехе", false, true)]
+    public void ShouldPreSearch_ProgramQuestionGoesToDocs(string query, bool asksWeb, bool expected)
+    {
+        var isProgram = ChatAgentService.AsksAboutProgramDocs(query);
+        Assert.Equal(asksWeb, WebSearchService.AsksWebExplicitly(query));
+        Assert.Equal(expected, WebSearchService.ShouldPreSearch(
+            query, allowWebSearch: false, isAutostart: false, isProgramQuestion: isProgram));
+    }
+
+    [Fact]
+    public async Task Agent_ProgramQuestion_ForcesDocsLookup()
+    {
+        // Порядок отметки смены — из инструкции: модель ответила из головы и
+        // корпус не открывала, поручень отправляет в search_docs.
+        // Ответ из головы → поручень в инструкцию → ответ по инструкции.
+        // Списка типов простоя тут нет и быть не должно: «как отметить смену» —
+        // вопрос о порядке работы, а не о простое.
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "Отмечайте так-то." },
+            new ChatResult
+            {
+                ToolCalls = [new AgentToolCall { Id = "c1", Name = "search_docs",
+                    Arguments = "{\"query\":\"отметка смены\"}" }],
+            },
+            new ChatResult { Content = "По инструкции оператора: порядок такой." },
+        ]));
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto
+                { Role = "user", Content = "как правильно отметить смену?" }]),
+            [], 20, 12000);
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null,
+            CancellationToken.None);
+
+        Assert.Null(res.Error);
+        Assert.Equal(1, res.ToolRounds);
+        Assert.Equal("По инструкции оператора: порядок такой.", res.Reply);
+        var nudge = stub.SeenMessages[1].First(
+            m => m.Role == "user" && m.Content.Contains("[Автопроверка]"));
+        Assert.Contains("search_docs", nudge.Content);
+    }
 
     [Fact]
     public async Task Agent_PlainAnswerWithoutTools_NotForced()
