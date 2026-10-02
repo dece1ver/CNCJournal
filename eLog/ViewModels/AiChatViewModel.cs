@@ -320,26 +320,57 @@ namespace eLog.ViewModels
     /// Держим в одном числе с записью в базу — Infrastructure/Extensions/Parts.cs.</summary>
     private const int ShiftDateNightCutoverHour = 9;
 
-    private static string ShiftDateOfToday(string? shift)
+    private static DateTime ShiftDateToday(string? shift)
     {
         var now = DateTime.Now;
-        var date = now.Hour < ShiftDateNightCutoverHour
+        return now.Hour < ShiftDateNightCutoverHour
             && string.Equals(shift, Text.NightShift, StringComparison.OrdinalIgnoreCase)
             ? now.Date.AddDays(-1)
             : now.Date;
-        return date.ToString("yyyy-MM-dd");
+    }
+
+    private static string ShiftDateOfToday(string? shift)
+        => ShiftDateToday(shift).ToString("yyyy-MM-dd");
+
+    /// <summary> Момент, с которого деталь считается текущей работой: наладка
+    /// началась, но изготовление ещё не стартовало — берём более позднее из
+    /// двух, чтобы не потерять деталь, которая уже в работе на изготовлении. </summary>
+    private static DateTime LastStart(Part p) =>
+        p.StartMachiningTime > p.StartSetupTime ? p.StartMachiningTime : p.StartSetupTime;
+
+    /// <summary> Активная деталь — та, с которой оператор работает сейчас.
+    ///
+    /// Раньше снимок подставлял «первую поп��авшуюся запись журнала», если
+    /// ничего не было в работе. Из-за этого ассистент уверенно перечислял
+    /// стар��ю деталь с наладкой от 26.05 вместе с её комментарием, а оператор
+    /// получал «у вас активна деталь …» в ответ на «у меня её нет» (прод 02.10).
+    ///
+    /// Правила:
+    /// 1) смена не начата — активной детали нет: работать пока не с чем;
+    /// 2) берём только деталь в работе (IsFinished = InProgress), а не любую
+    ///    запись журнала;
+    /// 3) начало наладки или изготовления — не раньше даты смены: не закрытая
+    ///    в прошлые сутки запись это подвисшая, а не текущая работа (ночная
+    ///    смена, идущая после полуночи, попадает сюда по своей дате);
+    /// 4) таких несколько — берём самую свежую по времени начала.
+    /// </summary>
+    private static Part? ActivePartOf(
+        IEnumerable<Part>? parts, bool shiftStarted, DateTime shiftDate)
+    {
+        if (!shiftStarted || parts == null) return null;
+        return parts
+            .Where(p => p.InProgress)
+            .Where(p => LastStart(p) >= shiftDate)
+            .OrderByDescending(LastStart)
+            .FirstOrDefault();
     }
 
     private static ElogChatContextDto BuildContextSnapshot()
         {
             var settings = AppSettings.Instance;
             var parts = settings.Parts;
-            Part? active = null;
-            if (parts != null)
-            {
-                active = parts.FirstOrDefault(p => p.IsFinished == Part.State.InProgress)
-                    ?? parts.FirstOrDefault();
-            }
+            var active = ActivePartOf(
+                parts, settings.IsShiftStarted, ShiftDateToday(settings.CurrentShift));
 
             return new ElogChatContextDto
             {
