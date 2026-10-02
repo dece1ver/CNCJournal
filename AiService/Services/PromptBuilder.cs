@@ -422,14 +422,20 @@ public class PromptBuilder
             }
         }
 
-        static int TotalLen(string system, List<ChatMessage> hist)
+        static int HistoryLen(List<ChatMessage> hist)
         {
-            var len = system.Length;
+            var len = 0;
             foreach (var m in hist) len += (m.Content?.Length ?? 0) + 16;
             return len;
         }
 
-        while (TotalLen(systemPrompt, history) > maxChars && history.Count > 1)
+        // Бюджет символов относится к ИСТОРИИ, а не к «промпту + истории».
+        // Иначе растущий системный промпт съедал весь диалог: он уже 27 890
+        // символов (15 этапов правил), а Chat:MaxContextChars = 12000, и цикл
+        // вырезал сообщения одно за другим, пока не оставалось одно —
+        // последнее. Модель работала как статeless: не помнила, что говорила
+        // сама, и плохо реагировала на поправки оператора.
+        while (HistoryLen(history) > maxChars && history.Count > 1)
             history.RemoveAt(0);
 
         return new ChatBuildResult(systemPrompt, promptVersion, history);
