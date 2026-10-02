@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Machine = eLog.Models.Machine;
 using static libeLog.Infrastructure.Db.DbHelper;
@@ -256,8 +257,13 @@ namespace eLog.Infrastructure
                     INSERT (Machine, Status, PartName, [Order], Operator, Setup, Shift, PhaseStartLocal, UpdatedUtc)
                     VALUES (@Machine, @Status, @PartName, @Order, @Operator, @Setup, @Shift, @PhaseStart, SYSUTCDATETIME());";
 
+            // Статус станка heartbeat не имеет права падать: обрезаем по ширине колонки Status
+            // (см. SqlSchemaBootstrapper → cnc_machine_activity), иначе усечение в БД превращается
+            // в стектрейс в логе каждые 12 секунд.
+            if (status.Length > MachineActivityStatusMaxLength) status = status[..MachineActivityStatusMaxLength];
+
             await using var conn = await OpenConnectionAsync(AppSettings.Instance.ConnectionString);
-            await conn.ExecuteAsync(sql, new
+            var parameters = new
             {
                 Machine = machine,
                 Status = status,
@@ -267,8 +273,45 @@ namespace eLog.Infrastructure
                 Setup = setup,
                 Shift = shift,
                 PhaseStart = phaseStart
-            });
+            };
+            try
+            {
+                await conn.ExecuteAsync(sql, parameters);
+            }
+            catch (SqlException ex) when (ex.Number is 2628 or 8152 && status.Length > MachineActivityNarrowStatusLength)
+            {
+                // В БД колонка Status уже, чем название простоя (см. scripts/2026-10-02_*.sql).
+                // Пока скрипт не применён, пишем обрезанный статус: иначе каждая попытка раз в 12 секунд
+                // падала бы с SqlException и забивала лог одинаковыми стектрейсами.
+                WarnActivityStatusNarrow(status);
+                await conn.ExecuteAsync(sql, new
+                {
+                    parameters.Machine,
+                    Status = status[..MachineActivityNarrowStatusLength],
+                    parameters.PartName,
+                    parameters.Order,
+                    parameters.Operator,
+                    parameters.Setup,
+                    parameters.Shift,
+                    parameters.PhaseStart
+                });
+            }
         }
+
+        private static int _narrowStatusWarned;
+
+        private static void WarnActivityStatusNarrow(string status)
+        {
+            if (Interlocked.Exchange(ref _narrowStatusWarned, 1) != 0) return;
+            Util.WriteLog($"Статус станка обрезан до {MachineActivityNarrowStatusLength} символов: \"{status}\". " +
+                          "Расширьте колонку Status в cnc_machine_activity (см. scripts/2026-10-02_cnc_machine_activity_status.sql).");
+        }
+
+        /// <summary>Ширина Status в cnc_machine_activity до применения расширения колонки.</summary>
+        private const int MachineActivityNarrowStatusLength = 20;
+
+        /// <summary>Ширина Status в cnc_machine_activity по схеме (SqlSchemaBootstrapper).</summary>
+        private const int MachineActivityStatusMaxLength = 100;
 
         public static async Task<(DbResult Result, List<string> ToolTypes, string? Error)> GetSearchToolTypes()
         {

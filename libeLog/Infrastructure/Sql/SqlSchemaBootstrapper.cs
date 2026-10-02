@@ -723,7 +723,9 @@ namespace libeLog.Infrastructure.Sql
             // давно не обновлялся, читающая сторона показывает "нет данных", а не "простой".
             new TableBuilder("cnc_machine_activity")
                 .AddColumn("Machine", "NVARCHAR(50)", opt => opt.PrimaryKey().Nullable(false))
-                .AddStringColumn("Status", 20, false)
+                // Статус сюда пишется вместе с названием простоя ("Обращение в другие службы [Н]"),
+                // поэтому 20 символов не хватало: MERGE падал с усечением и heartbeat не проходил.
+                .AddStringColumn("Status", 100, false)
                 .AddStringColumn("PartName", -1)
                 .AddStringColumn("Order", 50)
                 .AddStringColumn("Operator", -1)
