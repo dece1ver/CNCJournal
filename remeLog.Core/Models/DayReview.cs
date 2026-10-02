@@ -1,4 +1,5 @@
-﻿using remeLog.Infrastructure.Types;
+﻿using remeLog.Infrastructure;
+using remeLog.Infrastructure.Types;
 using System;
 using System.Collections.Generic;
 
@@ -98,6 +99,15 @@ namespace remeLog.Models
         /// при AiVerdict != «совпадение».
         /// </summary>
         public string? AiFeedback { get; set; }
+
+        /// <summary>
+        /// Вердикт ИИ, который аналитик принял вместе с решением дня. Пишется тем же
+        /// запросом, что и решение: раньше ИИ-поля сохранялись отдельным вызовом и ТОЛЬКО
+        /// когда ревью дня уже существовало, поэтому на первом разборе суток вердикт
+        /// терялся (36 дней у Filippova_AV+ИИ, сентябрь 2026). null — ИИ-поля не трогаем,
+        /// обычное сохранение решения их не затирает.
+        /// </summary>
+        public AiAnalysisResult? AiResult { get; set; }
 
         /// <summary>
         /// Автоматический вердикт совпадения ИИ и аналитика (computed в БД).

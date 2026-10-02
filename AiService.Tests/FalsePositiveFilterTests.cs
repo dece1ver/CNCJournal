@@ -145,6 +145,114 @@ public class FalsePositiveFilterTests
     }
 
     [Fact]
+    public void LowMachiningTimeClaim_Removed_AnyMachine()
+    {
+        // Кейс 30.09.2026, Hyundai L230A 22.09 (дословно): модель 6 прогонов подряд
+        // писала «Низкое машВремя (1.8) ниже норматива (5) без объяснения» — такого
+        // правила нет, время быстрее плана это норма. Аналитик: «Машинное время в норме».
+        // Станок СЕРИЙНЫЙ (IsSerial не задан), правило действует на любом.
+        var part = new PartContext
+        {
+            PartName = "Прокладка АР415-01-022",
+            Order = "З1",
+            Setup = 1,
+            MachiningTime = 1.8,
+            SingleProductionTimePlan = 5,
+        };
+
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            [
+                "Низкое машВремя (1.8) ниже норматива (5) без объяснения",
+                "[Прокладка АР415-01-022] Машинное время 1,8мин ниже штучного норматива 5мин",
+            ]);
+
+        Assert.Empty(filtered);
+        Assert.Equal(2, removed.Count);
+        Assert.All(removed, r => Assert.Equal("машинное время ниже норматива — не аномалия", r.Reason));
+    }
+
+    [Theory]
+    [InlineData("[Гильза] Машинное время 4,7мин >= норматива 4мин (118%)")]
+    [InlineData("[Гильза] Машинное время превышает норматив — требует разбора")]
+    [InlineData("[Гильза] Изготовление не по техпроцессу: машинное время 1,8мин при нормативе 5, детали делали не по карте")]
+    [InlineData("[Гильза] Оператор сообщает о некорректном нормативе, машинное время ниже плана")]
+    public void LowMachiningTimeClaim_Kept_RealFindings(string signal)
+    {
+        // Аномалия «машинное время >= норматива» — правило настоящее, режется только
+        // претензия «ниже норматива». Явная жалоба/причина с числами — тоже сигнал.
+        var part = new PartContext
+        {
+            PartName = "Гильза",
+            Order = "З1",
+            Setup = 1,
+            MachiningTime = 4.7,
+            // Партия не штучная: иначе сработает другое правило (пороги штучной партии)
+            // и проверить машинное время было бы нельзя.
+            FinishedCount = 50,
+            SingleProductionTimePlan = 4,
+        };
+
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded, [signal]);
+
+        Assert.Equal([signal], filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void ServerSignalRestatedByModel_Removed()
+    {
+        // Кейс 30.09.2026, Mazak QTS350 26.09: 4 сигнала на 2 сущности. Модель
+        // переписала серверные hard-факты своими словами и без скобок — два раза.
+        var part = new PartContext
+        {
+            PartName = "Фланец АРМ2-49.4-01-008",
+            Order = "ФЛ2609-0003.1.1",
+            Setup = 1,
+            SingleProductionTimePlan = 5,
+            MasterSetupComment = "Изготовление не по техпроцессу",
+        };
+        var hard = new HardRuleResult(
+            [
+                "[Фланец АРМ2-49.4-01-008] Причина отклонения в наладке требует пересмотра технологии: «Изготовление не по техпроцессу»",
+                "[Фланец АРМ2-49.4-01-008] Причина отклонения в изготовлении требует пересмотра технологии: «Изготовление не по техпроцессу»",
+            ],
+            []);
+
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), hard, NoDowngraded,
+            [
+                "Фланец АРМ2-49.4-01-008: Причина отклонения в наладке требует пересмотра технологии",
+                "Фланец АРМ2-49.4-01-008: Причина отклонения в изготовлении требует пересмотра технологии",
+                "[Фланец АРМ2-49.4-01-008] КПД наладки 40% без объяснения мастера",
+            ]);
+
+        Assert.Equal(["[Фланец АРМ2-49.4-01-008] КПД наладки 40% без объяснения мастера"], filtered);
+        Assert.Equal(2, removed.Count);
+        Assert.All(removed, r => Assert.Equal("пересказ системного сигнала (цитировать дословно)", r.Reason));
+    }
+
+    [Fact]
+    public void ServerSignalRestated_OtherPart_Kept()
+    {
+        // Эхом детали A нельзя срезать сигнал по детали B с той же комбобокс-причиной:
+        // пул сужается до названной детали.
+        var a = new PartContext { PartName = "Вал", Order = "З1", Setup = 1, SingleProductionTimePlan = 5 };
+        var b = new PartContext { PartName = "Штуцер", Order = "З1", Setup = 1, SingleProductionTimePlan = 5 };
+        var hard = new HardRuleResult(
+            ["[Вал] Причина отклонения в изготовлении требует пересмотра технологии: «Некорректные нормативы»"],
+            []);
+
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(a, b), hard, NoDowngraded,
+            ["[Штуцер] Причина отклонения в изготовлении требует пересмотра технологии: «Некорректные нормативы»"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
     public void AbsentSetup_AmbiguousName_FactPositivePart_Removed()
     {
         // Кейс QTS350 2026-09-24 (второй заход): «Отсутствие наладки при наличии

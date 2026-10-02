@@ -15,6 +15,8 @@ namespace remeLog.Infrastructure
 {
     public static partial class Database
     {
+        /// <param name="review">Решение аналитика. <see cref="DayReview.AiResult"/> —
+        /// если задан, вердикт ИИ пишется тем же запросом (иначе ИИ-поля не трогаются).</param>
         public static async Task<DbResult<int>>
             SaveDayReviewAsync(DayReview review)
         {
@@ -24,6 +26,10 @@ namespace remeLog.Infrastructure
                 review.Id = -1;
                 return await Task.FromResult(DbResult<int>.Ok(-1));
             }
+
+            // ИИ-поля: COALESCE с текущими значениями — обычное сохранение решения
+            // (без анализа) их не затирает, а принятый вердикт перезаписывает прежний.
+            var ai = review.AiResult;
             const string upsertSql = @"
                 DECLARE @id INT;
 
@@ -36,7 +42,15 @@ namespace remeLog.Infrastructure
                         Decision        = @Decision,
                         IsFullyReviewed = @IsFullyReviewed,
                         Comment         = @Comment,
-                        AiFeedback      = @AiFeedback
+                        AiFeedback      = @AiFeedback,
+                        AiRequiresReview   = COALESCE(@AiRequiresReview,   AiRequiresReview),
+                        AiThinkingEnabled = COALESCE(@AiThinkingEnabled, AiThinkingEnabled),
+                        AiConfidence       = COALESCE(@AiConfidence,       AiConfidence),
+                        AiSignals          = COALESCE(@AiSignals,          AiSignals),
+                        AiExplanation      = COALESCE(@AiExplanation,      AiExplanation),
+                        AiModelVersion     = COALESCE(@AiModelVersion,     AiModelVersion),
+                        AiPromptVersion    = COALESCE(@AiPromptVersion,    AiPromptVersion),
+                        AiAnalyzedAt       = COALESCE(@AiAnalyzedAt,       AiAnalyzedAt)
                     WHERE Machine = @Machine AND ShiftDate = @ShiftDate;
 
                     SELECT @id = Id FROM ai_day_reviews
@@ -46,10 +60,14 @@ namespace remeLog.Infrastructure
                 BEGIN
                     INSERT INTO ai_day_reviews
                         (Machine, ShiftDate, ReviewedBy, ReviewedAt,
-                         Decision, IsFullyReviewed, Comment, AiFeedback)
+                         Decision, IsFullyReviewed, Comment, AiFeedback,
+                         AiRequiresReview, AiThinkingEnabled, AiConfidence,
+                         AiSignals, AiExplanation, AiModelVersion, AiPromptVersion, AiAnalyzedAt)
                     VALUES
                         (@Machine, @ShiftDate, @ReviewedBy, @ReviewedAt,
-                         @Decision, @IsFullyReviewed, @Comment, @AiFeedback);
+                         @Decision, @IsFullyReviewed, @Comment, @AiFeedback,
+                         @AiRequiresReview, @AiThinkingEnabled, @AiConfidence,
+                         @AiSignals, @AiExplanation, @AiModelVersion, @AiPromptVersion, @AiAnalyzedAt);
 
                     SET @id = SCOPE_IDENTITY();
                 END
@@ -73,6 +91,20 @@ namespace remeLog.Infrastructure
                     string.IsNullOrEmpty(review.Comment) ? DBNull.Value : review.Comment);
                 cmd.Parameters.AddWithValue("@AiFeedback",
                     string.IsNullOrEmpty(review.AiFeedback) ? DBNull.Value : review.AiFeedback);
+
+                // Принятый вердикт ИИ — теми же параметрами, что и решение.
+                cmd.Parameters.AddWithValue("@AiRequiresReview", ai is null ? DBNull.Value : ai.RequiresReview);
+                cmd.Parameters.AddWithValue("@AiThinkingEnabled", ai is null ? DBNull.Value : review.AiThinkingEnabled);
+                cmd.Parameters.AddWithValue("@AiConfidence", ai is null ? DBNull.Value : ai.Confidence);
+                cmd.Parameters.AddWithValue("@AiSignals",
+                    ai is null ? DBNull.Value : JsonSerializer.Serialize(ai.Signals, _jsonOpts));
+                cmd.Parameters.AddWithValue("@AiExplanation",
+                    ai is null || string.IsNullOrEmpty(ai.Explanation) ? DBNull.Value : ai.Explanation);
+                cmd.Parameters.AddWithValue("@AiModelVersion",
+                    ai is null || string.IsNullOrEmpty(review.AiModelVersion) ? DBNull.Value : review.AiModelVersion);
+                cmd.Parameters.AddWithValue("@AiPromptVersion",
+                    ai is null || string.IsNullOrEmpty(ai.PromptVersion) ? DBNull.Value : ai.PromptVersion);
+                cmd.Parameters.AddWithValue("@AiAnalyzedAt", ai is null ? DBNull.Value : DateTime.Now);
 
                 var scalar = await cmd.ExecuteScalarAsync();
                 int newId = Convert.ToInt32(scalar);

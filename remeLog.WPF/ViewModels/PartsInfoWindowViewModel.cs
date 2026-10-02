@@ -3207,7 +3207,8 @@ namespace remeLog.ViewModels
 
                 if (!MarkShiftsCheckedAsReviewed(machine, FromDate.Date)) return;
                 await SaveDayReviewInternalAsync(AnalystDecision.Ok, isFullyReviewed: true,
-                    acceptedFromAi: true, againstAiVerdict: againstAiVerdict);
+                    acceptedFromAi: true, againstAiVerdict: againstAiVerdict,
+                    acceptedAiResult: result);
             }
             else if (dayDecision == AnalystDecision.Escalated)
             {
@@ -3217,14 +3218,16 @@ namespace remeLog.ViewModels
                 OnPropertyChanged(nameof(HasFlaggedParts));
 
                 await SaveDayReviewInternalAsync(AnalystDecision.Escalated, isFullyReviewed: false,
-                    acceptedFromAi: true, againstAiVerdict: againstAiVerdict);
+                    acceptedFromAi: true, againstAiVerdict: againstAiVerdict,
+                    acceptedAiResult: result);
             }
             else if (CurrentDayReview != null)
             {
                 // Только исключения (+отзыв): решение дня не меняем, но отзыв persist'им.
+                // Принятый вердикт ИИ тоже — иначе он остался бы от предыдущего прогона.
                 await SaveDayReviewInternalAsync(
                     CurrentDayReview.Decision, CurrentDayReview.IsFullyReviewed,
-                    touchReviewMeta: false);
+                    touchReviewMeta: false, acceptedAiResult: result);
                 Status = accepted.Count > 0
                     ? $"Исключено из отчётов: {accepted.Count}"
                     : "Вердикт ИИ принят без изменений";
@@ -3233,6 +3236,10 @@ namespace remeLog.ViewModels
             }
             else
             {
+                // Решения дня нет (аналитик взял только исключения) — строки ревью тоже
+                // нет, вердикт ИИ сохранять некуда: Decision NOT NULL, создавать запись
+                // без решения аналитика нельзя. На метрики это не влияет — без решения
+                // сутки в ai_day_reviews не попадают.
                 Status = accepted.Count > 0
                     ? $"Исключено из отчётов: {accepted.Count}"
                     : "Вердикт ИИ принят без изменений";
@@ -3732,7 +3739,11 @@ namespace remeLog.ViewModels
         /// автор фиксируется как «аналитик+ИИ».</param>
         /// <param name="againstAiVerdict">Решение вопреки вердикту (кнопка «Не согласен») —
         /// помечается в комментарии; отзыв при этом обязателен.</param>
-        private async Task SaveDayReviewInternalAsync(AnalystDecision decision, bool isFullyReviewed, bool touchReviewMeta = true, bool acceptedFromAi = false, bool againstAiVerdict = false)
+        /// <param name="acceptedAiResult">Вердикт ИИ, показанный в диалоге, — пишется
+        /// тем же запросом, что и решение. Именно этот прогон видел аналитик, даже
+        /// если параллельно был другой (иначе AiVerdict считается по чужому вердикту,
+        /// кейс QTS350 26.09.2026). null — обычное сохранение решения, ИИ-поля не трогаем.</param>
+        private async Task SaveDayReviewInternalAsync(AnalystDecision decision, bool isFullyReviewed, bool touchReviewMeta = true, bool acceptedFromAi = false, bool againstAiVerdict = false, AiAnalysisResult? acceptedAiResult = null)
         {
             var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine
                           ?? PartsInfo.Machine;
@@ -3769,6 +3780,12 @@ namespace remeLog.ViewModels
             );
             review.AiFeedback = AiFeedbackText;
             review.TouchReviewMeta = touchReviewMeta;
+            if (acceptedAiResult is { HasError: false })
+            {
+                review.AiResult = acceptedAiResult;
+                review.AiThinkingEnabled = AiThinkingEnabled;
+                review.AiModelVersion = AppSettings.AiModel;
+            }
 
             Status = "Сохранение решения...";
             var (result, dayReviewId, message) = await Database.SaveDayReviewAsync(review);

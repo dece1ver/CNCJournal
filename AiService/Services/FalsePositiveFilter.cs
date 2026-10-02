@@ -156,6 +156,45 @@ public static class FalsePositiveFilter
         return clientPool.Any(c => c.Count >= 3 && Jaccard(model, c) >= 0.6);
     }
 
+    /// <summary>
+    /// Пересказ СИСТЕМНОГО сигнала (hard/soft) своими словами. Промпт требует
+    /// «твои signals — только свои находки», но модель устойчиво дублирует факты,
+    /// которые система уже показала точно: кейс 30.09.2026, Mazak QTS350 26.09 —
+    /// 4 сигнала на 2 сущности, где «Фланец …: Причина отклонения в наладке требует
+    /// пересмотра технологии» стояло рядом с серверным «[Фланец …] …: «Изготовление
+    /// не по техпроцессу»». Тот же скелет слов и порог, что у IsClientSignalEcho,
+    /// только источник — серверные сигналы. Пул сужается до детали, названной моделью
+    /// (иначе эхо детали A срезало бы сигнал по детали B с тем же комбобокс-причиной);
+    /// сигналы без детали («Два и более необъяснённых сигнала от системы») — всегда в пуле.
+    /// Новая находка по той же детали скелет не делит и остаётся.
+    /// </summary>
+    public static bool IsServerSignalEcho(string signal, AnalyzeRequest request, HardRuleResult hardRules)
+    {
+        var lower = signal.ToLowerInvariant();
+        var model = SignalSkeleton(signal);
+        var namedParts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in request.Parts)
+        {
+            var name = p.PartName.Trim();
+            if (name.Length == 0 || !lower.Contains(name.ToLowerInvariant())) continue;
+            namedParts.Add(name);
+            model.ExceptWith(SignalSkeleton(name));
+        }
+        if (model.Count < 3) return false;
+
+        var serverPool = new List<HashSet<string>>();
+        foreach (var s in hardRules.HardSignals.Concat(hardRules.SoftSignals))
+        {
+            var part = SoftSignalMatcher.ExtractPartName(s);
+            if (part != null && namedParts.Count > 0 && !namedParts.Contains(part.Trim())) continue;
+            var skeleton = SignalSkeleton(s);
+            if (skeleton.Count >= 3) serverPool.Add(skeleton);
+        }
+        if (serverPool.Count == 0) return false;
+
+        return serverPool.Any(c => Jaccard(model, c) >= 0.6);
+    }
+
     /// <summary> Значимые слова фразы: длина ≥3, буквы, без чисел. </summary>
     private static HashSet<string> SignalSkeleton(string text) => new(
         Regex.Split((text ?? "").ToLowerInvariant().Replace('ё', 'е'), @"[^a-zа-я0-9]+")
@@ -258,11 +297,13 @@ public static class FalsePositiveFilter
                 IsNonSerialProductionKpdClaim(signal, request) ? "КПД изготовления не оценивается (несерийный станок)" :
                 IsNonSerialMachiningNormativeClaim(signal, request) ? "норматив изготовления на несерийном станке не оценивается" :
                 IsNonSerialMachiningTimeClaim(signal, request) ? "машинное время на несерийном станке не оценивается" :
+                IsLowMachiningTimeClaim(signal) ? "машинное время ниже норматива — не аномалия" :
                 IsRefutedDrugoeClaim(signal, request.Parts) ? "«Другое» с детализацией — объяснено" :
                 IsMisaddressedReasonDemand(signal, request.Parts) ? "требование подтверждения невыбранной причины" :
                 hasConfirmedMastering && IsUnconfirmedMasteringClaim(signal) ? "освоение подтверждено детерминированно" :
                 IsNoOrderPlan0Claim(signal, request.Parts) ? "plan=0 без заказа — норма" :
                 IsClientSignalEcho(signal, request) ? "пересказ клиентского сигнала (цитировать дословно)" :
+                IsServerSignalEcho(signal, request, hardRules) ? "пересказ системного сигнала (цитировать дословно)" :
                 (string?)null;
 
             if (reason != null)
@@ -563,6 +604,31 @@ public static class FalsePositiveFilter
         if (!lower.Contains("машинное время") && !lower.Contains("машвремя")) return false;
         return lower.Contains("норматив") || lower.Contains("превыш")
             || lower.Contains(">=") || lower.Contains("больше") || lower.Contains("выше");
+    }
+
+    /// <summary>
+    /// Машинное время НИЖЕ штучного норматива — не аномалия, а норма: работа быстрее
+    /// плана. Правила такого не содержат, модель его выдумывает сама: пилот 30.09.2026,
+    /// Hyundai L230A 22.09 — «Низкое машВремя (1.8) ниже норматива (5) без объяснения»
+    /// (6 прогонов подряд, v17), аналитик в отзыве: «Машинное время в норме».
+    /// Аномалией является только «машинное время &gt;= норматива» (HardRule, регламент
+    /// п. машинное время: штучный норматив = станок + ручные операции).
+    /// Действует на ВСЕ станки, включая серийные. Явную жалобу с числами не режем:
+    /// «оператор сообщает…», «не по техпроцессу», «некорректное заполнение» — это
+    /// реальные сигналы, которые на несерийных как раз и смотрим.
+    /// </summary>
+    private static bool IsLowMachiningTimeClaim(string signal)
+    {
+        var lower = signal.ToLowerInvariant();
+        if (!lower.Contains("машинное время") && !lower.Contains("машвремя")) return false;
+        var below = lower.Contains("ниже") || lower.Contains("меньше") || lower.Contains("низк");
+        if (!below) return false;
+        if (!lower.Contains("норматив") && !lower.Contains("плана") && !lower.Contains("план")) return false;
+        // Явная жалоба/причина — оставляем.
+        return !lower.Contains("не по техпроцессу")
+            && !lower.Contains("некорректное заполнение")
+            && !lower.Contains("оператор сообщ")
+            && !lower.Contains("жалоб");
     }
 
     /// <summary>
