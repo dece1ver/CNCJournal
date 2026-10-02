@@ -64,9 +64,59 @@ public class ChatAgentService(
         // оператору, пока финальный result затирал оба текста (40% запросов).
         // Публикует ответ контроллер — уже после очистки markdown.
         var sink = new AnswerTextSink();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var result = await RunCoreAsync(system, history, ctx, model, temperature,
-            toolProgress, sink, ct, think);
+            toolProgress, sink, cts, ct, think);
+        // Последний проход проверки: предыдущий поручень мог переписать текст и
+        // снова назвать угол, которого нет в обозначении (02.10: правка чисел
+        // вернула «токарные пластины под 35°: APKT …»). Один финальный раунд
+        // без рассуждений — дешевле, чем такое остаётся оператору.
+        if (result.Error == null && AngleClaimUnsupported(result.Reply))
+        {
+            logger.LogInformation(
+                "Чат-агент ({Machine}): финальная правка угла ({Len} симв.)",
+                ctx?.Machine ?? "(без контекста)", result.Reply?.Length ?? 0);
+            var messages = new List<ChatMessage>
+            {
+                new() { Role = "system", Content = system },
+            };
+            messages.AddRange(history);
+            var rewritten = await RewriteAngleAsync(chat, messages, result.Reply, cts, model,
+                temperature ?? Temperature, think ?? Thinking);
+            if (!string.IsNullOrWhiteSpace(rewritten))
+                result = new ChatAgentResult(rewritten, result.ToolRounds, result.Error)
+                { WebSources = result.WebSources };
+        }
         return result;
+    }
+
+    /// <summary>Финальная правка: убрать угол, не следующий из обозначения.</summary>
+    private static async Task<string?> RewriteAngleAsync(
+        IAgentChatClient chat, List<ChatMessage> messages, string reply,
+        CancellationTokenSource cts, string? model, double temperature, bool useThinking)
+    {
+        messages.Add(new ChatMessage { Role = "assistant", Content = reply });
+        messages.Add(new ChatMessage
+        {
+            Role = "user",
+            Content = "[Автопроверка] Убери из ответа утверждение об угле при вершине: "
+                + "оно не следует из обозначения. У токарных пластин угол задаёт первая "
+                + "буква (C=80°, D=55°, V=35°, T=60°, S=90°, R=круглая), а у сменных "
+                + "пластин APKT, APMT, AEMT, SPKT, SEKT угла по коду нет. Суффикс вида "
+                + "CT35M, TN35, GMZ — это маркировка сплава и покрытия, а не угол. "
+                + "Оставь позиции и количества из выгрузки, назначение не додумывай.",
+        });
+        try
+        {
+            var round = await chat.ChatAsync(messages, ChatTools.Definitions, format: null,
+                think: useThinking, cts.Token, model: model, temperature: temperature,
+                thinkingProgress: null, tokenProgress: null);
+            return round.ToolCalls.Count == 0 ? round.Content : null;
+        }
+        catch (Exception)
+        {
+            return null;   // правка не удалась — отдаём как есть, хуже не сделаем
+        }
     }
 
     /// <summary>
@@ -90,13 +140,13 @@ public class ChatAgentService(
         double? temperature,
         IProgress<string>? toolProgress,
         IProgress<string>? tokenProgress,
+        CancellationTokenSource cts,
         CancellationToken ct,
         bool? think = null)
     {
         // null — берём настройку сервиса; клиент может выключить рассуждения
         // для простых запросов (автоприветствие: факты уже в контексте).
         var useThinking = think ?? Thinking;
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(Timeout);
 
         var machine = string.IsNullOrWhiteSpace(ctx?.Machine) ? "(без контекста)" : ctx.Machine;
@@ -125,6 +175,9 @@ public class ChatAgentService(
         // Последний вопрос оператора нужен нуджам обоих поручней: без цитаты
         // модель уходит с исходной темы (кейс C.4).
         var lastQuestion = LastUserQuestion(messages);
+        // Наше последнее утверждение оператору: спор возникает в ответ на
+        // конкретно сказанное нами, а не на слова черновика текущего раунда.
+        var lastAssistant = LastAssistantText(messages);
         // Общий бюджет принудительных раундов. Их восемь, а раундов цикла
         // MaxIterations + 2: без общего ограничения модель могла четыре раунда
         // подряд только слушать поручения и ни разу не ответить — оператор
@@ -169,17 +222,22 @@ public class ChatAgentService(
         // программе из головы.
         var docsCalls = 0;
         var docsForcedLeft = 1;
+        var stockForcedLeft = 1;
+        var stockCalls = 0;
+        var angleForcedLeft = 1;
+        var plateAskForcedLeft = 1;
         // Повторно платить за рассуждения незачем там, где модель уже
         // подумала и её просят только переписать текст (убрать имена тулов,
         // выдуманные цифры). Там thinking — это время и токены без выигрыша.
         // Где есть риск (выбор инструмента, разбор данных, реш��ние по
         // результату тула), рассуждения включаются обратно.
         var thinkNextRound = true;
-        // Поручень «нет данных без тула» и поручень чисел — по одному раунду.
+                    // Поручень «нет данных без тула» и поручень чисел — по одному раунду.
         var noDataForcedLeft = 1;
         var countForcedLeft = 1;
         var promiseForcedLeft = 1;
         var correctionForcedLeft = 1;
+        var denialForcedLeft = 1;
         // Поручень «признал, но не перепроверил»: поправка оператора обязана быть
         // проверена инструментом, иначе это извинение вместо исправления.
         var correctionVerifyForcedLeft = 1;
@@ -209,6 +267,38 @@ public class ChatAgentService(
                     // ни в поиске, ни в словах пользователя, и не проверила его:
                     // ссылки и цены из головы (кейсы 404/410). Один доп-раунд
                     // на принудительную проверку, максимум дважды.
+                    // Оператор назвал часть параметров пластины (угол или радиус), а обозначения
+                    // целиком нет: по одному радиусу подходит несколько форм. Ответ —
+                    // уточнить форму или принадлежность пластины, а не собирать код.
+                    if (CanForce() && plateAskForcedLeft > 0
+                        && PartialPlateQuestion(lastQuestion)
+                        && HasDesignationInReply(lastContent))
+                    {
+                        forcedRounds++;
+                        plateAskForcedLeft--;
+                        toolProgress?.Report("⚙ уточняю параметры пластины…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Оператор задал вопрос «" +
+                                Trunc(lastQuestion, 100) + "» — названа часть параметров "
+                                + "(угол или радиус), а обозначения целиком нет. По одному "
+                                + "радиусу подходит несколько форм, поэтому код собирать "
+                                + "нельзя: это выдумка. Ответь ВОПРОСОМ: уточни форму "
+                                + "(C/D/V/T/S/R — по ней и определяется угол) или какая "
+                                + "пластина стоит (назови варианты: точение, фрезерование, "
+                                + "сверление), и добавь, что по выгрузке есть. Названные "
+                                + "оператором угол и радиус сохрани как есть.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): неполное описание пластины — нужен вопрос",
+                            machine);
+                        continue;
+                    }
                     var unverified = FindUnverifiedDesignations(lastContent, messages);
                     if (CanForce() && unverified.Count > 0 && verifyRoundsLeft > 0)
                     {
@@ -234,6 +324,98 @@ public class ChatAgentService(
                     }
                     if (unverified.Count > 0)
                         verifiedNote = " (обозначение не подтверждено поиском — проверьте у поставщика)";
+                    // Оператор отрицает наши данные о нём самом. Он смотрит в тот
+                    // же журнал: спорить бессмысленно, надо признать расхождение и
+                    // предложить действие (кейс 02.10 — модель два раза повторила
+                    // «у вас есть активная деталь» и выдумала сбой программы).
+                    if (CanForce() && denialForcedLeft > 0
+                        && DeniesReportedFact(lastAssistant, lastQuestion))
+                    {
+                        forcedRounds++;
+                        denialForcedLeft--;
+                        toolProgress?.Report("⚙ сверяюсь с оператором…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Оператор смотрит в тот же журнал и " +
+                                "говорит, что у него «" + Trunc(lastQuestion, 80) + "». " +
+                                "Не пересказывай ему данные инструмента и не спорь. " +
+"Ответь так: ты признаёшь, что у вас расходится с его " +
+                                   "журналом, и дальше говоришь ОТ ЕГО СТОРОНЫ (у него детали " +
+                                   "нет), а не «по данным системы она есть». Назови, что " +
+                                   "показывает твоя сторона, и " +
+                                "предлагаешь конкретное действие (начать смену, запустить " +
+                                "деталь, закрыть подвисшую запись, обратиться к мастеру). " +
+                                "Причины сбоя программы не выдумывай — «возможно, не " +
+                                "отображается из-за сбоя» запрещено: неизвестно — скажи, " +
+                                "что точно известно.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): оператор отрицает наши данные", machine);
+                        continue;
+                    }
+                    // Угол при вершине не следует из первой буквы — проверочный слой на
+                    // выдуманный угол (кейс 02.10: «APKT 11 35 08 — угол 35°»).
+                    if (CanForce() && angleForcedLeft > 0
+                        && AngleClaimUnsupported(lastContent))
+                    {
+                        forcedRounds++;
+                        angleForcedLeft--;
+                        toolProgress?.Report("⚠ проверяю угол");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] В этом ответе угол при вершине не "
+                                + "следует из первой буквы обозначения. У токарных пластин "
+                                + "первая буква задаёт форму и угол: C=80°, D=55°, V=35°, "
+                                + "T=60°, S=90°, R=круглая (угла нет). У сменных пластин "
+                                + "APKT, APMT, AEMT, SPKT, SEKT угла по коду нет вовсе: "
+                                + "цифры в коде — типоразмер и угол среза, а не 35°. "
+                                + "Убери своё утверждение об угле либо назови только то, что "
+                                + "есть в выгрузке: позиция и количество.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): угол не следует из обозначения", machine);
+                        continue;
+                    }
+        // Вопрос про наличие на складе без stock_search: модель отвечала по памяти
+                    // или уходила в сеть по выдуманному обозначению (кейс 02.10 —
+                    // «пластины для точения» → веб-поиск CNMG120408).
+                    if (CanForce() && stockForcedLeft > 0 && stockCalls == 0
+                        && WebSearchService.IsStockQuestion(lastQuestion))
+                    {
+                        forcedRounds++;
+                        stockForcedLeft--;
+                        toolProgress?.Report("📦 смотрю склад…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». Про наличие на складе отвечается " +
+                                "ТОЛЬКО выгрузкой: вызови stock_search с ключевыми словами " +
+                                "вопроса (при уточнении — с уточнением: «пластины для " +
+                                "точения», а не «пластины 35 градусов») и назови позиции и " +
+                                "количества из результата. В сеть по складскому вопросу " +
+"не ходи: там чужие остатки, а наличие у нас они не " +
+                                   "доказывают. Неясное назначение — спроси у оператора " +
+                                   "прямо в чате, а не к мастеру и не к чертежу.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка складского вопроса", machine);
+                        continue;
+                    }
                     // Вопрос о работе программы и учёта — из инструкции, не из головы
                     // и не из сети: К1/К2, наладка, нормативы, маршруты, порядок
                     // запуска и завершения смены, кнопки журнала, простои.
@@ -253,11 +435,14 @@ public class ChatAgentService(
                             Content = "[Автопроверка] Ответь на исходный вопрос «" +
                                 Trunc(lastQuestion, 120) + "». Это вопрос о работе " +
                                 "программы и учёта, а инструкцию ты не открывал. " +
-                                "Вызови search_docs по ключевым словам вопроса " +
-                                "(при нужде — read_doc) и ответь по найденному, " +
-                                "указав документ. В сеть за такими ответами не ходи: " +
-                                "там чужие инструкции. В документах нужного нет — " +
-                                "так и скажи.",
+                                "Вызови search_docs (при нужде — read_doc) и ответь " +
+                                "по найденному, указав документ. В запросе ищи по " +
+                                "названию, которое назвал оператор, дословно — вместе " +
+                                "со словами «наладка» и «изготовление»: особенности " +
+                                "типа простоя описаны в инструкции точной фразой, и по " +
+                                "общим словам («когда отмечать простой») она не " +
+                                "находится. В сеть за такими ответами не ходи: там " +
+                                "чужие инструкции. В документах нужного нет — так и скажи.",
                         });
                         logger.LogInformation(
                             "Чат-агент ({Machine}): автопроверка вопроса о программе", machine);
@@ -932,6 +1117,7 @@ public class ChatAgentService(
                     }
                     else if (call.Name == "stock_search")
                     {
+                        stockCalls++;
                         var query = ExtractArg(call.Arguments, "query");
                         toolProgress?.Report($"📦 ищу на складе «{Trunc(query)}»…");
                         var rows = stock.Search(query);
@@ -1149,6 +1335,114 @@ public class ChatAgentService(
     /// Считаем вызовы за запрос, а не за раунд: после удачной проверки модель
     /// отвечает без нового вызова, и это нормально.
     /// Чистая функция — покрыта тестами.</summary>
+    /// <summary>
+    /// Оператор отрицает то, что мы только что назвали его собственными
+    /// данными: «да нет у меня активной детали», «смены у меня нет», «простоя
+    /// не было». На такое модель переспрашивала инструмент и повторяла своё
+    /// (кейс 02.10: «у вас есть активная деталь… проверьте, возможно, деталь не
+    /// отображается из-за сбоя»).
+    ///
+    /// Отличаем отрицание от вопроса: «у меня нет простоя за вчера?» — вопрос про
+    /// данные, там решает инструмент. Поэтому нужно ещё и наше прежнее
+    /// утверждение о факте (без него это просто уточнение) и отсутствие
+    /// вопросительного знака в реплике оператора.
+    /// </summary>
+    /// Углы при вершине по первой букве — только у токарных пластин. Сменные
+    /// пластины фрезерования (APKT, APMT, AEMT, SPKT, SEKT) начинаются с других
+    /// букв, цифры в их коде — типоразмер, а не угол (кейс 02.10: «APKT 11 35 08 —
+    /// угол 35°», хотя 35 здесь часть кода).
+    /// </summary>
+    private static readonly (string Letter, int Angle)[] TurnAngles =
+    [("C", 80), ("D", 55), ("V", 35), ("T", 60), ("S", 90), ("R", 0)];
+
+    private static readonly Regex DegreesRx =
+        new(@"(\d{2,3})\s*(?:°|градус)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex IndexablePlateRx =
+        new(@"\b(?:APKT|APMT|AEMT|SPKT|SPMT|SEKT|SNGN|TPGT)\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Проверка угла берёт только буквенную часть обозначения: в выгрузке код
+    // написан с пробелами («CNMG 19 06 16-49»), и строгий шаблон с цифрами его
+    // не узнавал (кейс 02.10).
+    private static readonly Regex PlateCodeLooseRx =
+        new(@"\b[CDVTSR](?:NMG|NM|MG|MMT|MP|GT)\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>Проверочный слой для угла: в предложении назван угол, но он не
+    /// следует из первой буквы обозначения — значит, угол выдуман.</summary>
+    public static bool AngleClaimUnsupported(string? reply)
+    {
+        if (string.IsNullOrWhiteSpace(reply)) return false;
+        foreach (var raw in reply.Split(new[] { '.', '!', '?', ';', '\n', '\r' }))
+        {
+            var sentence = raw.Trim();
+            if (sentence.Length == 0) continue;
+            var angle = DegreesRx.Match(sentence);
+            if (!angle.Success) continue;
+            // Сменная пластина фрезерования — угла по коду нет вовсе.
+            if (IndexablePlateRx.IsMatch(sentence)) return true;
+            var value = int.Parse(angle.Groups[1].Value);
+            foreach (Match plate in PlateCodeLooseRx.Matches(sentence).Cast<Match>())
+            {
+                var letter = char.ToUpperInvariant(plate.Value[0]).ToString();
+                var expected = TurnAngles.FirstOrDefault(t => t.Letter == letter);
+                if (expected.Angle == 0 || expected.Angle != value) return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Оператор назвал часть параметров пластины (угол или радиус), но не
+    /// обозначение целиком. По одному радиусу подходит несколько форм, поэтому
+    /// ответ — уточнить форму или принадлежность пластины, а не собирать код
+    /// (02.10: на «пластины для точения» модель сочинила CNMG120408).</summary>
+    public static bool PartialPlateQuestion(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        var t = question.ToLowerInvariant();
+        bool part = new[] { "радиус", "радиусе", "радиуса", "градус", "°", "угол" }
+            .Any(k => t.Contains(k, StringComparison.Ordinal));
+        if (!part) return false;
+        // Полное обозначение названо — уточнять нечего.
+        return DesignationRx.Matches(question).Count == 0;
+    }
+
+    /// Названо ли обозначение пластины в самом ответе модели: без него ответ по
+    /// «пластине на 35°» — это собранное на глаз обозначение, а не факт.
+    /// </summary>
+    public static bool HasDesignationInReply(string? reply) =>
+        !string.IsNullOrWhiteSpace(reply) && DesignationRx.IsMatch(reply);
+
+    public static bool DeniesReportedFact(string? assistantReply, string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        var q = question.ToLowerInvariant().Trim();
+        if (q.EndsWith('?')) return false;
+        string[] denies =
+        [
+            // «да нет у меня активной детали»: «нет» стоит перед «у меня», поэтому
+            // ловим обе формы — «нет у меня» и «у меня нет».
+            "нет у меня", "у меня нет", "нету меня",
+            "у меня не активн", "не активной", "нет активной",
+            "я не начинал", "я не работал", "я не работаю",
+            "смены нет", "смену не начинал",
+            "простоя не было", "не было простоя",
+            "у меня ничего", "у меня пусто",
+        ];
+        if (!denies.Any(k => q.Contains(k, StringComparison.Ordinal))) return false;
+        if (string.IsNullOrWhiteSpace(assistantReply)) return false;
+        var a = assistantReply.ToLowerInvariant();
+        string[] claims =
+        [
+            "у вас активна деталь", "у вас есть деталь", "у вас деталь",
+            "у вас есть простой", "у вас простой", "у вас смена",
+            "у вас есть смена", "у вас начата", "у вас не начата",
+            "вы работаете", "у вас активна",
+        ];
+        return claims.Any(k => a.Contains(k, StringComparison.Ordinal));
+    }
+
     public static bool NeedsCorrectionVerify(string? question, int toolRounds) =>
         toolRounds == 0 && WebSearchService.IsCorrection(question);
 
@@ -1175,6 +1469,18 @@ public class ChatAgentService(
             && !string.IsNullOrWhiteSpace(m.Content)
             && !m.Content.StartsWith("[Автопроверка]", StringComparison.Ordinal))?.Content
         ?? "(вопрос оператора)";
+
+    /// <summary>Наше последнее утверждение оператору — нужно поручню на
+    /// отрицание: оператор спорит с конкретно сказанным, а не с текстом
+    /// текущего раунда (иначе проверка всегда давала «не отрицает»).</summary>
+    private static string LastAssistantText(IReadOnlyList<ChatMessage> messages)
+    {
+        for (var i = messages.Count - 1; i >= 0; i--)
+            if ((messages[i].Role ?? "").Trim().Equals("assistant", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(messages[i].Content))
+                return messages[i].Content;
+        return "";
+    }
 
     /// <summary>
     /// Спросил ли оператор про прошлое. Поручни прошлого бьют только по таким
@@ -1298,6 +1604,12 @@ public class ChatAgentService(
         "search_docs", "read_doc", "stock_search", "check_db", "web_search",
         // файл инструкции — тоже внутреннее имя: оператору достаточно «инструкция».
         "instrukciya_operatora.md", "reglament.md",
+        // И разговор о собственных механизмах: оператору нужен ответ, а не
+        // описание того, как я устроен (кейс 02.10: «использовать функцию,
+        // которая позволяет получить список типов», «помогу вызвать эти разделы»).
+        "функция, которая", "функцию, которая", "могу вызвать", "вызвать эти разделы",
+        "вызвать раздел", "открыть раздел", "мой инструмент", "инструмент доступа",
+        "база инструкций", "поиск по инструкции",
     ];
 
     /// <summary>В ответе цифры поданы как пример или гипотеза, а инструмент
@@ -1357,7 +1669,14 @@ public class ChatAgentService(
             "инструкци", "регламент", "правил", "порядок", "чек-лист", "чек лист",
             "как отмет", "как запуст", "как нача", "как заверш", "как закры",
             "как провести", "как оформ", "как правильно", "что делать",
-            "куда нажать", "что нажимать", "простои",
+            "куда нажать", "что нажимать",
+            // особенности простоев живут в инструкции («Написание УП» — только
+            // на наладке; по «Отказу оборудования» нужна доп. информация), а не
+            // в голове модели. Словами-основами: «простой», «простоев»,
+            // «отмечается», «отметке».
+            // Основы, но без голого «просто» — это обычное слово в речи
+            // («просто отметь»), и оно переводило бы в инструкцию всё подряд.
+            "простой", "простои", "простоя", "простоев", "отмет",
         ];
         return marks.Any(k => t.Contains(k, StringComparison.Ordinal));
     }
@@ -1618,6 +1937,13 @@ public class ChatAgentService(
             if (!string.IsNullOrWhiteSpace(p.Order)) sb.Append($", М/Л «{p.Order}», уст. {p.Setup}");
             if (!string.IsNullOrWhiteSpace(p.StartSetupTime)) sb.Append($", наладка с {p.StartSetupTime}");
             sb.Append('.');
+        }
+        else
+        {
+            // Молчание об отсутствии детали читалось как «не знаю», и модель
+            // называла активной любую запись журнала. Сказано прямо — спросят
+            // и получат «нет» (кейс 02.10: «у меня нет активной детали»).
+            sb.Append(" Активной детали нет.");
         }
         return sb.ToString();
     }

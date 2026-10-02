@@ -239,9 +239,13 @@ public class ChatTests
     [InlineData("есть ли у нас сверло д25", true)]
     [InlineData("а фрезы диаметром 4 мм есть?", true)]
     [InlineData("какой остаток пластин", true)]
-    [InlineData("какой остаток пластин", true)]
     [InlineData("что есть из фрез на складе", true)]
     [InlineData("сколько стоит фреза", false)]
+    // Цена — это сеть, даже когда назван инструмент (не склад).
+    [InlineData("сколько стоит пластина CNMG120408", false)]
+    // Уточнение складского вопроса — склад (кейс 02.10).
+    [InlineData("я имел ввиду пластины для точения", true)]
+    [InlineData("точнее фрезы для фрезерования", true)]
     [InlineData("станок встал, что делать", false)]
     [InlineData("", false)]
     public void IsStockQuestion_Forms(string text, bool expected)
@@ -1056,6 +1060,211 @@ public class ChatTests
         File.WriteAllText(Path.Combine(dir, "stock.csv"), csvBody);
         var cfg = Config(("Stock:File", Path.Combine(dir, "stock.csv")));
         return (new StockService(cfg, NullLogger<StockService>.Instance), dir);
+    }
+
+    [Fact]
+    public void DocsService_SearchFindsSentenceNotFirstMention()
+    {
+        // Реальный случай 02.10: на вопрос «почему не отмечается простой
+        // "Написание УП"» поиск отдавал фрагмент вокруг ПЕРВОГО вхождения слова
+        // «простой» — из середины инструкции, без нужной фразы, и модель
+        // отвечала «в документах не найдено». Теперь окна ранжируются по
+        // покрытию терминов запроса.
+        var dir = Path.Combine(Path.GetTempPath(), "cncdocs_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var filler = string.Concat(Enumerable.Range(0, 60)
+                .Select(i => $"## Раздел {i}\nПростой отмечается в журнале кнопкой запуска. " +
+                             "Проверьте выбор типа и подтверждение.\n"));
+            var answer = "Все простои кроме \"Написание УП\" могут быть отмечены и в наладке, " +
+                         "и в изготовлении. Данный простой только для этапа наладки.\n";
+            File.WriteAllText(Path.Combine(dir, "instrukciya_operatora.md"),
+                "# Начало\n" + filler + "## Отметка простоя\n" + answer);
+            var svc = new DocsService(
+                Config(("Docs:Directory", dir)), NullLogger<DocsService>.Instance);
+
+            var hits = svc.Search("почему не отмечается простой \"Написание УП\"?",
+                allowed: ["instrukciya_operatora.md"]);
+            Assert.NotEmpty(hits);
+            Assert.Contains(hits, h => h.Snippet.Contains("Данный простой только для этапа наладки"));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("почему не отмечается простой \"Написание УП\"?", true)]
+    [InlineData("какие особенности у простоя Отказ оборудования", true)]
+    [InlineData("на каком этапе отмечают простой", true)]
+    [InlineData("что у меня в смене?", false)]
+    public void AsksAboutProgramDocs_CoversDowntimeTypes(string question, bool expected)
+        => Assert.Equal(expected, ChatAgentService.AsksAboutProgramDocs(question));
+
+    [Theory]
+    // Прямое отрицание наших данных — это поручень на признание расхождения.
+    [InlineData("У вас активна деталь «Корпус».", "да нет у меня активной детали", true)]
+    [InlineData("У вас смена День начата.", "у меня нет смены", true)]
+    [InlineData("У вас простой 20 минут.", "простоя не было", true)]
+    // А это вопрос про данные, а не отрицание: решает инструмент.
+    [InlineData("У вас простой 20 минут.", "у меня нет простоя за вчера?", false)]
+    // И без нашего прежнего утверждения это просто уточнение.
+    [InlineData("Дозор бдит.", "у меня нет активной детали", false)]
+    public void DeniesReportedFact_RealCase(string assistantReply, string question, bool expected)
+        => Assert.Equal(expected, ChatAgentService.DeniesReportedFact(assistantReply, question));
+
+    [Fact]
+    public void DeniesReportedFact_ExactStringsFromProductionCase()
+    {
+        // Ровно те строки, что были в диалоге 02.10.
+        const string a = "У вас активна деталь «Корпус АРМ2-49» (49.4-01), "
+            + "М/Л «УЧ2608-0027», уст. №1, "
+            + "наладка запущена 02.10.2026 в 08:15.";
+        const string q = "да нет у меня активной "
+            + "детали - *проверяющий*";
+        Assert.True(ChatAgentService.DeniesReportedFact(a, q));
+    }
+
+    [Fact]
+    public async Task Agent_OperatorDeniesData_ConcedesAndOffersAction()
+    {
+        // Модель перепроверяет инструментом и повторяет своё: нужен раунд,
+        // который прямо требует признать расхождение с журналом оператора.
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "У вас активна деталь «Корпус». Проверьте интерфейс." },
+            new ChatResult { Content = "Понимаю, у вас в журнале активной детали нет. "
+                + "У меня она осталась в списке как незакрытая — начните смену или закройте её." },
+        ]));
+        // Отрицание приходит от оператора, поэтому оно в истории запроса:
+        // поручень смотрит на последний вопрос и на наш прежний ответ.
+        var build = Builder().BuildChatMessages(
+            Request([
+                new ChatMessageDto { Role = "user", Content = "что у меня за деталь?" },
+                new ChatMessageDto { Role = "assistant", Content = "У вас активна деталь «Корпус»." },
+                new ChatMessageDto { Role = "user", Content = "да нет у меня активной детали" },
+            ]),
+            [], 20, 12000);
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null,
+            CancellationToken.None);
+
+        Assert.Null(res.Error);
+        var nudge = stub.SeenMessages[1].First(
+            m => m.Role == "user" && m.Content.Contains("не спорь"));
+        Assert.Contains("расходится с его журналом", nudge.Content);
+    }
+
+    [Fact]
+    public void BuildChatMessages_KeepsHistoryEvenWhenPromptIsHuge()
+    {
+        // Системный промпт давно больше MaxContextChars (27 890 против 12 000),
+        // и бюджет, посчитанный на «промпт + история», вырезал весь диалог: модели
+        // уходил один последний вопрос. Отсюда были и повторы своих же утверждений,
+        // и непонимание поправок. Бюджет относится только к истории.
+        var longTurn = new string('а', 400);
+        var messages = new List<ChatMessageDto>();
+        for (var i = 0; i < 8; i++)
+        {
+            messages.Add(new ChatMessageDto { Role = "user", Content = $"вопрос {i} {longTurn}" });
+            messages.Add(new ChatMessageDto { Role = "assistant", Content = $"ответ {i} {longTurn}" });
+        }
+        // Последняя реплика — вопрос оператора, как в живом диалоге.
+        messages.Add(new ChatMessageDto { Role = "user", Content = $"да нет у меня активной детали {longTurn}" });
+
+        var res = Builder().BuildChatMessages(
+            Request(messages), [], maxHistoryMessages: 20, maxChars: 12000);
+
+        Assert.True(res.Messages.Count > 1,
+            $"осталось сообщений: {res.Messages.Count} (диалог вырезан)");
+        // Последний вопрос оператора на месте, ответы ассистента тоже.
+        Assert.Equal("user", res.Messages[^1].Role);
+        Assert.Contains(res.Messages, m => m.Role == "assistant");
+    }
+
+    [Theory]
+    // Проверочный слой на угол (кейс 02.10).
+    [InlineData("APKT 11 35 08 \u2014 130 шт (угол 35°)", true)]
+    [InlineData("APKT 110308, 130 шт, режущий угол 35 градусов", true)]
+    [InlineData("VNMG 160408 \u2014 радиус 0.8 мм, угол 35°", false)]
+    [InlineData("CNMG 120408 \u2014 угол 80°", false)]
+    [InlineData("TN35 \u2014 2 шт", false)]
+    [InlineData("Проверьте наличие под 35°", false)]
+    public void AngleClaimUnsupported_Shapes(string reply, bool expected)
+        => Assert.Equal(expected, ChatAgentService.AngleClaimUnsupported(reply));
+
+    [Fact]
+    public void AngleClaimUnsupported_CatchesRealAnswerFromStand()
+    {
+        // Ровно текст ответа стенда (стенд 02.10 11:57).
+        const string reply = "На складе есть токарные пластины с углом 35°: • TN35 — 2 шт "
+            + "• APKT 11 35 08-GMZ-GA — 130 шт • CNMG 19 06 16-49 CT35M — 10 шт";
+        Assert.True(ChatAgentService.AngleClaimUnsupported(reply));
+    }
+
+    [Theory]
+    // Часть параметров названа, обозначения целиком нет \u2014 нужен вопрос.
+    [InlineData("какие пластины под радиус 0.8?", true)]
+    [InlineData("пластины 35 градусов", true)]
+    [InlineData("есть VNMG 160408?", false)]
+    [InlineData("что у меня в смене?", false)]
+    public void PartialPlateQuestion_Shapes(string question, bool expected)
+        => Assert.Equal(expected, ChatAgentService.PartialPlateQuestion(question));
+
+    [Fact]
+    public async Task Agent_PartialPlateQuestion_AsksInsteadOfInventingCode()
+    {
+        // Модель сочинила CNMG120408 по наводку по углу:
+        // по одному радиусу подходят несколько форм, и нужен вопрос.
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "Для 35° подходит CNMG120408." },
+            new ChatResult { Content = "По радиусу 0.8 подходят несколько форм: "
+                + "ромб 80° (CNMG), ромб 55° (DNMG) и треугольник 60° (TNMG). "
+                + "Какая стоит? И по выгрузке есть APKT 11 35 08." },
+            new ChatResult { Content = "По радиусу 0.8 подходит CNMG, DNMG или TNMG — какая стоит? "
+                + "APKT 11 35 08 с выгрузки — фрезерная." },
+        ]));
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user", Content = "какие пластины под 35 градусов?" }]),
+            [], 20, 12000);
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null,
+            CancellationToken.None);
+
+        Assert.Null(res.Error);
+        var nudge = stub.SeenMessages[1].First(
+            m => m.Role == "user" && m.Content.Contains("Ответь ВОПРОСОМ"));
+        Assert.Contains("уточни форму", nudge.Content);
+        Assert.Contains("собирать", nudge.Content);
+    }
+
+    [Fact]
+    public void ShiftFacts_NoActivePart_SaysSoPlainly()
+    {
+        // Молчание об отсутствии детали модель читала как «не знаю» и называла
+        // активной любую запись журнала.
+        var facts = ChatAgentService.ShiftFacts(new ElogChatContext
+        {
+            Machine = "Mazak QTS350", Shift = "День", OperatorName = "Ермаков А. С.",
+            PartsCount = 5, ShiftStarted = false,
+        });
+        Assert.Contains("Активной детали нет", facts);
+    }
+
+    [Fact]
+    public void ActivePartTool_NoActivePart_NotAnyRecord()
+    {
+        var ctx = new ElogChatContext
+        {
+            Machine = "Mazak QTS350", PartsCount = 5,
+            OperatorDowntimeTypes = ["Написание УП", "Отказ оборудования"],
+        };
+        var text = ChatTools.Execute(ctx, "get_active_part", "{}");
+        Assert.Contains("Активной детали нет", text);
+        Assert.Contains("5", text);
     }
 
     [Fact]

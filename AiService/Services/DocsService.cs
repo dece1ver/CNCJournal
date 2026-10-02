@@ -91,9 +91,10 @@ public class DocsService(IConfiguration config, ILogger<DocsService> logger)
     /// Поиск по текстам: слова запроса от 3 букв, score = разных слов + вхождения.
     /// Сопоставление с лёгким стеммингом: равенство/вхождение либо общий префикс
     /// ≥5 букв («простой» находит «простои», «отмечать» — «отметка»).
-    /// Возвращает до maxHits фрагментов (~500 символов вокруг первого вхождения).
+    /// Возвращает до maxHits фрагментов (~700 символов вокруг совпадений,
+    /// перекрывающиеся окна склеиваются).
     /// </summary>
-    public IReadOnlyList<DocHit> Search(string query, int maxHits = 3,
+    public IReadOnlyList<DocHit> Search(string query, int maxHits = 5,
         IReadOnlyList<string>? allowed = null)
     {
         var terms = Tokenize(query);
@@ -105,35 +106,80 @@ public class DocsService(IConfiguration config, ILogger<DocsService> logger)
             if (!Allowed(name, allowed)) continue;
             var lower = text.ToLowerInvariant();
             var words = Tokenize(lower);
-            var distinct = 0;
-            var total = 0;
-            var firstAt = int.MaxValue;
+            // Позиции вхождений всех совпавших слов. Раньше бралась только
+            // первая, и на вопрос «почему не отмечается простой "Написание УП"»
+            // выдавался обрывок из середины инструкции без нужного предложения
+            // («Все простои кроме "Написание УП" могут быть отмечены и в
+            // наладке, и в изготовлении. Данный простой только для этапа
+            // наладки»), и модель честно отвечала «в документах не найдено».
+            var positions = new List<int>();
+            var matched = new List<string>();
             foreach (var t in terms)
             {
-                var count = 0;
-                foreach (var w in words)
+                var found = false;
+                foreach (var w in words.Distinct())
                 {
                     if (!WordsMatch(w, t)) continue;
-                    count++;
-                    if (count == 1)
-                    {
-                        var at = lower.IndexOf(w, StringComparison.Ordinal);
-                        if (at >= 0 && at < firstAt) firstAt = at;
-                    }
+                    found = true;
+                    foreach (var at in AllIndexes(lower, w))
+                        positions.Add(at);
                 }
-                if (count > 0) distinct++;
-                total += count;
+                if (found) matched.Add(t);
             }
-            if (distinct == 0) continue;
-            if (firstAt == int.MaxValue) firstAt = 0;
-            var from = Math.Max(0, firstAt - 150);
-            var len = Math.Min(500, text.Length - from);
-            scored.Add((new DocHit(name, SectionAt(text, firstAt), from, text.Substring(from, len)), distinct * 1000 + total));
+            if (positions.Count == 0) continue;
+
+            // Окна вокруг совпадений; перекрывающиеся склеиваем, чтобы не
+            // отдать одни и те же строки дважды.
+            const int Window = 700;
+            var byStart = positions.OrderBy(x => x).Distinct()
+                .Select(at => Math.Max(0, at - Window / 2))
+                .ToList();
+            var windows = new List<(int Start, int End)>();
+            foreach (var start in byStart)
+            {
+                var end = Math.Min(text.Length, start + Window);
+                if (windows.Count > 0 && start <= windows[^1].End)
+                {
+                    var last = windows[^1];
+                    windows[^1] = (last.Start, Math.Max(last.End, end));
+                }
+                else
+                {
+                    windows.Add((start, end));
+                }
+            }
+
+            // Ранжируем окна, а не документы: важно, сколько разных слов
+            // запроса попало именно в этот кусок.
+            foreach (var (start, end) in windows)
+            {
+                var slice = lower[start..end];
+                var sliceWords = Tokenize(slice);
+                var distinct = matched.Count(t => sliceWords.Any(w => WordsMatch(w, t)));
+                if (distinct == 0) continue;
+                var total = sliceWords.Count(w =>
+                    matched.Any(t => WordsMatch(w, t)));
+                scored.Add((new DocHit(name, SectionAt(text, start), start,
+                    text.Substring(start, end - start)), distinct * 1000 + total));
+            }
         }
         return [.. scored
             .OrderByDescending(s => s.Score)
             .Take(Math.Clamp(maxHits, 1, 10))
             .Select(s => s.Hit)];
+    }
+
+    /// <summary>Все позиции вхождения слова в тексте.</summary>
+    private static IEnumerable<int> AllIndexes(string haystack, string needle)
+    {
+        if (needle.Length == 0) yield break;
+        var at = haystack.IndexOf(needle, StringComparison.Ordinal);
+        var guard = 0;
+        while (at >= 0 && guard++ < 40)
+        {
+            yield return at;
+            at = haystack.IndexOf(needle, at + needle.Length, StringComparison.Ordinal);
+        }
     }
 
     public static bool WordsMatch(string word, string term) =>

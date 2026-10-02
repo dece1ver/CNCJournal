@@ -125,16 +125,31 @@ public class WebSearchService(IConfiguration config, ILogger<WebSearchService> l
     /// не вызвав stock_search (кейс AEKR-D2.25X25: в нашей выгрузке его нет вообще).
     /// Наличие — только из тула, сеть тут не источник. Пропускается (см. ChatController).
     /// </summary>
-    public static bool IsStockQuestion(string text)
+public static bool IsStockQuestion(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return false;
         var t = text.ToLowerInvariant();
+        // Про цену — не складской вопрос: «сколько стоит фреза» идёт в сеть, даже
+        // если назван инструмент.
+        string[] price =
+        [
+            "сколько стоит", "стоимость", "цена", "цена на", "почем", "почём",
+            "купить", "продать", "поставщик", "дилер", "заказать", "заказ",
+        ];
+        if (price.Any(m => t.Contains(m, StringComparison.Ordinal))) return false;
         string[] markers =
         [
             "есть ли", " есть", "имеется", "на складе", "наличие", "остаток",
             "осталось", "остались", "в наличии", "что есть из", "что есть на",
         ];
-        return markers.Any(m => t.Contains(m, StringComparison.Ordinal));
+        if (markers.Any(m => t.Contains(m, StringComparison.Ordinal))) return true;
+        // Уточнение складского вопроса («я имел ввиду пластины для точения»):
+        // без него модель уходила в сеть по выдуманному обозначению вместо
+        // повторного поиска по выгрузке (кейс 02.10).
+        string[] clarifies = ["я имел ввиду", "я имел в виду", "что имел ввиду", "что имел в виду", "точнее", "именно"];
+        string[] items = ["пластин", "сверл", "фрез", "резц", "коронк", "цангов"];
+        return clarifies.Any(c => t.Contains(c, StringComparison.Ordinal))
+            && items.Any(i => t.Contains(i, StringComparison.Ordinal));
     }
 
     /// <summary>

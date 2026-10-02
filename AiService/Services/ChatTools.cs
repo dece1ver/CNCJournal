@@ -213,8 +213,10 @@ public static class ChatTools
     {
         var part = ctx?.ActivePart;
         if (part == null || string.IsNullOrWhiteSpace(part.Name))
-            return "Активной детали нет (смена не начата или записей нет). " +
-                   "Так и скажи оператору, предложи начать смену или запустить деталь.";
+            return $"Активной детали нет: смена не начата или ни одна деталь сейчас " +
+                   $"не в работе (в журнале записей: {ctx?.PartsCount ?? 0}). " +
+                   "Так и скажи оператору прямо, предложи начать смену или запустить деталь. " +
+                   "Записи журнала, которые не в работе, активной деталью не называй.";
         var sb = new StringBuilder();
         sb.AppendLine($"Деталь: «{part.Name}»" +
                       (string.IsNullOrWhiteSpace(part.Number) ? "" : $" ({part.Number})") +
