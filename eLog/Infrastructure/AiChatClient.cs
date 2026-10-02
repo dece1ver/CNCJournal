@@ -82,8 +82,8 @@ namespace eLog.Infrastructure
         public ElogChatContextDto? Context { get; set; }
         [JsonPropertyName("model")]
         public string? Model { get; set; }
-        [JsonPropertyName("allowWebSearch")]
-        public bool AllowWebSearch { get; set; }
+        /// <summary> Не отправляется: сеть включается фразой в вопросе
+        /// («поищи в сети»), сервер решает по эвристике NeedsWeb. </summary>
         /// <summary> null — сервер решает сам (Chat:Thinking). Автоприветствие
         ///operatorу выключает: факты уже в контексте, размышления не нужны. </summary>
         [JsonPropertyName("think")]

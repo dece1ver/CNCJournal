@@ -105,7 +105,9 @@ namespace eLog.ViewModels
             SendCommand = new LambdaCommand(OnSendExecuted, CanSendExecute);
             CancelCommand = new LambdaCommand(_ => _cts?.Cancel(), _ => IsBusy);
             ClearCommand = new LambdaCommand(_ => Clear(), _ => !IsBusy && Messages.Count > 0);
-            SearchInWeb = AppSettings.Instance.AiChatAllowWebSearch;
+            // Галки «Искать в сети» больше нет: сеть включается фразой в самом
+            // вопросе («поищи в сети», «в интернете…»), а вопросы о работе
+            // программы и учёта сервер отправляет в нашу инструкцию.
             // Приветствия статикой нет: окно дёргает GreetAsync при открытии —
             // модель сама собирает информацию об операторе инструментами.
         }
@@ -177,14 +179,6 @@ namespace eLog.ViewModels
             private set => Set(ref _Status, value);
         }
 
-        private bool _SearchInWeb;
-        /// <summary> Галка «Искать в сети» — уходит флагом AllowWebSearch. </summary>
-        public bool SearchInWeb
-        {
-            get => _SearchInWeb;
-            set => Set(ref _SearchInWeb, value);
-        }
-
         public ICommand SendCommand { get; }
         public ICommand CancelCommand { get; }
         public ICommand ClearCommand { get; }
@@ -245,7 +239,6 @@ namespace eLog.ViewModels
                     Context = BuildContextSnapshot(),
                     Model = string.IsNullOrWhiteSpace(AppSettings.Instance.AiModel)
                         ? null : AppSettings.Instance.AiModel.Trim(),
-                    AllowWebSearch = SearchInWeb,
                     Think = think,
                 };
 

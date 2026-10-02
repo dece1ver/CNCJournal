@@ -144,10 +144,13 @@
             </StackPanel>
         </Grid>
 
-        <!-- Низ: поиск в сети + очистка -->
+        <!-- Низ: очистка. Галки «Искать в сети» больше нет: сеть включается
+             самим вопросом («поищи в сети», «в интернете…»), а вопросы о работе
+             программы и учёта уходят в нашу инструкцию (search_docs), а не в сеть. -->
         <DockPanel Grid.Row="3" Margin="0 6 0 0" LastChildFill="False">
-            <CheckBox DockPanel.Dock="Left" Content="Искать в сети" VerticalAlignment="Center"
-                      IsChecked="{Binding SearchInWeb}" ToolTip="Разрешить помощнику искать ответ в интернете"/>
+            <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="2 0 0 0"
+                       Foreground="{DynamicResource Areopag.TextSecondary}"
+                       Text="Сеть — по запросу: «поищи в сети»; правила программы — из инструкции"/>
             <Button DockPanel.Dock="Right" Content="Очистить" Padding="12 4"
                     Style="{StaticResource GeneralButton}" Command="{Binding ClearCommand}"/>
         </DockPanel>
