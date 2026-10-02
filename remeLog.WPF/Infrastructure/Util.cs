@@ -52,6 +52,13 @@ namespace remeLog.Infrastructure
         public static async Task WriteLogAsync(Exception exception, string additionalMessage = "")
             => await Logs.Write(AppSettings.LogFile, exception, additionalMessage, GetCopyDir());
 
+        /// <summary>
+        /// Сообщает, что обращение к серверу прошло успешно: в лог попадёт одно сообщение
+        /// о восстановлении связи вместо тысяч одинаковых ошибок за весь обрыв.
+        /// </summary>
+        public static void ConnectionOk()
+            => Task.Run(() => Logs.ConnectionOk(AppSettings.LogFile, GetCopyDir()));
+
 
 
         private static void LogWithErrorHandling(Func<Task> logAction)

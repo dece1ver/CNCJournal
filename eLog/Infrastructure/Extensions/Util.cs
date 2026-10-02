@@ -165,10 +165,24 @@ namespace eLog.Infrastructure.Extensions
             await Logs.Write(AppSettings.LogFile, exception, additionMessage, copyDir);
         }
 
+/// <summary>
+        /// Сообщает, что обращение к серверу прошло успешно: в лог попадёт одно сообщение
+        /// о восстановлении связи вместо тысяч одинаковых ошибок за весь обрыв.
+        /// </summary>
+        public static void ConnectionOk()
+            => Task.Run(() => Logs.ConnectionOk(AppSettings.LogFile, GetCopyDir()));
+
+        /// <summary>
+        /// Асинхронный вариант <see cref="ConnectionOk"/>.
+        /// </summary>
+        public static async Task ConnectionOkAsync()
+            => await Logs.ConnectionOk(AppSettings.LogFile, await GetCopyDirAsync());
+
+
         /// <summary>
         /// Записывает сообщение в лог.
         /// </summary>
-        /// <param name="message"></param>
+        /// <param name="message">Сообщение</param>
         public static void WriteLog(string message)
             => Task.Run(() => Logs.Write(AppSettings.LogFile, message, GetCopyDir()));
 

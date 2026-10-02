@@ -11,6 +11,11 @@ namespace libeLog
         /// </summary>
         public const long MaxLogSize = 8388608;
 
+        /// <summary>
+        /// Сколько последних бэкапов файла логов хранить на диске.
+        /// </summary>
+        public const int LogBackupsToKeep = 10;
+
         public const string ShortDateFormat = "dd.MM.yy";
         public const string DateTimeFormat = "dd.MM.yyyy HH:mm";
         public const string HHmmFormat = "HH:mm";

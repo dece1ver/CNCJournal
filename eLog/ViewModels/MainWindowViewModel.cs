@@ -266,6 +266,12 @@ namespace eLog.ViewModels
         private object lockObject = new();
         private bool askedForUpdate;
 
+        /// <summary>Результат последней записи детали в БД — от него зависит пауза между попытками.</summary>
+        private DbResult _lastDbResult = DbResult.Ok;
+
+        /// <summary>Текущий шаг backoff синхронизации при недоступной БД.</summary>
+        private int _syncBackoffStep;
+
         public bool ShiftStarted
         {
             get => _ShiftStarted;
@@ -984,10 +990,20 @@ namespace eLog.ViewModels
         #endregion
 
 
+        /// <summary>
+        /// Интервалы опроса списка серийных деталей при недоступном сервере.
+        /// </summary>
+        private static readonly TimeSpan[] SerialPartsBackoff =
+        {
+            TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(5)
+        };
+
         private void SerialPartsWatcher()
         {
+            var backoffStep = 0;
             while (true) 
             {
+                var failed = false;
                 try
                 {
                     HashSet<string> serialParts = libeLog.Infrastructure.Database.GetSerialPartsAsync(AppSettings.Instance.ConnectionString)
@@ -1005,15 +1021,23 @@ namespace eLog.ViewModels
                     {
                         App.Current.Dispatcher.Invoke(() => part.IsSerial = serialParts.Contains(part.FullName.NormalizedPartNameWithoutComments()));
                     }
+                    Util.ConnectionOk();
 
                 }
                 catch (Exception ex)
                 {
                     Util.WriteLog(ex);
+                    failed = true;
                 }
                 finally
                 {
-                    Thread.Sleep(60000);
+                    // Списки деталей нужны постоянно, но при отвале сети опрашивать БД каждую минуту
+                    // незачем: часть вернётся в журнале позже.
+                    if (!failed) backoffStep = 0;
+                    else backoffStep++;
+                    Thread.Sleep(failed
+                        ? (int)SerialPartsBackoff[Math.Min(backoffStep, SerialPartsBackoff.Length - 1)].TotalMilliseconds
+                        : 60000);
                 }
             }
         }
@@ -1252,19 +1276,42 @@ namespace eLog.ViewModels
                 {
                     ProgressBarVisibility = Visibility.Hidden;
                 }
-                await Task.Delay(10000);
+                await Task.Delay(GetSyncDelay());
             }
         }
+
+        /// <summary>
+        /// Пауза перед следующим проходом синхронизации. Пока БД недоступна, повторяем реже:
+        /// детали всё равно досохранятся, но долбить сервер и писать в лог каждые 10 секунд незачем.
+        /// </summary>
+        private TimeSpan GetSyncDelay()
+        {
+            if (_lastDbResult != DbResult.NoConnection) return SyncDelay;
+            return SyncBackoff[Math.Min(_syncBackoffStep++, SyncBackoff.Length - 1)];
+        }
+
+        /// <summary>Пауза между проходами синхронизации в штатном режиме.</summary>
+        private static readonly TimeSpan SyncDelay = TimeSpan.FromSeconds(10);
+
+        /// <summary>Паузы между проходами синхронизации при недоступной БД.</summary>
+        private static readonly TimeSpan[] SyncBackoff =
+        {
+            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60), TimeSpan.FromMinutes(2)
+        };
+
         private async Task SyncWithDatabase(Part part, string partName)
         {
             ProgressBarVisibility = Visibility.Visible;
             Status = $"Запись в БД: [{partName}]";
             var writeResult = part.Id == -1 ? await part.WritePartAsync() : await part.UpdatePartAsync();
+            _lastDbResult = writeResult;
             switch (writeResult)
             {
                 case DbResult.Ok:
                     part.IsSynced = true;
                     Status = $"Готово";
+                    _syncBackoffStep = 0;
+                    Util.ConnectionOk();
                     break;
                 case DbResult.AuthError:
                     Status = $"Ошибка авторизации в БД";
@@ -1280,6 +1327,19 @@ namespace eLog.ViewModels
         }
 
         /// <summary>
+        /// Интервал heartbeat статуса станка в штатном режиме.
+        /// </summary>
+        private static readonly TimeSpan ActivityInterval = TimeSpan.FromSeconds(12);
+
+        /// <summary>
+        /// Интервалы heartbeat при недоступном сервере: чем дольше нет связи, тем реже попытки.
+        /// </summary>
+        private static readonly TimeSpan[] ActivityBackoff =
+        {
+            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60), TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(5)
+        };
+
+        /// <summary>
         /// Тихий heartbeat для дашборда (remeLog.Web) и окна remeLog.WPF: раз в 12 сек пишет
         /// текущий статус станка по строке, которая ещё не закрыта (SyncParts её не трогает).
         /// Значения статусов должны совпадать с remeLog.Core.Models.MachineActivity.
@@ -1290,8 +1350,10 @@ namespace eLog.ViewModels
             const string MachiningStatus = "Изготовление";
             const string IdleStatus = "Простой";
 
+            var backoffStep = 0;
             while (true)
             {
+                var failed = false;
                 try
                 {
                     var machine = AppSettings.Instance.Machine?.Name;
@@ -1323,12 +1385,20 @@ namespace eLog.ViewModels
                                 current.Operator.FullName, current.Setup, current.Shift, phaseStart);
                         }
                     }
+                    Util.ConnectionOk();
                 }
                 catch (Exception ex)
                 {
                     WriteLog(ex, "Ошибка записи статуса станка");
+                    failed = true;
                 }
-                await Task.Delay(12000);
+
+                // Пока сервер недоступен, статус в БД не обновляется, но и пробовать каждые 12 секунд
+                // незачем: в лог от каждой попытки падает один и тот же стектрейс на 2-3 КБ.
+                if (!failed) backoffStep = 0;
+                else backoffStep++;
+                await Task.Delay(failed ? ActivityBackoff[Math.Min(backoffStep, ActivityBackoff.Length - 1)]
+                                        : ActivityInterval);
             }
         }
 
@@ -1343,7 +1413,8 @@ namespace eLog.ViewModels
                     Status = p.Item2;
                 });
                 if (string.IsNullOrEmpty(AppSettings.Instance.GsId) || !File.Exists(AppSettings.Instance.GoogleCredentialsPath)) return;
-                foreach (var part in Parts.Where(p => p.TaskInfo == Part.PartTaskInfo.NoData || (p.TaskInfo == Part.PartTaskInfo.InList && !p.IsTaskStatusWritten)))
+                // Parts меняется из UI параллельно, поэтому обходим снимок: иначе "Collection was modified".
+                foreach (var part in Parts.Where(p => p.TaskInfo == Part.PartTaskInfo.NoData || (p.TaskInfo == Part.PartTaskInfo.InList && !p.IsTaskStatusWritten)).ToList())
                 {
                     if (Parts.Count > 0 && Parts[0].FullName == part.FullName && Parts[0].Setup == part.Setup && Parts.IndexOf(part) > 0) return;
                     if (_editPart) return;

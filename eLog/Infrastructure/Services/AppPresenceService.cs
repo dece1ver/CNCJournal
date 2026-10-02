@@ -42,14 +42,14 @@ namespace eLog.Infrastructure.Services
         /// <summary>Интервал heartbeat в штатном режиме.</summary>
         private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(10);
 
-        /// <summary>Интервал heartbeat после ошибки (backoff).</summary>
-        private static readonly TimeSpan HeartbeatBackoffInterval = TimeSpan.FromSeconds(30);
+        /// <summary>Интервалы heartbeat после ошибки (backoff): чем дольше нет связи, тем реже попытки.</summary>
+        private static readonly TimeSpan[] HeartbeatBackoff = { TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(120), TimeSpan.FromMinutes(5) };
 
         /// <summary>Интервал опроса команд.</summary>
         private static readonly TimeSpan PollingInterval = TimeSpan.FromSeconds(2);
 
-        /// <summary>Интервал опроса команд после ошибки (backoff).</summary>
-        private static readonly TimeSpan PollingBackoffInterval = TimeSpan.FromSeconds(10);
+        /// <summary>Интервалы опроса команд после ошибки (backoff).</summary>
+        private static readonly TimeSpan[] PollingBackoff = { TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60), TimeSpan.FromMinutes(5) };
 
         /// <summary>Интервал очистки устаревших записей.</summary>
         private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(30);
@@ -67,6 +67,12 @@ namespace eLog.Infrastructure.Services
 
         private Task? _heartbeatTask;
         private Task? _pollingTask;
+
+        /// <summary>Текущий шаг backoff heartbeat.</summary>
+        private int _heartbeatBackoffStep;
+
+        /// <summary>Текущий шаг backoff опроса команд.</summary>
+        private int _pollingBackoffStep;
 
         private bool _disposed;
 
@@ -111,6 +117,8 @@ namespace eLog.Infrastructure.Services
                         await CleanupAsync(_cts.Token).ConfigureAwait(false);
                     }
 
+                    Util.ConnectionOk();
+                    _heartbeatBackoffStep = 0;
                     await Task.Delay(HeartbeatInterval, _cts.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
@@ -123,7 +131,7 @@ namespace eLog.Infrastructure.Services
 
                     try
                     {
-                        await Task.Delay(HeartbeatBackoffInterval, _cts.Token).ConfigureAwait(false);
+                        await Task.Delay(NextBackoff(HeartbeatBackoff, ref _heartbeatBackoffStep), _cts.Token).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
                     {
@@ -142,6 +150,8 @@ namespace eLog.Infrastructure.Services
                 {
                     await PollCommandsAsync(_cts.Token).ConfigureAwait(false);
 
+                    Util.ConnectionOk();
+                    _pollingBackoffStep = 0;
                     await Task.Delay(PollingInterval, _cts.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
@@ -154,7 +164,7 @@ namespace eLog.Infrastructure.Services
 
                     try
                     {
-                        await Task.Delay(PollingBackoffInterval, _cts.Token).ConfigureAwait(false);
+                        await Task.Delay(NextBackoff(PollingBackoff, ref _pollingBackoffStep), _cts.Token).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
                     {
@@ -162,6 +172,16 @@ namespace eLog.Infrastructure.Services
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Следующий интервал backoff: 10с → 30с → 60с → 5 мин и дальше 5 мин.
+        /// </summary>
+        private static TimeSpan NextBackoff(TimeSpan[] steps, ref int step)
+        {
+            var delay = steps[Math.Min(step, steps.Length - 1)];
+            step++;
+            return delay;
         }
 
         /// <summary>Обновляет (или вставляет) запись о присутствии клиента.</summary>
