@@ -39,6 +39,13 @@ request_logs/
 logs/
 **/logs/
 
+# Каталоги сборки, созданные MSBuild внутри проектов.
+# В PowerShell строка -p:OutDir=%TEMP%\cncbuild\ не раскрывается — если кавычек нет,
+# а сборка запущена из PowerShell, внутри проектов появляется папка «%TEMP%\cncbuild».
+# Правильный вызов: dotnet build CNCJournal.sln -t:Rebuild -c Debug "-p:OutDir=$env:TEMP\cncbuild\"
+**/%TEMP%/
+**/cncbuild/
+
 # Исследовательские материалы и справки (кампании, отчёты, стенды) — локально
 research/
 
