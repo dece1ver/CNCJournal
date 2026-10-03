@@ -2962,6 +2962,13 @@ namespace remeLog.ViewModels
             var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine
                           ?? PartsInfo.Machine;
 
+            // Снимок того, что уходит на анализ. Решение по итогам ИИ обязано попасть
+            // в ревью ИМЕННО этих суток: кнопка «Все даты» (SetAllDateCommand) двигает
+            // FromDate на 2023-01-01, и если между анализом и нажатием «Принять» фильтр
+            // уехал, ревью записывалось на пустой день — кейс Quaser MV134 02.10.2026
+            // (анализ за 01.09, в базе ревью за 2023-01-01, 0 записей за этот день).
+            var analyzedDate = FromDate.Date;
+
             AiResult = null;
             AiInProgress = true;
             ThinkingThoughts = "";
@@ -3004,7 +3011,7 @@ namespace remeLog.ViewModels
             try
             {
                 var result = await _aiClient.AnalyzeAsync(
-                    machine, FromDate.Date, Parts,
+                    machine, analyzedDate, Parts,
                     thinkingProgress: progress,
                     ct: ct);
 
@@ -3028,7 +3035,7 @@ namespace remeLog.ViewModels
                         CurrentDayReview.Id, result, AppSettings.AiModel, AiThinkingEnabled);
                     if (saveResult.IsOk)
                     {
-                        var refreshed = await Database.GetDayReviewAsync(machine, FromDate.Date);
+                        var refreshed = await Database.GetDayReviewAsync(machine, analyzedDate);
                         if (refreshed != null)
                             CurrentDayReview = refreshed;
                     }
@@ -3038,12 +3045,12 @@ namespace remeLog.ViewModels
                         // но CurrentDayReview.AiAnalyzedAt останется от предыдущего прогона, если
                         // не сообщить об этом явно (симптом «дата анализа не обновляется»).
                         Status = $"ИИ подумал, но результат не сохранён в БД: {saveResult.Error}";
-                        await ShowAiVerdictAsync(result, machine, canChangeDayStatus: false);
+                        await ShowAiVerdictAsync(result, machine, analyzedDate, canChangeDayStatus: false);
                         return;
                     }
                 }
                 Status = isAgentResult ? "ИИ (агент) подумал" : "ИИ подумал";
-                await ShowAiVerdictAsync(result, machine, canChangeDayStatus: true);
+                await ShowAiVerdictAsync(result, machine, analyzedDate, canChangeDayStatus: true);
             }
             catch (OperationCanceledException)
             {
@@ -3091,7 +3098,8 @@ namespace remeLog.ViewModels
         /// и предложением зафиксировать статус проверки СГТ. При согласии выполняет
         /// accept-путь: исключения → сохранение строк → DayReview (+ИИ) → «Проверено техотделом».
         /// </summary>
-        private async Task ShowAiVerdictAsync(AiAnalysisResult result, string machine, bool canChangeDayStatus)
+        private async Task ShowAiVerdictAsync(
+            AiAnalysisResult result, string machine, DateTime analyzedDate, bool canChangeDayStatus)
         {
             var suggestions = AiExcludeSuggestion.ParseMany(
                 result.SuggestExcludeFromReports, result.Explanation);
@@ -3139,7 +3147,7 @@ namespace remeLog.ViewModels
                 .Except(shiftIssues)
                 .ToList();
             var dlg = new AiVerdictDialogWindow(
-                machine, FromDate.Date,
+                machine, analyzedDate,
                 result.RequiresReview, result.Confidence, result.Explanation ?? string.Empty,
                 otherSignals,
                 matched, unmatched,
@@ -3163,7 +3171,7 @@ namespace remeLog.ViewModels
                     AiFeedbackText = dlg.Feedback;
                     await SaveDayReviewInternalAsync(
                         CurrentDayReview.Decision, CurrentDayReview.IsFullyReviewed,
-                        touchReviewMeta: false);
+                        touchReviewMeta: false, shiftDate: analyzedDate);
                 }
                 return;
             }
@@ -3205,10 +3213,10 @@ namespace remeLog.ViewModels
                 OnPropertyChanged(nameof(FlaggedPartsCount));
                 OnPropertyChanged(nameof(HasFlaggedParts));
 
-                if (!MarkShiftsCheckedAsReviewed(machine, FromDate.Date)) return;
+                if (!MarkShiftsCheckedAsReviewed(machine, analyzedDate)) return;
                 await SaveDayReviewInternalAsync(AnalystDecision.Ok, isFullyReviewed: true,
                     acceptedFromAi: true, againstAiVerdict: againstAiVerdict,
-                    acceptedAiResult: result);
+                    acceptedAiResult: result, shiftDate: analyzedDate);
             }
             else if (dayDecision == AnalystDecision.Escalated)
             {
@@ -3219,7 +3227,7 @@ namespace remeLog.ViewModels
 
                 await SaveDayReviewInternalAsync(AnalystDecision.Escalated, isFullyReviewed: false,
                     acceptedFromAi: true, againstAiVerdict: againstAiVerdict,
-                    acceptedAiResult: result);
+                    acceptedAiResult: result, shiftDate: analyzedDate);
             }
             else if (CurrentDayReview != null)
             {
@@ -3227,7 +3235,7 @@ namespace remeLog.ViewModels
                 // Принятый вердикт ИИ тоже — иначе он остался бы от предыдущего прогона.
                 await SaveDayReviewInternalAsync(
                     CurrentDayReview.Decision, CurrentDayReview.IsFullyReviewed,
-                    touchReviewMeta: false, acceptedAiResult: result);
+                    touchReviewMeta: false, acceptedAiResult: result, shiftDate: analyzedDate);
                 Status = accepted.Count > 0
                     ? $"Исключено из отчётов: {accepted.Count}"
                     : "Вердикт ИИ принят без изменений";
@@ -3743,7 +3751,10 @@ namespace remeLog.ViewModels
         /// тем же запросом, что и решение. Именно этот прогон видел аналитик, даже
         /// если параллельно был другой (иначе AiVerdict считается по чужому вердикту,
         /// кейс QTS350 26.09.2026). null — обычное сохранение решения, ИИ-поля не трогаем.</param>
-        private async Task SaveDayReviewInternalAsync(AnalystDecision decision, bool isFullyReviewed, bool touchReviewMeta = true, bool acceptedFromAi = false, bool againstAiVerdict = false, AiAnalysisResult? acceptedAiResult = null)
+        /// <param name="shiftDate">Сутки, к которым относится решение. null — текущий
+        /// фильтр дат; из пути принятия вердикта ИИ передаётся снимок на момент анализа,
+        /// иначе кнопка «Все даты» успела бы увести ревью на пустой день.</param>
+        private async Task SaveDayReviewInternalAsync(AnalystDecision decision, bool isFullyReviewed, bool touchReviewMeta = true, bool acceptedFromAi = false, bool againstAiVerdict = false, AiAnalysisResult? acceptedAiResult = null, DateTime? shiftDate = null)
         {
             var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine
                           ?? PartsInfo.Machine;
@@ -3764,15 +3775,12 @@ namespace remeLog.ViewModels
                 if (answer == MessageBoxResult.No) return;
             }
 
-            var comment = DayReviewComment ?? string.Empty;
-            if (acceptedFromAi)
-            {
-                comment = (againstAiVerdict ? "[ИИ] Вопреки вердикту ИИ." : "[ИИ] Вердикт ИИ принят.")
-                    + (string.IsNullOrWhiteSpace(comment) ? "" : " " + comment.Trim());
-            }
+            var comment = acceptedFromAi
+                ? AiReviewComment.ApplyMarker(DayReviewComment, againstAiVerdict)
+                : DayReviewComment ?? string.Empty;
             var review = new DayReview(
                 machine: machine,
-                shiftDate: FromDate.Date,
+                shiftDate: shiftDate ?? FromDate.Date,
                 reviewedBy: acceptedFromAi ? Environment.UserName + "+ИИ" : Environment.UserName,
                 decision: decision,
                 isFullyReviewed: isFullyReviewed,
