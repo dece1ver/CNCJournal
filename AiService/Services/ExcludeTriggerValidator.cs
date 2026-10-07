@@ -157,7 +157,34 @@ public static partial class ExcludeTriggerValidator
         if (!int.TryParse(seg[1].Trim(), out _)) return false;
         var reason = ReasonOf(entry);
         if (reason.Length == 0) return false;
+        if (IsBannedAbsoluteAbsence(reason)) return false;
         return !AgentTools.IsKnownReasonName(reason);
+    }
+
+    /// <summary>
+    /// Запрещённые формулировки про отсутствие работы как аномалию: «отсутствие
+    /// наладки/изготовления при наличии заказа/норматива», «наладка не выполнена
+    /// при заказе», «КПД вне нормы (б/н/б/и)». Такой категории нет — это не
+    /// конкретика про деталь, а выдуманная аномалия (кейс 06.10.2026,
+    /// Rontek HTC420 №1 28.09: «отсутствие наладки при наличии заказа»).
+    /// «Отсутствие нормативов» не задевается: там нет связки с наладкой/
+    /// изготовлением как фактом работы.
+    /// </summary>
+    private static bool IsBannedAbsoluteAbsence(string reason)
+    {
+        var r = (reason ?? "").ToLowerInvariant().Replace('ё', 'е');
+        var noWork = r.Contains("отсутств") || r.Contains("не было")
+            || r.Contains("не выполнен") || r.Contains("не выполнена")
+            || r.Contains("не выполнено") || r.Contains("не выполнены")
+            || r.Contains("невыполнен");
+        var category = r.Contains("наладк") || r.Contains("изготов");
+        var withOrder = r.Contains("при наличии заказа") || r.Contains("при наличии норматива")
+            || r.Contains("при заказе") || r.Contains("с заказом");
+        if (noWork && category && withOrder) return true;
+        // б/н и б/и — отсутствие значения, а не аномалия; «КПД вне нормы (б/н)»
+        // такой категории нет (см. скелет промпта).
+        if (r.Contains("кпд") && (r.Contains("б/н") || r.Contains("б/и"))) return true;
+        return false;
     }
 
     [GeneratedRegex(@"^#\d{1,3}$")]

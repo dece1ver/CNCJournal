@@ -255,6 +255,7 @@ namespace remeLog.Core.Services.Demo
                 existing.DowntimesComment = shift.DowntimesComment;
                 existing.CommonComment = shift.CommonComment;
                 existing.IsChecked = shift.IsChecked;
+                existing.Operators = shift.Operators;
                 return DbResult<bool>.Ok(true);
             }
         }
@@ -265,7 +266,10 @@ namespace remeLog.Core.Services.Demo
             s.GiverWorkplaceCleaned, s.GiverFailures, s.GiverExtraneousNoises,
             s.GiverLiquidLeaks, s.GiverToolBreakage, s.GiverСoolantСoncentration,
             s.RecieverWorkplaceCleaned, s.RecieverFailures, s.RecieverExtraneousNoises,
-            s.RecieverLiquidLeaks, s.RecieverToolBreakage, s.RecieverСoolantСoncentration);
+            s.RecieverLiquidLeaks, s.RecieverToolBreakage, s.RecieverСoolantСoncentration)
+        {
+            Operators = s.Operators,
+        };
 
         // ── Операторы ────────────────────────────────────────────────
 

@@ -69,8 +69,10 @@ public static class AgentTools
         {
             Name = "get_operator_info",
             Description = "Оператор по фамилии/инициалам («Крафт А.С.», JSON: ФИО, разряд, активен). "
-                + "Для проверки заявлений про ученика/неопытного (кто именно работал) "
-                + "и расшифровки подписей в комментариях.",
+                + "ТОЛЬКО для имён из комментарийОператора и заявлений про ученика/неопытного "
+                + "(кто именно работал). НЕ вызывай для значений мастер/комментарийМастера/"
+                + "мастерНаладка/мастерИзготовление: мастера нет в cnc_operators, ответ "
+                + "«не найден» про мастера — не сигнал и не означает «мастер не указан».",
             ParametersJson = """{"type":"object","properties":{"query":{"type":"string","description":"Фамилия, можно с инициалами"}},"required":["query"]}""",
         },
         new ChatTool
@@ -114,7 +116,7 @@ public static class AgentTools
             "get_normatives" => Normatives(req, Get(args, "partName")),
             "get_shift_report" => ShiftReport(req),
             "get_operator_info" => await OperatorInfoAsync(
-                source, Get(args, "query"), ct),
+                req, source, Get(args, "query"), ct),
             _ => $"Неизвестный инструмент «{name}». Доступны: {string.Join(", ", Definitions.Select(d => d.Name))}.",
         };
 
@@ -145,7 +147,7 @@ public static class AgentTools
             ["Особенности изготовления"] = ("любая", true, "Требует конкретики (напр. деталь по двум установкам на двух паллетах)."),
             ["Небрежное отношение к работе"] = ("любая", true, "С конкретным комментарием — объяснено, без эскалации, в exclude НЕ попадает."),
             ["Некорректное заполнение"] = ("любая", false, "Данные недостоверны → эскалация."),
-            ["Двустаночное обслуживание"] = ("любая", false, "Особых условий нет."),
+            ["Двустаночное обслуживание"] = ("любая", false, "Объясняет низкий КПД и увеличенное машинное время, если оператор обслуживал два станка (станок ждал оператора). Простои смены этим не объясняются, нормативы не подтверждаются. История не требуется. Варианты той же причины в комментариях: «двустаночная/многостаночная работа», «работа на двух станках», «перешёл на др. станок», «с др. станка», «помощь на других станках»."),
             ["Частичная наладка"] = ("наладка", false, "Переходная наладка: куски одной наладки идут через механизм простоев (указанныеПростои), в факт НЕ входят — умышленно, чтобы недоделанная работа не портила КПД. Сама по себе НЕ проблема и НЕ аномалия: проблема — ТОЛЬКО системный сигнал клиента «КПД частичной наладки … < 70%» (частичная вышла за норматив). Без этого сигнала — не эскалируй, tools по ней больше не вызывай. С ним — проверяй объяснение мастера, а не сам факт кусков."),
         };
 
@@ -330,11 +332,52 @@ public static class AgentTools
             : JsonSerializer.Serialize(rows, JsonOptions);
     }
 
+    /// <summary>
+    /// Мастер смены, чьё имя модель ошибочно ищет среди операторов: полное ФИО
+    /// из запроса совпало с полем «мастер» суточного отчёта, либо совпали фамилия
+    /// и хотя бы один инициал. Возвращает мастера и смены, где он указан.
+    /// </summary>
+    private static (string Master, string Shifts)? ShiftMasterForOperatorQuery(
+        AnalyzeRequest req, string query)
+    {
+        var parsed = OperatorQueryParser.Parse(query);
+        if (parsed == null) return null;
+        foreach (var group in req.ShiftReports
+            .Where(r => !string.IsNullOrWhiteSpace(r.Master))
+            .GroupBy(r => r.Master.Trim(), StringComparer.OrdinalIgnoreCase))
+        {
+            var masterParsed = OperatorQueryParser.Parse(group.Key);
+            if (masterParsed == null) continue;
+            if (!masterParsed.LastName.Equals(parsed.LastName, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var fullMatch = group.Key.Trim().Equals(query.Trim(), StringComparison.OrdinalIgnoreCase);
+            var initialsMatch =
+                (masterParsed.FirstInitial != null && masterParsed.FirstInitial.Equals(parsed.FirstInitial, StringComparison.OrdinalIgnoreCase))
+                || (masterParsed.PatronymicInitial != null && masterParsed.PatronymicInitial.Equals(parsed.PatronymicInitial, StringComparison.OrdinalIgnoreCase));
+            if (!fullMatch && !initialsMatch) continue;
+            var shifts = string.Join(", ", group.Select(r => $"«{r.Shift.Trim()}»").Distinct(StringComparer.OrdinalIgnoreCase));
+            return (group.Key, shifts);
+        }
+        return null;
+    }
+
     private static async Task<string> OperatorInfoAsync(
-        IAgentDataSource source, string query, CancellationToken ct)
+        AnalyzeRequest req, IAgentDataSource source, string query, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(query))
             return "Укажи фамилию (можно с инициалами): например «Крафт А.С.».";
+        // Граница ролей (кейс 06.10.2026, Rontek HTC420 №1 28.09): модель взяла
+        // мастера из отчёта смены («Зуев Максим Борисович»), получила «не найден»
+        // и записала «Оператор Зуев отсутствует в системе» + «мастер не указан».
+        // Мастера нет в cnc_operators по построению — такой запрос не идёт в БД,
+        // ответ сразу объясняет роль. Однофамилец без совпадающих инициалов
+        // (например, «Зуев А.С.» при мастере «Зуев М.Б.») — другой человек,
+        // идёт в БД как раньше.
+        if (ShiftMasterForOperatorQuery(req, query) is { } master)
+            return $"«{query.Trim()}» в этом дне указан как мастер смены " +
+                $"({master.Shifts}), а не оператор. cnc_operators содержит только " +
+                "операторов: отсутствие этой фамилии там — норма, а не сигнал; " +
+                "мастера по операторам не проверяй и в signals/shift_report_issues не пиши.";
         var found = await source.FindOperatorsAsync(query.Trim(), ct);
         if (found.Count == 0)
             return $"Оператор «{query.Trim()}» не найден в cnc_operators.";

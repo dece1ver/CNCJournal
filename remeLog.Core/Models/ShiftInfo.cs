@@ -68,6 +68,8 @@ namespace remeLog.Models
         public string Shift { get; set; }
         public string Machine { get; set; }
         public string Master { get; set; }
+        /// <summary> Операторы смены строкой через «, » (может быть несколько). </summary>
+        public string Operators { get; set; } = "";
         public double UnspecifiedDowntimes { get; set; }
         public string DowntimesComment { get; set; }
         public string CommonComment { get; set; }

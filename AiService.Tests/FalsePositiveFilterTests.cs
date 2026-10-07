@@ -771,4 +771,62 @@ public class FalsePositiveFilterTests
         Assert.Single(filtered);
         Assert.Empty(removed);
     }
+
+    private static AnalyzeRequest ReportRequest(string shift, string master)
+    {
+        var req = Request();
+        req.ShiftReports.Add(new ShiftReportContext
+        {
+            Shift = shift,
+            ShiftMinutes = 660,
+            ReportExists = true,
+            Master = master,
+        });
+        return req;
+    }
+
+    [Fact]
+    public void ShiftMasterRoleConfusion_NamedMasterAsOperator_Removed()
+    {
+        // Кейс 06.10.2026, Rontek HTC420 №1 28.09: «Оператор Зуев ... отсутствует
+        // в системе» — а Зуев в отчёте мастер, операторов с такой фамилией нет
+        // по построению.
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            ReportRequest("День", "Зуев Максим Борисович"), NoHard, NoDowngraded,
+            ["Оператор Зуев Максим Борисович отсутствует в системе"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+    }
+
+    [Fact]
+    public void ShiftMasterRoleConfusion_UntaggedAbsence_AllReportsHaveMasters_Removed()
+    {
+        var req = ReportRequest("День", "Зуев Максим Борисович");
+        req.ShiftReports.Add(new ShiftReportContext
+        {
+            Shift = "Ночь",
+            ShiftMinutes = 630,
+            ReportExists = true,
+            Master = "Зуев Максим Борисович",
+        });
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            req, NoHard, NoDowngraded,
+            ["мастер не указан в системе"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+    }
+
+    [Fact]
+    public void ShiftMasterRoleConfusion_GenuineComplaint_Kept()
+    {
+        // Содержательная претензия без ролевой путаницы — сохраняется.
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            ReportRequest("День", "Зуев Максим Борисович"), NoHard, NoDowngraded,
+            ["Смена День: комментарий не о простое"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
 }

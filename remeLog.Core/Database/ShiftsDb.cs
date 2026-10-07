@@ -38,8 +38,13 @@ namespace remeLog.Infrastructure
                 {
                     if (DomainSettings.DebugMode) Log.Write("Запись в БД информации о смене.");
                     connection.Open();
-                    string query = $"INSERT INTO cnc_shifts (ShiftDate, Shift, Machine, Master, UnspecifiedDowntimes, DowntimesComment, CommonComment, IsChecked) " +
-                        $"VALUES (@ShiftDate, @Shift, @Machine, @Master, @UnspecifiedDowntimes, @DowntimesComment, @CommonComment, @IsChecked); SELECT SCOPE_IDENTITY()";
+                    // cnc_shifts.Operators есть только в обновлённой схеме; на старой БД
+                    // колонки нет — тогда пишем без неё (иначе «Invalid column name»).
+                    var hasOperators = OperatorsColumnExists();
+                    string query = $"INSERT INTO cnc_shifts (ShiftDate, Shift, Machine, Master, UnspecifiedDowntimes, DowntimesComment, CommonComment, IsChecked" +
+                        (hasOperators ? ", Operators" : "") + ") " +
+                        $"VALUES (@ShiftDate, @Shift, @Machine, @Master, @UnspecifiedDowntimes, @DowntimesComment, @CommonComment, @IsChecked" +
+                        (hasOperators ? ", @Operators" : "") + "); SELECT SCOPE_IDENTITY()";
                     using (SqlCommand command = new(query, connection))
                     {
                         command.Parameters.AddWithValue("ShiftDate", shiftInfo.ShiftDate);
@@ -50,6 +55,7 @@ namespace remeLog.Infrastructure
                         command.Parameters.AddWithValue("DowntimesComment", shiftInfo.DowntimesComment);
                         command.Parameters.AddWithValue("CommonComment", shiftInfo.CommonComment);
                         command.Parameters.AddWithValue("IsChecked", shiftInfo.IsChecked);
+                        if (hasOperators) command.Parameters.AddWithValue("Operators", shiftInfo.Operators ?? "");
                         var result = command.ExecuteScalar();
                         if (DomainSettings.DebugMode) Log.Write($"Смена записана и присвоен ID: {shiftInfo.Id}");
                     }
@@ -129,6 +135,9 @@ namespace remeLog.Infrastructure
                                         reader.GetNullableBoolean(19),      // RecieverToolBreakage
                                         reader.GetNullableDouble(20)        // RecieverCoolantConcentration
                                         )
+                                    {
+                                        Operators = ReadOperators(reader),
+                                    }
                                     );
                             }
                         }
@@ -206,6 +215,9 @@ namespace remeLog.Infrastructure
                                         reader.GetNullableBoolean(19),      // RecieverToolBreakage
                                         reader.GetNullableDouble(20)        // RecieverCoolantConcentration
                                         )
+                                    {
+                                        Operators = ReadOperators(reader),
+                                    }
                                     );
                             }
                         }
@@ -244,7 +256,11 @@ namespace remeLog.Infrastructure
                 using (SqlConnection connection = new(DomainSettings.ConnectionString))
                 {
                     connection.Open();
-                    string query = $"UPDATE cnc_shifts SET Master = @Master, UnspecifiedDowntimes = @UnspecifiedDowntimes, DowntimesComment = @DowntimesComment, CommonComment = @CommonComment, IsChecked = @IsChecked  " +
+                    // cnc_shifts.Operators есть только в обновлённой схеме; на старой БД
+                    // колонки нет — тогда обновляем без неё (иначе «Invalid column name»).
+                    var hasOperators = OperatorsColumnExists();
+                    string query = $"UPDATE cnc_shifts SET Master = @Master, UnspecifiedDowntimes = @UnspecifiedDowntimes, DowntimesComment = @DowntimesComment, CommonComment = @CommonComment, IsChecked = @IsChecked" +
+                        (hasOperators ? ", Operators = @Operators" : "") + "  " +
                         $"WHERE ShiftDate = @ShiftDate AND Shift = @Shift AND Machine = @Machine";
                     using (SqlCommand command = new(query, connection))
                     {
@@ -256,6 +272,7 @@ namespace remeLog.Infrastructure
                         command.Parameters.AddWithValue("DowntimesComment", shiftInfo.DowntimesComment);
                         command.Parameters.AddWithValue("CommonComment", shiftInfo.CommonComment);
                         command.Parameters.AddWithValue("IsChecked", shiftInfo.IsChecked);
+                        if (hasOperators) command.Parameters.AddWithValue("Operators", shiftInfo.Operators ?? "");
                         int rowsAffected = command.ExecuteNonQuery();
                         if (rowsAffected == 0)
                         {
@@ -293,6 +310,38 @@ namespace remeLog.Infrastructure
                 Log.WriteError(ex, null);
                 return DbResult<bool>.FailWithError(ex.Message);
             }
+        }
+
+        // Наличие cnc_shifts.Operators: колонка аддитивная и появляется при
+        // «Обновлении БД». На старой схеме писать её нельзя — запрос упадёт с
+        // «Invalid column name». Кэшируем только положительный ответ, чтобы
+        // обновление схемы из уже запущенного приложения подхватилось без
+        // перезапуска (проверка выполняется только пока колонки нет).
+        private static bool _operatorsColumnExists;
+
+        private static bool OperatorsColumnExists()
+        {
+            if (_operatorsColumnExists) return true;
+            using var connection = new SqlConnection(DomainSettings.ConnectionString);
+            connection.Open();
+            using var command = new SqlCommand(
+                "SELECT CASE WHEN COL_LENGTH('dbo.cnc_shifts', 'Operators') IS NULL THEN 0 ELSE 1 END",
+                connection);
+            var exists = Convert.ToInt32(command.ExecuteScalar()) == 1;
+            if (exists) _operatorsColumnExists = true;
+            return exists;
+        }
+
+        // Чтение Operators по имени, а не по индексу 21: на необновлённой БД
+        // колонки в SELECT * просто нет, и это не должно падать.
+        private static string ReadOperators(SqlDataReader reader)
+        {
+            for (int i = 0; i < reader.FieldCount; i++)
+            {
+                if (reader.GetName(i).Equals("Operators", StringComparison.OrdinalIgnoreCase))
+                    return reader.IsDBNull(i) ? "" : reader.GetString(i);
+            }
+            return "";
         }
     }
 }

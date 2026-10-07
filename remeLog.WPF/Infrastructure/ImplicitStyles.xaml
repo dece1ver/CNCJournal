@@ -407,7 +407,9 @@
         <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource Areopag.LineSoft}"/>
         <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource Areopag.LineSoft}"/>
         <Setter Property="RowBackground" Value="Transparent"/>
-        <!-- Чередующийся фон строк — единое правило remeLog; окна его НЕ задают. -->
+        <!-- Чередующийся фон строк — единое правило remeLog; окна его НЕ задают.
+             AlternationCount обязателен: без него AlternatingRowBackground игнорируется. -->
+        <Setter Property="AlternationCount" Value="2"/>
         <Setter Property="AlternatingRowBackground" Value="{DynamicResource Areopag.RowAlt}"/>
     </Style>
     <!-- С ключами — чтобы окна наследовали локальные стили строк/ячеек/шапок
@@ -417,6 +419,15 @@
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
         <Style.Triggers>
+            <!-- Зебра явно по AlternationIndex: свой стиль строки полностью
+                 заменяет дефолтный (который и применял RowBackground/
+                 AlternatingRowBackground), поэтому без этого триггера все
+                 строки остаются Transparent. IsSelected — позже, чтобы
+                 выделение перекрывало зебру. Проблемные строки красятся на
+                 уровне ячеек (AlertSoft, непрозрачный) — зебра их не трогает. -->
+            <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                <Setter Property="Background" Value="{DynamicResource Areopag.RowAlt}"/>
+            </Trigger>
             <Trigger Property="IsSelected" Value="True">
                 <Setter Property="Background" Value="{DynamicResource Areopag.AccentSoft}"/>
                 <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>

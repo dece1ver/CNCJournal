@@ -46,6 +46,9 @@
     <!-- Предупреждение -->
     <SolidColorBrush x:Key="Areopag.Warn" Color="#D9A845"/>
     <SolidColorBrush x:Key="Areopag.WarnSoft" Color="#453312"/>
+    <!-- Изменённая строка: светлый синий, читается на тёмном фоне.
+         Только текст, без фона. -->
+    <SolidColorBrush x:Key="Areopag.Modified" Color="#6EA8FE"/>
     <!-- Disabled -->
     <SolidColorBrush x:Key="Areopag.Disabled" Color="#5A636D"/>
     <SolidColorBrush x:Key="Areopag.DisabledBg" Color="#22282F"/>

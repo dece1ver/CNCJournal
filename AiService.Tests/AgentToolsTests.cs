@@ -129,6 +129,8 @@ public class AgentToolsTests
     [InlineData("Деталь§Уст.1§З1§замена сверла", false)] // «Уст.» вместо цифры
     [InlineData("Деталь§1§З1§Другое", false)] // голое название причины
     [InlineData("Деталь§1§З1§", false)] // пустая причина
+    [InlineData("Деталь§1§З1§отсутствие наладки при наличии заказа", false)] // запрещённая формулировка
+    [InlineData("Деталь§1§З1§КПД вне нормы (б/н)", false)] // б/н — отсутствие значения, не аномалия
     public void ExcludeEntry_FormatGate(string entry, bool expected)
     {
         // Пилот 25.09 (QTS350 23.09): «§Уст.1§» обходило привязку, голое «Другое»
@@ -237,6 +239,60 @@ public class AgentToolsTests
         Assert.Contains("Переходная", r);
         Assert.Contains("нормализован", r);
         Assert.DoesNotContain("неизвестна каталогу", r);
+    }
+
+    [Fact]
+    public void ReasonSemantics_TwoMachineService_ExplainsKpdAndTime()
+    {
+        // Решение владельца 06.10.2026: двустаночное обслуживание релевантно
+        // низкому КПД и росту машинного времени, но не простоям смены.
+        var r = AgentTools.Execute(Request(), "get_reason_semantics",
+            """{"reason":"Двустаночное обслуживание","category":"machining"}""");
+        Assert.Contains("два станка", r);
+        Assert.Contains("др. станок", r);
+        Assert.Contains("Простои смены", r);
+        Assert.DoesNotContain("Особых условий нет", r);
+    }
+
+    [Theory]
+    [InlineData("Зуев Максим Борисович")]
+    [InlineData("Зуев М.Б.")]
+    public void OperatorInfo_ShiftMaster_BlockedBeforeDb(string query)
+    {
+        // Кейс 06.10.2026, Rontek HTC420 №1 28.09: модель взяла мастера из отчёта
+        // смены и получила бы «не найден» — дальше записала «Оператор Зуев
+        // отсутствует в системе». Мастера нет в cnc_operators по построению:
+        // запрос не идёт в БД, ответ сразу объясняет роль.
+        var req = Request();
+        req.ShiftReports.Add(new ShiftReportContext
+        {
+            Shift = "День",
+            ShiftMinutes = 660,
+            ReportExists = true,
+            Master = "Зуев Максим Борисович",
+        });
+        var r = AgentTools.Execute(req, "get_operator_info",
+            "{\"query\":\"" + query + "\"}");
+        Assert.Contains("мастер смены", r);
+        Assert.DoesNotContain("не найден в cnc_operators", r);
+    }
+
+    [Fact]
+    public void OperatorInfo_SameSurnameDifferentInitials_GoesToDb()
+    {
+        // Однофамилец без совпадающих инициалов — другой человек, идёт в БД
+        // (RequestAgentDataSource: честное «не найден», без выдумки).
+        var req = Request();
+        req.ShiftReports.Add(new ShiftReportContext
+        {
+            Shift = "День",
+            ShiftMinutes = 660,
+            ReportExists = true,
+            Master = "Зуев Максим Борисович",
+        });
+        var r = AgentTools.Execute(req, "get_operator_info",
+            """{"query":"Зуев А.С."}""");
+        Assert.Contains("не найден в cnc_operators", r);
     }
 
     [Fact]

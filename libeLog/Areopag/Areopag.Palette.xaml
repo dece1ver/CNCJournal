@@ -46,6 +46,9 @@
     <!-- Предупреждение (источник: remeLog.Web app.css, в Constants.Colors нет) -->
     <SolidColorBrush x:Key="Areopag.Warn" Color="#B8862E"/>
     <SolidColorBrush x:Key="Areopag.WarnSoft" Color="#F3E7D2"/>
+    <!-- Изменённая строка: яркий синий, заметно отличается от обычного
+         текста (Accent для этого слишком тёмный). Только текст, без фона. -->
+    <SolidColorBrush x:Key="Areopag.Modified" Color="#1A5FB4"/>
     <!-- Disabled (источник: QCTasks DialogStyles) -->
     <SolidColorBrush x:Key="Areopag.Disabled" Color="#BDBDBD"/>
     <SolidColorBrush x:Key="Areopag.DisabledBg" Color="#F5F5F5"/>

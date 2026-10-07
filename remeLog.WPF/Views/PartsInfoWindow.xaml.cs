@@ -1,6 +1,7 @@
 ﻿using DocumentFormat.OpenXml.Spreadsheet;
 using remeLog.Infrastructure;
 using remeLog.Infrastructure.Extensions;
+using remeLog.Infrastructure.Spell;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
 using remeLog.ViewModels;
@@ -192,6 +193,48 @@ namespace remeLog.Views
             }
         }
 
+        /// <summary>
+        /// Варианты исправления слова-опечатки под кареткой — в начало общего
+        /// меню редактора. Меню переиспользуется, внедрённые пункты чистятся
+        /// при закрытии. Только для редакторов с подсветкой орфографии.
+        /// </summary>
+        private static void AppendSpellingSuggestions(ContextMenu menu, TextBox textBox)
+        {
+            if (!SpellCheckBehavior.GetIsEnabled(textBox)) return;
+            if (!SpellCheckBehavior.TryGetWordAtCaret(textBox, out var error, out var word)) return;
+            var candidates = SpellCheckBehavior.GetSuggestions(word);
+            if (candidates.Count == 0) return;
+
+            var injected = new List<object>();
+            var header = new MenuItem
+            {
+                Header = $"Исправить «{word}»:",
+                IsEnabled = false,
+                FontWeight = FontWeights.SemiBold,
+            };
+            menu.Items.Insert(0, header);
+            injected.Add(header);
+            for (int i = candidates.Count - 1; i >= 0; i--)
+            {
+                string candidate = candidates[i];
+                var item = new MenuItem { Header = candidate };
+                item.Click += (_, _) => SpellCheckBehavior.ApplySuggestion(textBox, error, candidate);
+                menu.Items.Insert(1, item);
+                injected.Add(item);
+            }
+            var separator = new Separator();
+            menu.Items.Insert(1 + candidates.Count, separator);
+            injected.Add(separator);
+
+            void OnClosed(object s, RoutedEventArgs _) 
+            {
+                menu.Closed -= OnClosed;
+                foreach (var item in injected) menu.Items.Remove(item);
+            }
+            menu.Closed -= OnClosed;
+            menu.Closed += OnClosed;
+        }
+
         private static bool IsEditingCell(DataGrid dataGrid)
         {
             var cellContent = dataGrid.CurrentCell.Column?
@@ -253,8 +296,12 @@ namespace remeLog.Views
                 if (FindVisualParent<TextBox>(depObj) is { } editingTextBox)
                 {
                     editingTextBox.Focus();
+                    // каретку — в точку клика, чтобы варианты предлагались для кликнутого слова
+                    int clickIndex = editingTextBox.GetCharacterIndexFromPoint(e.GetPosition(editingTextBox), true);
+                    if (clickIndex >= 0) editingTextBox.CaretIndex = clickIndex;
                     e.Handled = true;
                     var textBoxMenu = (ContextMenu)FindResource("EditingTextBoxContextMenu");
+                    AppendSpellingSuggestions(textBoxMenu, editingTextBox);
                     textBoxMenu.PlacementTarget = editingTextBox;
                     textBoxMenu.IsOpen = true;
                     return;

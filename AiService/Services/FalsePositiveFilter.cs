@@ -298,6 +298,7 @@ public static class FalsePositiveFilter
                 IsNonSerialMachiningNormativeClaim(signal, request) ? "норматив изготовления на несерийном станке не оценивается" :
                 IsNonSerialMachiningTimeClaim(signal, request) ? "машинное время на несерийном станке не оценивается" :
                 IsLowMachiningTimeClaim(signal) ? "машинное время ниже норматива — не аномалия" :
+                IsShiftMasterRoleConfusion(signal, request) ? "мастер отчёта — не оператор; отсутствие в cnc_operators не сигнал" :
                 IsRefutedDrugoeClaim(signal, request.Parts) ? "«Другое» с детализацией — объяснено" :
                 IsMisaddressedReasonDemand(signal, request.Parts) ? "требование подтверждения невыбранной причины" :
                 hasConfirmedMastering && IsUnconfirmedMasteringClaim(signal) ? "освоение подтверждено детерминированно" :
@@ -548,6 +549,41 @@ public static class FalsePositiveFilter
             System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture,
             out value);
+
+    /// <summary>
+    /// Ролевая путаница «мастер = оператор» в data-сигналах: модель называет
+    /// мастера из суточного отчёта оператором («Оператор Зуев ... отсутствует
+    /// в системе») или утверждает «мастер не указан» при непустом поле мастер.
+    /// Shift-эхо с тегом смены уходит в shift-дропы раньше (см.
+    /// ShiftReportRuleEvaluator.DropFalseMasterClaims); сюда доходят формулировки
+    /// без тега. Сверка — по полному ФИО мастера из запроса; безымянная
+    /// «мастер не указан» режется, только если мастер есть ВО ВСЕХ отчётах.
+    /// Кейс 06.10.2026, Rontek HTC420 №1 28.09.
+    /// </summary>
+    private static bool IsShiftMasterRoleConfusion(string signal, AnalyzeRequest request)
+    {
+        var existing = request.ShiftReports
+            .Where(r => r.ReportExists && r.ShiftMinutes > 0)
+            .ToList();
+        // По строкам отчётов (не distinct): равенство счётчиков ниже означает
+        // «мастер есть в каждом существующем отчёте», даже если мастер один
+        // на обе смены.
+        var masters = existing
+            .Where(r => !string.IsNullOrWhiteSpace(r.Master))
+            .Select(r => r.Master.Trim())
+            .ToList();
+        if (masters.Count == 0) return false;
+        foreach (var master in masters.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (!ShiftReportRuleEvaluator.NamesShiftMaster(signal, master)) continue;
+            var lower = signal.ToLowerInvariant();
+            if (lower.Contains("оператор")
+                || ShiftReportRuleEvaluator.ClaimsMasterUnspecified(signal))
+                return true;
+        }
+        return ShiftReportRuleEvaluator.ClaimsMasterUnspecified(signal)
+            && existing.Count > 0 && masters.Count == existing.Count;
+    }
 
     /// <summary>
     /// Несерийный станок (AnalyzeRequest.IsSerialMachine == false): ЛЮБАЯ претензия

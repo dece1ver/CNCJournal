@@ -1,5 +1,6 @@
 ﻿using libeLog;
 using libeLog.Base;
+using remeLog.Core.Services;
 using remeLog.Infrastructure;
 using remeLog.Infrastructure.Extensions;
 using remeLog.Infrastructure.Types;
@@ -244,8 +245,19 @@ namespace remeLog.ViewModels
         public double NightFinishedCount => Parts.Where(p => p.Shift == new Shift(ShiftType.Night).Name).Sum(p => p.FinishedCount);
         public int DaySetups => Parts.Count(p => p.StartSetupTime != p.StartMachiningTime && p.Shift == new Shift(ShiftType.Day).Name);
         public int NightSetups => Parts.Count(p => p.StartSetupTime != p.StartMachiningTime && p.Shift == new Shift(ShiftType.Night).Name);
-        public string DayOperator => DayParts.Count > 0 ? DayParts.First().Operator : "Нет оператора.";
-        public string NightOperator => NightParts.Count > 0 ? NightParts.First().Operator : "Нет оператора.";
+        public string DayOperator => OperatorsOf(DayParts);
+        public string NightOperator => OperatorsOf(NightParts);
+
+        /// <summary>
+        /// Операторы смены: уникальные непустые в порядке первого появления
+        /// (несколько человек в одну смену показываются все). Один — полное ФИО,
+        /// несколько — «Фамилия И.О.», чтобы уместиться в одну строку.
+        /// </summary>
+        private static string OperatorsOf(List<Part> parts)
+        {
+            var text = ShiftOperators.Format(parts.Select(p => p.Operator));
+            return text.Length > 0 ? text : "Нет оператора.";
+        }
 
         public string DayWorkInfo => $"М/Л: {DayOrders}, Наладок: {DaySetups}, Деталей: {DayFinishedCount}";
         public string NightWorkInfo => $"М/Л: {NightOrders}, Наладок: {NightSetups}, Деталей: {NightFinishedCount}";
@@ -488,8 +500,14 @@ namespace remeLog.ViewModels
             }
             if (MessageBoxWindow.Show("Обновить информацию?", "Вы точно уверены?", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.Yes) is MessageBoxResult.No) 
                 return;
-            var dayShift = new ShiftInfo(null, ShiftDate, ShiftType.Day, Machine, CurrentMaster, UnspecifiedDayDowntimes, DayDowntimesReason, DayMasterComment, IsChecked, DayGiverWorkplaceCleaned, DayGiverFailures, DayGiverExtraneousNoises, DayGiverLiquidLeaks, DayGiverToolBreakage, DayGiverCoolantConcentration, DayRecieverWorkplaceCleaned, DayRecieverFailures, DayRecieverExtraneousNoises, DayRecieverLiquidLeaks, DayRecieverToolBreakage, DayRecieverCoolantConcentration);
-            var nightShift = new ShiftInfo(null, ShiftDate, ShiftType.Night, Machine, CurrentMaster, UnspecifiedNightDowntimes, NightDowntimesReason, NightMasterComment, IsChecked, NightGiverWorkplaceCleaned, NightGiverFailures, NightGiverExtraneousNoises, NightGiverLiquidLeaks, NightGiverToolBreakage, NightGiverCoolantConcentration, NightRecieverWorkplaceCleaned, NightRecieverFailures, NightRecieverExtraneousNoises, NightRecieverLiquidLeaks, NightRecieverToolBreakage, NightRecieverCoolantConcentration);
+            var dayShift = new ShiftInfo(null, ShiftDate, ShiftType.Day, Machine, CurrentMaster, UnspecifiedDayDowntimes, DayDowntimesReason, DayMasterComment, IsChecked, DayGiverWorkplaceCleaned, DayGiverFailures, DayGiverExtraneousNoises, DayGiverLiquidLeaks, DayGiverToolBreakage, DayGiverCoolantConcentration, DayRecieverWorkplaceCleaned, DayRecieverFailures, DayRecieverExtraneousNoises, DayRecieverLiquidLeaks, DayRecieverToolBreakage, DayRecieverCoolantConcentration)
+            {
+                Operators = ShiftOperators.Join(DayParts.Select(p => p.Operator)),
+            };
+            var nightShift = new ShiftInfo(null, ShiftDate, ShiftType.Night, Machine, CurrentMaster, UnspecifiedNightDowntimes, NightDowntimesReason, NightMasterComment, IsChecked, NightGiverWorkplaceCleaned, NightGiverFailures, NightGiverExtraneousNoises, NightGiverLiquidLeaks, NightGiverToolBreakage, NightGiverCoolantConcentration, NightRecieverWorkplaceCleaned, NightRecieverFailures, NightRecieverExtraneousNoises, NightRecieverLiquidLeaks, NightRecieverToolBreakage, NightRecieverCoolantConcentration)
+            {
+                Operators = ShiftOperators.Join(NightParts.Select(p => p.Operator)),
+            };
             var dayWriteResult = Database.WriteShiftInfo(dayShift);
             switch (dayWriteResult.Status)
             {

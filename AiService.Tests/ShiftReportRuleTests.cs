@@ -124,6 +124,20 @@ public class ShiftReportRuleTests
     }
 
     [Fact]
+    public void Evaluate_R2_OtherWithoutDetail_ReadableText()
+    {
+        // Кейс 07.10.2026, Victor 21.09: старый текст «без объяснения
+        // с детализацией» читался как противоречие — требуем детализации,
+        // которой нет.
+        var req = Request(Day(stored: 117, fresh: 117, reason: "Другое", comment: ""));
+
+        var result = ShiftReportRuleEvaluator.Evaluate(req);
+
+        Assert.Contains("[День] Причина «Другое» требует детализации — комментарий мастера её не даёт",
+            result.HardSignals);
+    }
+
+    [Fact]
     public void Evaluate_R2_OtherWithDetail_Ok()
     {
         var req = Request(Day(stored: 94, fresh: 94, reason: "Другое",
@@ -885,6 +899,111 @@ public class ShiftReportRuleTests
 
         Assert.Single(kept);
         Assert.Single(dropped);
+    }
+
+    [Fact]
+    public void DropFalseMasterClaims_MasterSpecified_Dropped()
+    {
+        // Кейс 06.10.2026, Rontek HTC420 №1 28.09: мастер «Зуев Максим Борисович»
+        // указан в отчёте, а модель написала «мастер не указан в системе» и
+        // «Оператор Зуев ... отсутствует в системе» (искала мастера в операторах).
+        var req = Request(Day(master: "Зуев Максим Борисович", stored: 175, fresh: 175,
+            reason: "Отсутствие оператора", comment: "Работал на другом станке"));
+
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropFalseMasterClaims(req,
+            ["Смена День: отсутствие оператора, но мастер не указан в системе",
+             "Смена День: Оператор Зуев Максим Борисович отсутствует в системе",
+             "Смена День: комментарий не о простое"]);
+
+        Assert.Equal(["Смена День: комментарий не о простое"], kept);
+        Assert.Equal(2, dropped.Count);
+    }
+
+    [Fact]
+    public void DropFalseMasterClaims_NoMaster_Kept()
+    {
+        // Мастера действительно нет — жалоба содержательная, сохраняется
+        // (структурный hard «не указан мастер» при этом живёт отдельно).
+        var req = Request(Day(master: "", stored: 175, fresh: 175,
+            reason: "Отсутствие оператора", comment: ""));
+
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropFalseMasterClaims(req,
+            ["Смена День: отсутствие оператора, но мастер не указан в системе"]);
+
+        Assert.Single(kept);
+        Assert.Empty(dropped);
+    }
+
+    [Fact]
+    public void DropTwoMachineRelevanceComplaints_DetailComplaint_Dropped()
+    {
+        // Решение владельца 06.10.2026: «работал на другом станке» — релевантная
+        // причина простоя. Кейс Rontek HTC420 №1 10.09: комментарий с детализацией
+        // («Работа на другом станке Шпилька ...»), а модель написала
+        // «без детализации в комментарии».
+        var req = Request(Day(master: "Зуев Максим Борисович", stored: 268, fresh: 268,
+            reason: "Другое",
+            comment: "Работа на другом станке Шпилька А М24х160"));
+
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropTwoMachineRelevanceComplaints(req,
+            ["Смена День: Причина «Другое» без детализации в комментарии",
+             "Смена День: нет причины простоя"]);
+
+        Assert.Equal(["Смена День: нет причины простоя"], kept);
+        Assert.Single(dropped);
+    }
+
+    [Fact]
+    public void DropTwoMachineRelevanceComplaints_OtherReason_Kept()
+    {
+        // Правило только для пары (Отсутствие оператора/Другое + другой станок):
+        // при «Ремонте оборудования» S1-релевантность остаётся за моделью.
+        var req = Request(Day(master: "Зуев Максим Борисович", stored: 268, fresh: 268,
+            reason: "Ремонт оборудования", comment: "работал на другом станке"));
+
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropTwoMachineRelevanceComplaints(req,
+            ["Смена День: комментарий не о простое"]);
+
+        Assert.Single(kept);
+        Assert.Empty(dropped);
+    }
+
+    [Theory]
+    [InlineData("оператора сняли с др станка, переход и освоение станка")] // HTC650M 08.09
+    [InlineData("Работа на двух станках")]
+    [InlineData("двустаночная работа")]
+    [InlineData("Двухстаночное обслуживание")]
+    [InlineData("многостаночная работа")]
+    [InlineData("перешел на др станок")]
+    [InlineData("Помощь на других станках, не отмечены простои")]
+    [InlineData("Оператор перешёл работать на другой станок.")]
+    public void DropTwoMachineRelevanceComplaints_RealComments_Dropped(string comment)
+    {
+        // Словарь по выгрузке cnc_shifts 06.10.2026: сокращения («др»), число
+        // станков и «многостаночная» — та же релевантная причина простоя.
+        var req = Request(Day(master: "Зуев Максим Борисович", stored: 200, fresh: 200,
+            reason: "Другое", comment: comment));
+
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropTwoMachineRelevanceComplaints(req,
+            ["Смена День: Причина «Другое» без детализации в комментарии"]);
+
+        Assert.Empty(kept);
+        Assert.Single(dropped);
+    }
+
+    [Fact]
+    public void DropTwoMachineRelevanceComplaints_OtherWorkshopMove_Kept()
+    {
+        // «переезд станка в др цех» — содержит «др», но не «др стан»:
+        // это не работа на другом станке, придирка сохраняется.
+        var req = Request(Day(master: "Зуев Максим Борисович", stored: 200, fresh: 200,
+            reason: "Другое", comment: "переезд станка в др цех"));
+
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropTwoMachineRelevanceComplaints(req,
+            ["Смена День: Причина «Другое» без детализации в комментарии"]);
+
+        Assert.Single(kept);
+        Assert.Empty(dropped);
     }
 
     [Fact]

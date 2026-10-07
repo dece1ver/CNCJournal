@@ -341,27 +341,58 @@ public class HardRuleFlaggedTests
     }
 
     [Fact]
-    public void Evaluate_MachiningTime_ClientSignalPresent_NoDuplicate()
+    public void Evaluate_MachiningTime_ClientSignalPresent_TakenOverAsHard()
     {
-        // Кейс 30.09.2026, SKT21 27.09: клиент уже прислал «Машинное время 4.7мин
-        // >= штучного норматива 4мин (117%)» — серверный дубль «…(118%)» в ответе
-        // только шумит. Обратный случай (сигнала клиента нет) проверяется рядом.
+        // Кейс 06.10.2026, HTC420 №2 17.09: одиночный клиентский сигнал
+        // «Машинное время 10мин >= ... (100%)» ни во что не превращался
+        // (правило «2+» его не ловит) — сервер забирает текст клиента
+        // дословно (дубля текстом нет) и решает вердикт/флаг здесь же.
         var part = new PartContext
         {
-            PartName = "Седло",
+            PartName = "Корпус",
             Order = "З1",
             Setup = 1,
-            MachiningTime = 4.7,
-            SingleProductionTimePlan = 4,
-            ProductionRatio = 0.53,
-            FinishedCount = 17,
+            MachiningTime = 10,
+            SingleProductionTimePlan = 10,
+            ProductionRatio = 0.99,
+            FinishedCount = 18,
         };
-        part.Signals.Add("Машинное время 4.7мин >= штучного норматива 4мин (117%)");
+        part.Signals.Add("Машинное время 10мин >= штучного норматива 10мин (100%)");
+
+        var result = HardRuleEvaluator.Evaluate(Request(part));
+
+        Assert.True(result.MustEscalate);
+        Assert.Contains("Машинное время 10мин >= штучного норматива 10мин (100%)", result.HardSignals);
+        Assert.Single(result.HardSignals, s => s.Contains("Машинное время"));
+    }
+
+    [Fact]
+    public void Evaluate_MachiningTime_ClientSignalPresent_TwoMachineGoesSoft()
+    {
+        // Та же takeover-механика, но с «Двустаночным обслуживанием» —
+        // сигнал уходит в soft текстом клиента, hard по машвремени нет.
+        var part = new PartContext
+        {
+            PartName = "Крышка",
+            Order = "З1",
+            Setup = 2,
+            SetupTimePlan = 57,
+            SetupTimeFact = 57,
+            SetupRatio = 1.0,
+            SingleProductionTimePlan = 2.5,
+            ProductionRatio = 0.35,
+            ProductionTimeFact = 646,
+            FinishedCount = 91,
+            MachiningTime = 4.8,
+            MasterMachiningComment = "Двустаночное обслуживание",
+        };
+        part.Signals.Add("Машинное время 4.8мин >= штучного норматива 2.5мин (192%)");
 
         var result = HardRuleEvaluator.Evaluate(Request(part));
 
         Assert.DoesNotContain(result.HardSignals, s => s.Contains("Машинное время"));
-        Assert.DoesNotContain(result.SoftSignals, s => s.Contains("Машинное время"));
+        Assert.Contains("Машинное время 4.8мин >= штучного норматива 2.5мин (192%)", result.SoftSignals);
+        Assert.False(result.MustEscalate);
     }
 
     [Fact]
@@ -426,6 +457,27 @@ public class HardRuleFlaggedTests
         var result = HardRuleEvaluator.Evaluate(Request(part));
 
         Assert.Contains(result.HardSignals, s => s.Contains("Машинное время"));
+    }
+
+    [Fact]
+    public void Evaluate_LowKpdNearBoundary_ShowsDecimal()
+    {
+        // Кейс 07.10.2026, Victor 19.09: 69.59% округлялось до «70% < 70%» —
+        // текст выглядел противоречием при верном срабатывании. Десятая
+        // показывает реальное значение только у границы, остальные не меняет.
+        var part = new PartContext
+        {
+            PartName = "Коленвал",
+            Order = "З1",
+            Setup = 1,
+            SingleProductionTimePlan = 10,
+            ProductionRatio = 0.6959,
+            FinishedCount = 9,
+        };
+
+        var result = HardRuleEvaluator.Evaluate(Request(part));
+
+        Assert.Contains(result.HardSignals, s => s.Contains("69,6% < 70%"));
     }
 
     [Fact]
@@ -503,5 +555,59 @@ public class HardRuleFlaggedTests
             hard, hard.SoftSignals.ToList(), req, []);
 
         Assert.Equal(["Винт позиционирующий 1.АР0001-001 ТОС3§1§ФЛ2609-0029.3.1§#2"], flagged);
+    }
+
+    [Fact]
+    public void Evaluate_TwoMachineService_MachiningTime_Soft()
+    {
+        // Решение владельца 06.10.2026: «Двустаночное обслуживание» объясняет рост
+        // машинного времени само по себе (оператор делил время между станками) —
+        // сигнал уходит в soft, модель верифицирует и понижает. Кейсы
+        // Rontek HTC420 №1 06–07.09: модель то принимала, то эскалировала.
+        var req = Request(new PartContext
+        {
+            PartName = "Крышка",
+            Order = "З1",
+            Setup = 2,
+            SetupTimePlan = 57,
+            SetupTimeFact = 57,
+            SetupRatio = 1.0,
+            SingleProductionTimePlan = 2.5,
+            ProductionRatio = 0.3522,
+            ProductionTimeFact = 646,
+            FinishedCount = 91,
+            MachiningTime = 4.8,
+            MasterMachiningComment = "Двустаночное обслуживание",
+        });
+
+        var result = HardRuleEvaluator.Evaluate(req);
+
+        Assert.DoesNotContain(result.HardSignals, s => s.Contains("Машинное время"));
+        Assert.Contains(result.SoftSignals, s => s.Contains("Машинное время"));
+        Assert.False(result.MustEscalate);
+    }
+
+    [Fact]
+    public void Evaluate_MachiningTime_NoReason_Hard()
+    {
+        // Страж: без причины-объяснения сигнал остаётся жёстким.
+        var req = Request(new PartContext
+        {
+            PartName = "Крышка",
+            Order = "З1",
+            Setup = 2,
+            SetupTimePlan = 57,
+            SetupTimeFact = 57,
+            SetupRatio = 1.0,
+            SingleProductionTimePlan = 2.5,
+            ProductionRatio = 0.3522,
+            ProductionTimeFact = 646,
+            FinishedCount = 91,
+            MachiningTime = 4.8,
+        });
+
+        var result = HardRuleEvaluator.Evaluate(req);
+
+        Assert.Contains(result.HardSignals, s => s.Contains("Машинное время"));
     }
 }

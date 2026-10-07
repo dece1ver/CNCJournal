@@ -70,7 +70,7 @@
                         </Grid.Resources>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="150"/>
-                            <ColumnDefinition Width="250"/>
+                            <ColumnDefinition Width="300"/>
                             <ColumnDefinition Width="15"/>
                             <ColumnDefinition Width="350"/>
                             <ColumnDefinition Width="15"/>
@@ -237,7 +237,7 @@
                         </Grid.Resources>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="150"/>
-                            <ColumnDefinition Width="250"/>
+                            <ColumnDefinition Width="300"/>
                             <ColumnDefinition Width="15"/>
                             <ColumnDefinition Width="350"/>
                             <ColumnDefinition Width="15"/>

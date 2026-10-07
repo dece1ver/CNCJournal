@@ -8,6 +8,7 @@
         xmlns:local="clr-namespace:remeLog.Views" 
         xmlns:controls="clr-namespace:remeLog.Views.Controls"
         xmlns:inf="clr-namespace:remeLog.Infrastructure" 
+        xmlns:spell="clr-namespace:remeLog.Infrastructure.Spell"
         xmlns:cnv="clr-namespace:remeLog.Infrastructure.Converters"
         xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
         xmlns:cnt="clr-namespace:remeLog.Views.Controls"
@@ -62,6 +63,11 @@
         </Style>
         <!-- Подсказка пустых полей и «кнопка-комбобокс» фильтра — общие
              стили в ImplicitStyles (Areopag.FieldHint / Areopag.MachineFilterToggle). -->
+        <!-- Редакторы длинных комментариев: та же TableLargeTextBox + волнистая
+             подсветка орфографии. Только редактирование — в просмотре TextBlock без неё. -->
+        <Style x:Key="TableLargeTextBox.SpellChecked" TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox}">
+            <Setter Property="spell:SpellCheckBehavior.IsEnabled" Value="True"/>
+        </Style>
 
         <ControlTemplate x:Key="ValidationTemplate">
             <Grid>
@@ -365,7 +371,7 @@
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableLargeTextBlock}"/>
             </DataGridTextColumn.ElementStyle>
             <DataGridTextColumn.EditingElementStyle>
-                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox}"/>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox.SpellChecked}"/>
             </DataGridTextColumn.EditingElementStyle>
         </DataGridTextColumn>
 
@@ -563,7 +569,7 @@
             <DataGridTemplateColumn.CellEditingTemplate>
                 <DataTemplate>
                     <TextBox Text="{Binding SpecifiedDowntimesComment, UpdateSourceTrigger=PropertyChanged}" 
-                             Style="{StaticResource TableLargeTextBox}">
+                             Style="{StaticResource TableLargeTextBox.SpellChecked}">
                     </TextBox>
                 </DataTemplate>
             </DataGridTemplateColumn.CellEditingTemplate>
@@ -631,7 +637,7 @@
             <DataGridTemplateColumn.CellEditingTemplate>
                 <DataTemplate>
                     <TextBox Text="{Binding MasterSetupDetail, UpdateSourceTrigger=PropertyChanged}"
-                     Style="{StaticResource TableLargeTextBox}"/>
+                     Style="{StaticResource TableLargeTextBox.SpellChecked}"/>
                 </DataTemplate>
             </DataGridTemplateColumn.CellEditingTemplate>
         </DataGridTemplateColumn>
@@ -695,7 +701,7 @@
             <DataGridTemplateColumn.CellEditingTemplate>
                 <DataTemplate>
                     <TextBox Text="{Binding MasterMachiningDetail, UpdateSourceTrigger=PropertyChanged}"
-                     Style="{StaticResource TableLargeTextBox}"/>
+                     Style="{StaticResource TableLargeTextBox.SpellChecked}"/>
                 </DataTemplate>
             </DataGridTemplateColumn.CellEditingTemplate>
         </DataGridTemplateColumn>
@@ -714,7 +720,7 @@
             <DataGridTemplateColumn.CellEditingTemplate>
                 <DataTemplate>
                     <TextBox Text="{Binding MasterComment, UpdateSourceTrigger=PropertyChanged}"
-                     Style="{StaticResource TableLargeTextBox}">
+                     Style="{StaticResource TableLargeTextBox.SpellChecked}">
                     </TextBox>
                 </DataTemplate>
             </DataGridTemplateColumn.CellEditingTemplate>
@@ -875,7 +881,7 @@
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
             </DataGridTextColumn.ElementStyle>
             <DataGridTextColumn.EditingElementStyle>
-                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox}"/>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox.SpellChecked}"/>
             </DataGridTextColumn.EditingElementStyle>
         </DataGridTextColumn>
 
@@ -889,7 +895,7 @@
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
             </DataGridTextColumn.ElementStyle>
             <DataGridTextColumn.EditingElementStyle>
-                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox}"/>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox.SpellChecked}"/>
             </DataGridTextColumn.EditingElementStyle>
         </DataGridTextColumn>
         
@@ -918,7 +924,7 @@
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
             </DataGridTextColumn.ElementStyle>
             <DataGridTextColumn.EditingElementStyle>
-                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox}"/>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox.SpellChecked}"/>
             </DataGridTextColumn.EditingElementStyle>
         </DataGridTextColumn>
 
@@ -2086,12 +2092,10 @@
                     <DataGrid.RowStyle>
                         <Style TargetType="DataGridRow" BasedOn="{StaticResource Areopag.DataGridRow}">
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding NeedUpdate, UpdateSourceTrigger=PropertyChanged}" Value="True">
-                                    <Setter Property="Foreground" Value="{DynamicResource Areopag.Accent}"/>
-                                </DataTrigger>
-                                <Trigger Property="IsEditing" Value="True">
-                                    <Setter Property="Foreground" Value="{DynamicResource Areopag.Alert}" />
-                                </Trigger>
+                                <!-- Фон не трогаем: AccentSoft сливается с зеброй,
+                                     а AlertSoft один в один как у проблемных.
+                                     Только цвет текста (в CellStyle ниже) — он от
+                                     фона не зависит и ни с чем не путается. -->
                                 <DataTrigger Binding="{Binding IsFlagged}" Value="True">
                                     <Setter Property="ToolTip" Value="Отмечена как проблемная"/>
                                 </DataTrigger>
@@ -2103,6 +2107,17 @@
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsFlagged}" Value="True">
                                     <Setter Property="Background" Value="{DynamicResource Areopag.AlertSoft}"/>
+                                </DataTrigger>
+                                <!-- Цвет текста: триггеры окна перекрывают Foreground
+                                     базового стиля ячейки (иначе цвет строки сюда
+                                     не доходит). Изменённые — Modified (Accent
+                                     слишком тёмный, сливается с обычным текстом).
+                                     Красный — последним, побеждает синий. -->
+                                <DataTrigger Binding="{Binding NeedUpdate, UpdateSourceTrigger=PropertyChanged}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource Areopag.Modified}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsEditing, RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}}}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource Areopag.Alert}"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>

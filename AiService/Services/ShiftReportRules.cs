@@ -94,7 +94,7 @@ public static class ShiftReportRuleEvaluator
             // R2: «Другое» только с детализацией (регламент, таблица причин).
             if (OtherReason.Equals(reason, StringComparison.OrdinalIgnoreCase)
                 && comment.Length < MinOtherCommentLength)
-                AddHard("Причина «Другое» без объяснения с детализацией в комментарии мастера");
+                AddHard("Причина «Другое» требует детализации — комментарий мастера её не даёт");
 
             // R4 (вариант A): снимок устарел — журнал правили после сохранения отчёта.
             if (Math.Abs(rep.StoredUnspecifiedDowntimes - fresh) > StaleEpsilonMinutes)
@@ -567,6 +567,159 @@ public static class ShiftReportRuleEvaluator
             kept.Add(issue);
         }
         return (kept, dropped);
+    }
+
+    /// <summary>
+    /// Режет выдумки про мастера, который в отчёте указан: «мастер не указан»
+    /// при непустом поле мастер, и «оператор &lt;ФИО мастера&gt;» — модель берёт
+    /// имя из отчёта смены и ищет его в cnc_operators, где мастеров нет
+    /// по построению (кейс 06.10.2026, Rontek HTC420 №1 28.09: «Оператор Зуев
+    /// Максим Борисович отсутствует в системе» + «мастер не указан в системе»
+    /// при мастере «Зуев Максим Борисович» в обеих сменах). Содержательные
+    /// претензии («комментарий не о простое», «причина не релевантна») не
+    /// задеваются — только ложь про наличие/роль мастера.
+    /// </summary>
+    public static (List<string> Kept, List<string> Dropped) DropFalseMasterClaims(
+        AnalyzeRequest req, List<string> modelIssues)
+    {
+        var kept = new List<string>();
+        var dropped = new List<string>();
+        if (modelIssues.Count == 0) return (kept, dropped);
+
+        var masters = req.ShiftReports
+            .Where(r => r.ReportExists && r.ShiftMinutes > 0 && !string.IsNullOrWhiteSpace(r.Master))
+            .ToDictionary(r => r.Shift.Trim().ToLowerInvariant(), r => r.Master.Trim());
+        var existingShifts = req.ShiftReports
+            .Where(r => r.ReportExists && r.ShiftMinutes > 0)
+            .Select(r => r.Shift.Trim().ToLowerInvariant())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (masters.Count == 0)
+        {
+            kept.AddRange(modelIssues);
+            return (kept, dropped);
+        }
+
+        foreach (var issue in modelIssues)
+        {
+            var tag = ShiftTag(issue);
+            if (tag != null && masters.TryGetValue(tag, out var master)
+                && (ClaimsMasterUnspecified(issue) || LabelsMasterAsOperator(issue, master)))
+            {
+                dropped.Add(issue);
+                continue;
+            }
+            // Без тега смены — только когда мастер указан ВО ВСЕХ существующих
+            // отчётах: иначе жалоба может относиться к смене без мастера.
+            if (tag == null && masters.Count == existingShifts.Count
+                && ClaimsMasterUnspecified(issue))
+            {
+                dropped.Add(issue);
+                continue;
+            }
+            kept.Add(issue);
+        }
+        return (kept, dropped);
+    }
+
+    internal static bool ClaimsMasterUnspecified(string issue)
+    {
+        var lower = issue.ToLowerInvariant();
+        if (!lower.Contains("мастер")) return false;
+        return lower.Contains("не указан") || lower.Contains("неуказан")
+            || lower.Contains("отсутств") || lower.Contains("нет мастера")
+            || lower.Contains("без мастера") || lower.Contains("не найден");
+    }
+
+    /// <summary>
+    /// Сигнал/вопрос называет мастера смены из отчёта: полное ФИО либо
+    /// фамилия + инициал («оператор Зуев М.» при мастере «Зуев М.Б.»).
+    /// Голая фамилия без инициалов — не match (возможен однофамилец).
+    /// </summary>
+    internal static bool NamesShiftMaster(string text, string master)
+    {
+        var lower = (text ?? "").ToLowerInvariant().Replace('ё', 'е');
+        var m = (master ?? "").Trim().ToLowerInvariant().Replace('ё', 'е');
+        if (m.Length == 0) return false;
+        if (lower.Contains(m)) return true;
+        var surname = m.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+        if (surname.Length < 3 || !lower.Contains(surname)) return false;
+        var tokens = System.Text.RegularExpressions.Regex.Split(lower, @"[^a-zа-я]+")
+            .Where(t => t.Length > 0).ToHashSet(StringComparer.Ordinal);
+        return m.Split(' ', StringSplitOptions.RemoveEmptyEntries).Skip(1)
+            .Where(t => t.Length > 0).Select(t => t[..1])
+            .Any(i => tokens.Contains(i));
+    }
+
+    private static bool LabelsMasterAsOperator(string issue, string master)
+    {
+        if (!issue.ToLowerInvariant().Contains("оператор")) return false;
+        return NamesShiftMaster(issue, master);
+    }
+
+    /// <summary>
+    /// Режет придирки к комментарию «работал на другом станке» при причине
+    /// «Отсутствие оператора»/«Другое»: владелец 06.10.2026 подтвердил, что это
+    /// релевантная причина (кейсы Rontek HTC420 №1 06–10.09: модель то молчала,
+    /// то писала «без детализации»/«не о простое» про один и тот же текст).
+    /// Снимаются только претензии к детализации/содержанию комментария;
+    /// требования причины и прочие вопросы сохраняются.
+    /// </summary>
+    public static (List<string> Kept, List<string> Dropped) DropTwoMachineRelevanceComplaints(
+        AnalyzeRequest req, List<string> modelIssues)
+    {
+        var kept = new List<string>();
+        var dropped = new List<string>();
+        if (modelIssues.Count == 0) return (kept, dropped);
+
+        var byShift = req.ShiftReports
+            .Where(r => r.ReportExists && r.ShiftMinutes > 0)
+            .ToDictionary(r => r.Shift.Trim().ToLowerInvariant(), r => r);
+
+        foreach (var issue in modelIssues)
+        {
+            if (ShiftTag(issue) is { } tag
+                && byShift.TryGetValue(tag, out var rep)
+                && IsAbsenceOrOther(rep.DowntimeReason)
+                && MentionsTwoMachineWork(rep.MasterComment)
+                && IsCommentDetailComplaint(issue))
+            {
+                dropped.Add(issue);
+                continue;
+            }
+            kept.Add(issue);
+        }
+        return (kept, dropped);
+    }
+
+    private static bool IsAbsenceOrOther(string? reason) =>
+        string.Equals(reason?.Trim(), "Отсутствие оператора", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(reason?.Trim(), "Другое", StringComparison.OrdinalIgnoreCase);
+
+    private static bool MentionsTwoMachineWork(string? comment)
+    {
+        // Словарь по реальным комментариям мастеров (выгрузка cnc_shifts
+        // 06.10.2026): «Двустаночное/Двухстаночное обслуживание», «двустаночная
+        // работа», «работа на двух станках», «перешёл на др станок»,
+        // «с др станка», «помощь на других станках», «оператора сняли
+        // с др станка» (кейс HTC650M 08.09: сокращение «др» матчер не ловил).
+        // «многостаночн» в данных пока нет — добавлен по решению владельца.
+        var lower = (comment ?? "").ToLowerInvariant();
+        return lower.Contains("двустаночн") || lower.Contains("двухстаночн")
+            || lower.Contains("многостаночн")
+            || lower.Contains("двух станках") || lower.Contains("два станка")
+            || lower.Contains("2 станках")
+            || lower.Contains("др стан")
+            || lower.Contains("другой станок") || lower.Contains("другого станка")
+            || lower.Contains("другом станке") || lower.Contains("других станках");
+    }
+
+    private static bool IsCommentDetailComplaint(string issue)
+    {
+        var lower = issue.ToLowerInvariant();
+        return lower.Contains("детализ") || lower.Contains("подробн")
+            || lower.Contains("не о простое") || lower.Contains("нерелевант")
+            || lower.Contains("не релевант")
+            || (lower.Contains("комментар") && lower.Contains("релевант"));
     }
 
     /// <summary>

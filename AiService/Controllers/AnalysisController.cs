@@ -118,6 +118,15 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             // режутся здесь же — триггер ReportExists тот же, что у иконок главной.
             (modelShiftIssues, var droppedNoReport) =
                 ShiftReportRuleEvaluator.DropIssuesWithoutReport(request, modelShiftIssues);
+            // Ложь про мастера, который в отчёте указан («мастер не указан»,
+            // «оператор <ФИО мастера> отсутствует в системе» — мастера нет
+            // в cnc_operators по построению; кейс Rontek HTC420 №1 28.09).
+            (modelShiftIssues, var droppedMasterClaims) =
+                ShiftReportRuleEvaluator.DropFalseMasterClaims(request, modelShiftIssues);
+            // «Работал на другом станке» — релевантная причина простоя,
+            // придирки к её детализации/содержанию снимаются.
+            (modelShiftIssues, var droppedTwoMachine) =
+                ShiftReportRuleEvaluator.DropTwoMachineRelevanceComplaints(request, modelShiftIssues);
             // Фактически неверное «причина неизвестна» при причине из закрытого
             // списка — сверка фактом, а не мнением (пилот 24.09.2026 SKT21 22.09).
             (modelShiftIssues, var droppedUnknownReasons) =
@@ -143,6 +152,10 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 .Select(d => (d, "причина простоя не требуется (порог 10%) или уже указана")));
             removedSignals.AddRange(droppedNoReport
                 .Select(d => (d, "отчёта нет — проверять нечего")));
+            removedSignals.AddRange(droppedMasterClaims
+                .Select(d => (d, "мастер отчёта — не оператор; отсутствие в cnc_operators не сигнал")));
+            removedSignals.AddRange(droppedTwoMachine
+                .Select(d => (d, "работа на другом станке — релевантная причина простоя")));
             removedSignals.AddRange(droppedUnknownReasons
                 .Select(d => (d, "причина есть в закрытом списке — жалоба неверна")));
             removedSignals.AddRange(droppedUnscoped
@@ -680,6 +693,15 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             // режутся здесь же — триггер ReportExists тот же, что у иконок главной.
             (modelShiftIssues, var droppedNoReport) =
                 ShiftReportRuleEvaluator.DropIssuesWithoutReport(request, modelShiftIssues);
+            // Ложь про мастера, который в отчёте указан («мастер не указан»,
+            // «оператор <ФИО мастера> отсутствует в системе» — мастера нет
+            // в cnc_operators по построению; кейс Rontek HTC420 №1 28.09).
+            (modelShiftIssues, var droppedMasterClaims) =
+                ShiftReportRuleEvaluator.DropFalseMasterClaims(request, modelShiftIssues);
+            // «Работал на другом станке» — релевантная причина простоя,
+            // придирки к её детализации/содержанию снимаются.
+            (modelShiftIssues, var droppedTwoMachine) =
+                ShiftReportRuleEvaluator.DropTwoMachineRelevanceComplaints(request, modelShiftIssues);
             // Фактически неверное «причина неизвестна» при причине из закрытого
             // списка — сверка фактом, а не мнением (пилот 24.09.2026 SKT21 22.09).
             (modelShiftIssues, var droppedUnknownReasons) =
@@ -713,6 +735,10 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 .Select(d => (d, "причина простоя не требуется (порог 10%) или уже указана")));
             removedSignals.AddRange(droppedNoReport
                 .Select(d => (d, "отчёта нет — проверять нечего")));
+            removedSignals.AddRange(droppedMasterClaims
+                .Select(d => (d, "мастер отчёта — не оператор; отсутствие в cnc_operators не сигнал")));
+            removedSignals.AddRange(droppedTwoMachine
+                .Select(d => (d, "работа на другом станке — релевантная причина простоя")));
             removedSignals.AddRange(droppedUnknownReasons
                 .Select(d => (d, "причина есть в закрытом списке — жалоба неверна")));
             removedSignals.AddRange(droppedUnscoped
@@ -1077,6 +1103,12 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         if (downgraded.Count == 0)
             return request.Parts.SelectMany(p => p.Signals);
 
+        // Серверный soft-текст может совпадать с клиентским дословно (сервер
+        // забирает текст клиента, чтобы не шуметь дублем — кейс 06.10.2026,
+        // HTC420 №2 17.09): тогда покрытие детали именем не извлекается,
+        // сверяем точным совпадением строк.
+        var downgradedTexts = downgraded.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         HashSet<string> PartsOfKind(SoftSignalMatcher.SignalKind kind) => downgraded
             .Where(s => SoftSignalMatcher.Classify(s) == kind)
             .Select(SoftSignalMatcher.ExtractPartName)
@@ -1087,7 +1119,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         var operatorParts = PartsOfKind(SoftSignalMatcher.SignalKind.OperatorComplaint);
 
         return request.Parts.SelectMany(p => p.Signals.Where(s =>
-            !(machiningParts.Contains(p.PartName) && SoftSignalMatcher.IsMachiningTimeEcho(s))
+            !downgradedTexts.Contains(s)
+            && !(machiningParts.Contains(p.PartName) && SoftSignalMatcher.IsMachiningTimeEcho(s))
             && !(operatorParts.Contains(p.PartName) && SoftSignalMatcher.IsOperatorComplaintEcho(s))));
     }
 

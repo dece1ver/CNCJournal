@@ -96,6 +96,12 @@ public static class HardRuleEvaluator
     // КПД = 0 и отсутствие норматива нормальны для доработки.
     private const string ReworkReason = "Доработка";
 
+    // Причина из комбобокса, которая сама по себе объясняет рост машинного времени:
+    // оператор делил время между двумя станками (решение владельца 06.10.2026,
+    // кейсы Rontek HTC420 №1 06–07.09: модель то принимала, то эскалировала).
+    // Закрытый список = достаточное основание, детализация не требуется.
+    private const string TwoMachineReason = "Двустаночное обслуживание";
+
     /// <summary> Идентичность строки для флагов СГТ: имя + установка + заказ.
     /// ordinal (1-based) — номер строки в сутках; без него ключ неоднозначен
     /// внутри дня (см. Evaluate). </summary>
@@ -210,7 +216,7 @@ public static class HardRuleEvaluator
                 && !isReworkMachining
                 && string.IsNullOrWhiteSpace(p.MasterMachiningComment))
             {
-                AddHard($"[{p.PartName}] КПД изготовления {pr:0%} < 70% без объяснения мастера");
+                AddHard($"[{p.PartName}] КПД изготовления {pr:0.#%} < 70% без объяснения мастера");
             }
 
             // Правило 4: КПД = 0 при наличии фактической работы
@@ -267,24 +273,34 @@ public static class HardRuleEvaluator
                 && p.MachiningTime > 0.5 && p.SingleProductionTimePlan > 0
                 && p.MachiningTime >= p.SingleProductionTimePlan
                 && !p.NoProductionHappened
-                && !p.IsSmallBatch
-                // Клиент прислал то же самое по этой строке («Машинное время X
-                // >= штучного норматива Y») — второй сигнал о том же факте в
-                // ответе только шумит (кейс 30.09.2026, SKT21 27.09: клиент
-                // «4.7мин (117%)» + сервер «4,7мин (118%)» рядом).
-                && !p.Signals.Any(s => s.Contains("Машинное время", StringComparison.OrdinalIgnoreCase)))
+                && !p.IsSmallBatch)
             {
-                var signal =
-                    $"[{p.PartName}] Машинное время {p.MachiningTime:0.#}мин >= " +
-                    $"норматива {p.SingleProductionTimePlan:0.#}мин " +
-                    $"({p.MachiningTime / p.SingleProductionTimePlan:0%})";
+                // Клиент уже прислал тот же факт («Машинное время X >= штучного
+                // норматива Y») — второй текст о том же в ответе только шумит
+                // (кейс 30.09.2026, SKT21 27.09), поэтому берём текст клиента
+                // дословно: в итоговом списке они склеятся через Distinct,
+                // модель увидит в soft-списке ровно ту строку, что надо
+                // скопировать в downgraded_signals. Вердикт и флаг при этом
+                // решаются здесь же: одиночный клиентский сигнал иначе ни во
+                // что не превращается (правило «2+» его не ловит) — кейс
+                // 06.10.2026, HTC420 №2 17.09 уходил в ok с сигналом в списке.
+                var signal = p.Signals.FirstOrDefault(s => s.Contains("Машинное время", StringComparison.OrdinalIgnoreCase))
+                    ?? $"[{p.PartName}] Машинное время {p.MachiningTime:0.#}мин >= " +
+                       $"норматива {p.SingleProductionTimePlan:0.#}мин " +
+                       $"({p.MachiningTime / p.SingleProductionTimePlan:0%})";
 
                 bool hasConcreteOneTimeReason =
                     !string.IsNullOrWhiteSpace(p.MasterMachiningComment)
                     && MachiningTimeSoftDowngradeReasons.Contains(p.MasterMachiningComment)
                     && (!string.IsNullOrWhiteSpace(p.MasterMachiningDetail) || !string.IsNullOrWhiteSpace(p.MasterComment));
 
-                if (hasConcreteOneTimeReason)
+                // Двустаночное обслуживание объясняет рост машинного времени само по
+                // себе (см. TwoMachineReason): модель верифицирует по
+                // soft_signal_explanation.txt, понижает — день не эскалируется.
+                bool isTwoMachineExplained =
+                    TwoMachineReason.Equals(p.MasterMachiningComment, StringComparison.OrdinalIgnoreCase);
+
+                if (hasConcreteOneTimeReason || isTwoMachineExplained)
                     AddSoft(signal);
                 else
                     AddHard(signal);

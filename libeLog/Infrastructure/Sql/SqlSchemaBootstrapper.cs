@@ -530,6 +530,10 @@ namespace libeLog.Infrastructure.Sql
                 .AddBoolColumn("RecieverLiquidLeaks")
                 .AddBoolColumn("RecieverToolBreakage")
                 .AddDoubleColumn("RecieverCoolantConcentration")
+                // Операторы смены строкой через «, » (может быть несколько).
+                // В КОНЦЕ таблицы: чтение cnc_shifts идёт SELECT * с позиционными
+                // индексами 0…20 — сдвигать существующие колонки нельзя.
+                .AddStringColumn("Operators", -1, nullable: true)
                 .Build(),
 
             new TableBuilder("cnc_tool_search_cases")
