@@ -13,6 +13,7 @@ using System.Windows;
 using Windows.Data.Xml.Dom;
 using libeLog.Views;
 using Windows.UI.Notifications;
+using UserEnvVar = libeLog.Infrastructure.UserEnvVar;
 
 namespace remeLog.Infrastructure
 {
@@ -340,6 +341,12 @@ ORDER BY CreatedUtc;";
 
                     case "CopyShortcut":
                         result = await CopyShortcutAsync(cmd.Payload, ct).ConfigureAwait(false);
+                        break;
+
+                    // Создание/обновление переменной окружения на уровне пользователя.
+                    // Тот же общий хелпер, что и в eLog: разбор, маска и запись — внутри.
+                    case UserEnvVar.CommandType:
+                        result = UserEnvVar.ApplyPayload(cmd.Payload);
                         break;
 
                     default:

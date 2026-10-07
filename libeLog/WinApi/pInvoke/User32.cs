@@ -134,5 +134,15 @@ namespace libeLog.WinApi.pInvoke
         [DllImport(FileName)]
         public static extern bool EnableMenuItem(IntPtr hMenu, SC uIDEnableItem, MF uEnable);
 
+        /// <summary>Дескриптор для рассылки сообщения всем окнам верхнего уровня</summary>
+        public static readonly IntPtr HWND_BROADCAST = new IntPtr(0xFFFF);
+
+        /// <summary>Флаг SendMessageTimeout: не ждать зависшие окна</summary>
+        public const uint SMTO_ABORTIFHUNG = 0x0002;
+
+        /// <summary>Отправка сообщения с таймаутом (рассылка WM_SETTINGCHANGE после смены окружения)</summary>
+        [DllImport(FileName, CharSet = CharSet.Auto, SetLastError = true)]
+        public static extern IntPtr SendMessageTimeout(IntPtr hWnd, WM Msg, IntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
+
     }
 }

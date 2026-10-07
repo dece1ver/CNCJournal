@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using Windows.Data.Xml.Dom;
 using Windows.UI.Notifications;
+using UserEnvVar = libeLog.Infrastructure.UserEnvVar;
 
 namespace eLog.Infrastructure.Services
 {
@@ -350,6 +351,13 @@ ORDER BY CreatedUtc;";
 
                     case "RequestState":
                         result = await BuildStateSnapshotAsync().ConfigureAwait(false);
+                        break;
+
+                    // Создание/обновление переменной окружения на уровне пользователя.
+                    // Разбор, валидация по маске и запись — внутри UserEnvVar.ApplyPayload,
+                    // сюда возвращается уже готовый итог («Применено: ...» / «Данные некорректны: ...»).
+                    case UserEnvVar.CommandType:
+                        result = UserEnvVar.ApplyPayload(cmd.Payload);
                         break;
 
                     default:

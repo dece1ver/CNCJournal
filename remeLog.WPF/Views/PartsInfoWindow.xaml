@@ -8,7 +8,6 @@
         xmlns:local="clr-namespace:remeLog.Views" 
         xmlns:controls="clr-namespace:remeLog.Views.Controls"
         xmlns:inf="clr-namespace:remeLog.Infrastructure" 
-        xmlns:spell="clr-namespace:remeLog.Infrastructure.Spell"
         xmlns:cnv="clr-namespace:remeLog.Infrastructure.Converters"
         xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
         xmlns:cnt="clr-namespace:remeLog.Views.Controls"
@@ -62,12 +61,9 @@
             </Setter>
         </Style>
         <!-- Подсказка пустых полей и «кнопка-комбобокс» фильтра — общие
-             стили в ImplicitStyles (Areopag.FieldHint / Areopag.MachineFilterToggle). -->
-        <!-- Редакторы длинных комментариев: та же TableLargeTextBox + волнистая
-             подсветка орфографии. Только редактирование — в просмотре TextBlock без неё. -->
-        <Style x:Key="TableLargeTextBox.SpellChecked" TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox}">
-            <Setter Property="spell:SpellCheckBehavior.IsEnabled" Value="True"/>
-        </Style>
+             стили в ImplicitStyles (Areopag.FieldHint / Areopag.MachineFilterToggle).
+             Редактор комментариев с орфографией — тоже там:
+             Areopag.TableLargeTextBox.SpellChecked. -->
 
         <ControlTemplate x:Key="ValidationTemplate">
             <Grid>
@@ -371,7 +367,7 @@
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableLargeTextBlock}"/>
             </DataGridTextColumn.ElementStyle>
             <DataGridTextColumn.EditingElementStyle>
-                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox.SpellChecked}"/>
+                <Style TargetType="TextBox" BasedOn="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
             </DataGridTextColumn.EditingElementStyle>
         </DataGridTextColumn>
 
@@ -569,7 +565,7 @@
             <DataGridTemplateColumn.CellEditingTemplate>
                 <DataTemplate>
                     <TextBox Text="{Binding SpecifiedDowntimesComment, UpdateSourceTrigger=PropertyChanged}" 
-                             Style="{StaticResource TableLargeTextBox.SpellChecked}">
+                             Style="{StaticResource Areopag.TableLargeTextBox.SpellChecked}">
                     </TextBox>
                 </DataTemplate>
             </DataGridTemplateColumn.CellEditingTemplate>
@@ -637,7 +633,7 @@
             <DataGridTemplateColumn.CellEditingTemplate>
                 <DataTemplate>
                     <TextBox Text="{Binding MasterSetupDetail, UpdateSourceTrigger=PropertyChanged}"
-                     Style="{StaticResource TableLargeTextBox.SpellChecked}"/>
+                     Style="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
                 </DataTemplate>
             </DataGridTemplateColumn.CellEditingTemplate>
         </DataGridTemplateColumn>
@@ -701,7 +697,7 @@
             <DataGridTemplateColumn.CellEditingTemplate>
                 <DataTemplate>
                     <TextBox Text="{Binding MasterMachiningDetail, UpdateSourceTrigger=PropertyChanged}"
-                     Style="{StaticResource TableLargeTextBox.SpellChecked}"/>
+                     Style="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
                 </DataTemplate>
             </DataGridTemplateColumn.CellEditingTemplate>
         </DataGridTemplateColumn>
@@ -720,7 +716,7 @@
             <DataGridTemplateColumn.CellEditingTemplate>
                 <DataTemplate>
                     <TextBox Text="{Binding MasterComment, UpdateSourceTrigger=PropertyChanged}"
-                     Style="{StaticResource TableLargeTextBox.SpellChecked}">
+                     Style="{StaticResource Areopag.TableLargeTextBox.SpellChecked}">
                     </TextBox>
                 </DataTemplate>
             </DataGridTemplateColumn.CellEditingTemplate>
@@ -881,7 +877,7 @@
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
             </DataGridTextColumn.ElementStyle>
             <DataGridTextColumn.EditingElementStyle>
-                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox.SpellChecked}"/>
+                <Style TargetType="TextBox" BasedOn="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
             </DataGridTextColumn.EditingElementStyle>
         </DataGridTextColumn>
 
@@ -895,7 +891,7 @@
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
             </DataGridTextColumn.ElementStyle>
             <DataGridTextColumn.EditingElementStyle>
-                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox.SpellChecked}"/>
+                <Style TargetType="TextBox" BasedOn="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
             </DataGridTextColumn.EditingElementStyle>
         </DataGridTextColumn>
         
@@ -924,7 +920,7 @@
                 <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
             </DataGridTextColumn.ElementStyle>
             <DataGridTextColumn.EditingElementStyle>
-                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox.SpellChecked}"/>
+                <Style TargetType="TextBox" BasedOn="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
             </DataGridTextColumn.EditingElementStyle>
         </DataGridTextColumn>
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -28,6 +29,12 @@ namespace remeLog.Infrastructure.Spell
             DependencyProperty.RegisterAttached(
                 "State", typeof(BoxState), typeof(SpellCheckBehavior),
                 new PropertyMetadata(null));
+
+        // меню создано поведением (а не окном) — при отключении убирается
+        private static readonly DependencyProperty IsDefaultMenuProperty =
+            DependencyProperty.RegisterAttached(
+                "IsDefaultMenu", typeof(bool), typeof(SpellCheckBehavior),
+                new PropertyMetadata(false));
 
         private sealed class BoxState
         {
@@ -65,6 +72,12 @@ namespace remeLog.Infrastructure.Spell
             box.Loaded += OnLoaded;
             box.Unloaded += OnUnloaded;
             box.SizeChanged += OnSizeChanged;
+            box.ContextMenuOpening += OnContextMenuOpening;
+            if (box.ContextMenu is null)
+            {
+                box.ContextMenu = CreateDefaultEditingMenu();
+                box.SetValue(IsDefaultMenuProperty, true);
+            }
             if (box.IsLoaded) OnLoaded(box, null);
         }
 
@@ -77,6 +90,12 @@ namespace remeLog.Infrastructure.Spell
             box.Loaded -= OnLoaded;
             box.Unloaded -= OnUnloaded;
             box.SizeChanged -= OnSizeChanged;
+            box.ContextMenuOpening -= OnContextMenuOpening;
+            if ((bool)box.GetValue(IsDefaultMenuProperty))
+            {
+                box.ClearValue(IsDefaultMenuProperty);
+                box.ContextMenu = null;
+            }
             UnhookScroller(state);
             RemoveAdorner(box, state);
             box.ClearValue(StateProperty);
@@ -215,5 +234,72 @@ namespace remeLog.Infrastructure.Spell
 
         public static IReadOnlyList<string> GetSuggestions(string word, int max = 5) =>
             NativeSpellCheck.Suggest(word, max);
+
+        /// <summary>
+        /// Варианты исправления слова под кареткой — в начало переданного меню.
+        /// Меню может переиспользоваться: внедрённые пункты чистятся при закрытии.
+        /// </summary>
+        public static void AppendSuggestionsToMenu(ContextMenu menu, TextBox box)
+        {
+            if (!GetIsEnabled(box)) return;
+            if (!TryGetWordAtCaret(box, out var error, out var word)) return;
+            var candidates = GetSuggestions(word);
+            if (candidates.Count == 0) return;
+
+            var injected = new List<object>();
+            var header = new MenuItem
+            {
+                Header = $"Исправить «{word}»:",
+                IsEnabled = false,
+                FontWeight = FontWeights.SemiBold,
+            };
+            menu.Items.Insert(0, header);
+            injected.Add(header);
+            for (int i = candidates.Count - 1; i >= 0; i--)
+            {
+                string candidate = candidates[i];
+                var item = new MenuItem { Header = candidate };
+                item.Click += (_, _) => ApplySuggestion(box, error, candidate);
+                menu.Items.Insert(1, item);
+                injected.Add(item);
+            }
+            var separator = new Separator();
+            menu.Items.Insert(1 + candidates.Count, separator);
+            injected.Add(separator);
+
+            void OnClosed(object s, RoutedEventArgs _)
+            {
+                menu.Closed -= OnClosed;
+                foreach (var item in injected) menu.Items.Remove(item);
+            }
+            menu.Closed -= OnClosed;
+            menu.Closed += OnClosed;
+        }
+
+        private static void OnContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            if (sender is not TextBox box || box.ContextMenu is not { } menu) return;
+            // каретку — в точку правого клика (по клавиатуре меню открывается без сдвига)
+            if (Mouse.RightButton == MouseButtonState.Pressed)
+            {
+                int clickIndex = box.GetCharacterIndexFromPoint(Mouse.GetPosition(box), true);
+                if (clickIndex >= 0) box.CaretIndex = clickIndex;
+            }
+            AppendSuggestionsToMenu(menu, box);
+        }
+
+        // меню уровня обычного TextBox (как системное): поведение ставит его только
+        // полям без своего меню, чтобы варианты исправлений было куда вставить
+        private static ContextMenu CreateDefaultEditingMenu()
+        {
+            var menu = new ContextMenu();
+            menu.Items.Add(new MenuItem { Header = "Отменить", Command = ApplicationCommands.Undo });
+            menu.Items.Add(new Separator());
+            menu.Items.Add(new MenuItem { Header = "Копировать", Command = ApplicationCommands.Copy });
+            menu.Items.Add(new MenuItem { Header = "Вырезать", Command = ApplicationCommands.Cut });
+            menu.Items.Add(new MenuItem { Header = "Вставить", Command = ApplicationCommands.Paste });
+            menu.Items.Add(new MenuItem { Header = "Выделить все", Command = ApplicationCommands.SelectAll });
+            return menu;
+        }
     }
 }

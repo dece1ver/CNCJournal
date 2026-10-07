@@ -30,6 +30,8 @@
                                       Command="{Binding NotifySelectedCommand}"/>
                             <MenuItem Header="Уведомить об обновлении"
                                       Command="{Binding NotifyUpdateSelectedCommand}"/>
+                            <MenuItem Header="Установить переменную окружения"
+                                      Command="{Binding SetEnvVarSelectedCommand}"/>
                         </MenuItem>
                     </Menu>
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,0"/>
@@ -67,6 +69,9 @@
                                   Command="{Binding NotifyUpdateCommand}"/>
                         <MenuItem Header="Запросить состояние"
                                   Command="{Binding RequestStateCommand}"/>
+                        <!-- Создание/обновление переменной окружения на ПК получателя. -->
+                        <MenuItem Header="Установить переменную окружения"
+                                  Command="{Binding SetEnvVarCommand}"/>
                     </ContextMenu>
                 </Setter.Value>
             </Setter>

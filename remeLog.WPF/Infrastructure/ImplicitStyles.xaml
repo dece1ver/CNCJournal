@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:spell="clr-namespace:remeLog.Infrastructure.Spell">
     <!-- ============================================================
          remeLog.WPF — неявные (без x:Key) тематические стили.
          Подключается в App.xaml ПОСЛЕ StyleDictionary.
@@ -41,6 +42,15 @@
         </Style.Triggers>
     </Style>
     <Style TargetType="{x:Type TextBox}" BasedOn="{StaticResource Areopag.TextBox}"/>
+
+    <!-- Редактор длинных комментариев: TableLargeTextBox + волнистая подсветка
+         орфографии (системный Windows Spell Checking API). Подключается одной
+         строкой: Style="{StaticResource Areopag.TableLargeTextBox.SpellChecked}".
+         Варианты исправлений поведение дописывает в контекстное меню само. -->
+    <Style x:Key="Areopag.TableLargeTextBox.SpellChecked" TargetType="{x:Type TextBox}"
+           BasedOn="{StaticResource TableLargeTextBox}">
+        <Setter Property="spell:SpellCheckBehavior.IsEnabled" Value="True"/>
+    </Style>
 
     <!-- Текстовая часть DatePicker: явный минимальный шаблон, чтобы не зависеть
          от системного (у него свои захардкоженные цвета внутренностей). -->

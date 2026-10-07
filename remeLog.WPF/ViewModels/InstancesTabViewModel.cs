@@ -11,6 +11,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using UserEnvVar = libeLog.Infrastructure.UserEnvVar;
 
 namespace remeLog.ViewModels
 {
@@ -75,9 +76,11 @@ namespace remeLog.ViewModels
         public LambdaCommand ShowNotificationCommand { get; }
         public LambdaCommand NotifyUpdateCommand { get; }
         public LambdaCommand RequestStateCommand { get; }
+        public LambdaCommand SetEnvVarCommand { get; }
         public LambdaCommand ForceCloseSelectedCommand { get; }
         public LambdaCommand NotifySelectedCommand { get; }
         public LambdaCommand NotifyUpdateSelectedCommand { get; }
+        public LambdaCommand SetEnvVarSelectedCommand { get; }
         public LambdaCommand ToggleAllCommand { get; }
         public LambdaCommand ShowPendingCommandsCommand { get; }
 
@@ -206,6 +209,39 @@ namespace remeLog.ViewModels
                 },
                 _ => SelectedInstance?.IsOnline == true);
 
+            // Одиночная команда: создать/обновить переменную окружения
+            // на ПК выбранного экземпляра. Имя и значение спрашиваем двумя
+            // диалогами (см. TryPromptEnvVar), в очередь уходит JSON-payload.
+            SetEnvVarCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var target = SelectedInstance;
+                        if (target is null || !target.IsOnline) return;
+
+                        if (!TryPromptEnvVar(out var name, out var value)) return;
+
+                        var commandId = await Database.SendAppCommandAsync(
+                            target.SessionId, target.Application, target.MachineName, target.UserName,
+                            UserEnvVar.CommandType, UserEnvVar.BuildPayload(name, value)).ConfigureAwait(false);
+
+                        lock (_pendingResults)
+                        {
+                            _pendingResults[commandId] = $"{target.MachineName}\\{target.UserName}";
+                        }
+                        LastCommandResult = $"Ожидание ответа от {target.MachineName}...";
+                        await RefreshPendingCountAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке команды SetUserEnvVar");
+                        MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                },
+                _ => SelectedInstance?.IsOnline == true);
+
             ForceCloseSelectedCommand = LambdaCommand.Create(
                 async _ =>
                 {
@@ -308,6 +344,54 @@ namespace remeLog.ViewModels
                     catch (Exception ex)
                     {
                         Util.WriteLog(ex, "Ошибка при отправке уведомления об обновлении");
+                        MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                    finally
+                    {
+                        await App.Current.Dispatcher.InvokeAsync(() => InProgress = false);
+                    }
+                },
+                _ => Instances.Any(i => i.IsOnline && i.IsSelected));
+
+            // Массовая команда: та же переменная сразу на все отмеченные онлайн-экземпляры.
+            // Имя и значение спрашиваем один раз, очередь — одна на всех (транзакцией).
+            SetEnvVarSelectedCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var targets = OnlineSelected();
+                        if (targets.Count == 0)
+                        {
+                            MessageBoxWindow.Show("Нет выбранных онлайн-экземпляров.", "Информация",
+                                MessageBoxButton.OK, MessageBoxImage.Information);
+                            return;
+                        }
+
+                        if (!TryPromptEnvVar(out var name, out var value)) return;
+
+                        // Изменение окружения заметнее уведомления, поэтому перед веером
+                        // на несколько машин просим подтвердить (на одну — шлём сразу).
+                        if (targets.Count > 1)
+                        {
+                            var confirm = MessageBoxWindow.Show(
+                                $"Установить переменную {name} на {targets.Count} экземплярах {Header}?",
+                                "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxDefaultButton.No);
+                            if (confirm != MessageBoxResult.Yes) return;
+                        }
+
+                        InProgress = true;
+                        var ids = await Database.SendAppCommandToAllAsync(
+                            targets, UserEnvVar.CommandType, UserEnvVar.BuildPayload(name, value)).ConfigureAwait(false);
+
+                        TrackPending(ids, targets);
+                        LastCommandResult = $"Ожидание ответа от {targets.Count} экземпляров...";
+                        await RefreshPendingCountAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке команды SetUserEnvVar выбранным");
                         MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
                             MessageBoxButton.OK, MessageBoxImage.Error);
                     }
@@ -429,6 +513,31 @@ namespace remeLog.ViewModels
             else if (stateAnswers.Count > 0)
                 summary += "\nOK";
             await App.Current.Dispatcher.InvokeAsync(() => LastCommandResult = summary);
+        }
+
+        /// <summary>
+        /// Спрашивает имя и значение одним окном с двумя полями.
+        /// Имя проверено маской <see cref="UserEnvVar"/> уже в диалоге (кнопка ОК
+        /// недоступна при ошибке), значение — произвольное (его ещё раз проверит
+        /// получатель перед применением). Возвращает false, если ввод отменили.
+        /// </summary>
+        private static bool TryPromptEnvVar(out string name, out string value)
+        {
+            name = string.Empty;
+            value = string.Empty;
+
+            var dialog = new EnvVarDialogWindow();
+            dialog.Owner = OwnerWindow();
+            if (dialog.ShowDialog() != true) return false;
+
+            // Имя чистим от случайных пробелов, значение — нет: там пробелы могут быть частью данных.
+            // Повторная проверка — защита на случай программного обхода диалога.
+            var rawName = (dialog.VariableName ?? string.Empty).Trim();
+            if (!UserEnvVar.IsValidName(rawName)) return false;
+
+            name = rawName;
+            value = dialog.VariableValue ?? string.Empty;
+            return true;
         }
 
         private List<AppPresence> OnlineSelected() =>

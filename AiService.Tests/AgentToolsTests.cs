@@ -248,8 +248,8 @@ public class AgentToolsTests
         // низкому КПД и росту машинного времени, но не простоям смены.
         var r = AgentTools.Execute(Request(), "get_reason_semantics",
             """{"reason":"Двустаночное обслуживание","category":"machining"}""");
-        Assert.Contains("два станка", r);
-        Assert.Contains("др. станок", r);
+        Assert.Contains("ДЕЛИЛ", r);
+        Assert.Contains("ДРУГАЯ причина", r);
         Assert.Contains("Простои смены", r);
         Assert.DoesNotContain("Особых условий нет", r);
     }

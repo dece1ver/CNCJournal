@@ -5,7 +5,7 @@ namespace AiService.Tests;
 
 /// <summary>
 /// Детерминированная проверка суточных отчётов мастера (cnc_shifts):
-/// R1–R6 — hard (эскалация), S2 — рекомендательный soft.
+/// R1–R7 — hard (эскалация), S2 — рекомендательный soft.
 /// Кейсы сверены с реальными данными stanki за 09.26.
 /// </summary>
 public class ShiftReportRuleTests
@@ -146,6 +146,68 @@ public class ShiftReportRuleTests
         var result = ShiftReportRuleEvaluator.Evaluate(req);
 
         Assert.False(result.MustEscalate);
+    }
+
+    [Fact]
+    public void Evaluate_R7_TerminalDown_Hard()
+    {
+        // Кейс 07.10.2026, Victor 24.09: «Другое» + «Не работал терминал» —
+        // достоверных данных за смену нет, день закрывать нельзя (аналог
+        // «Некорректного заполнения»: вопрос к данным).
+        var req = Request(Day(stored: 100, fresh: 100, reason: "Другое",
+            comment: "Не работал терминал"));
+
+        var result = ShiftReportRuleEvaluator.Evaluate(req);
+
+        Assert.True(result.MustEscalate);
+        Assert.Contains("[День] Терминал не работал — достоверных данных за смену нет, день закрывать нельзя",
+            result.HardSignals);
+    }
+
+    [Theory]
+    [InlineData("нет связи с терминалом")]
+    [InlineData("Отсутствие терминала. Оператор работал по журналу.")]
+    [InlineData("НЕ РАБОТАЛ ТЕРМИНАЛ")]
+    [InlineData("на терминале кончилась память, электронный журнал не включался")]
+    [InlineData("с 10,00 не работал терминал")]
+    public void Evaluate_R7_TerminalAbsenceVariants_Hard(string comment)
+    {
+        // Словарь по выгрузке cnc_shifts 07.10.2026: полное отсутствие записи
+        // в разных формулировках — всё это «данных нет».
+        var req = Request(Day(stored: 100, fresh: 100, reason: "Другое", comment: comment));
+
+        var result = ShiftReportRuleEvaluator.Evaluate(req);
+
+        Assert.True(result.MustEscalate);
+        Assert.Contains(result.HardSignals, s => s.Contains("Терминал не работал"));
+    }
+
+    [Theory]
+    [InlineData("завис терминал 11:05 до 11:47")]
+    [InlineData("терминал постоянно виснет при поиске программы")]
+    [InlineData("Работа с терминалом")]
+    [InlineData("Сбой терминала. По факту станок работал полную смену.")]
+    public void Evaluate_R7_TerminalGlitch_Ok(string comment)
+    {
+        // Глюк, а не отсутствие: запись велась (пусть с перебоями) —
+        // R7 не срабатывает, судить остаётся модели/прочим правилам.
+        var req = Request(Day(stored: 100, fresh: 100, reason: "Другое", comment: comment));
+
+        var result = ShiftReportRuleEvaluator.Evaluate(req);
+
+        Assert.DoesNotContain(result.HardSignals, s => s.Contains("Терминал не работал"));
+    }
+
+    [Fact]
+    public void Evaluate_R7_RecordedElsewhere_Ok()
+    {
+        // Данные есть — писались на другом терминале: R7 не применяется.
+        var req = Request(Day(stored: 100, fresh: 100, reason: "Другое",
+            comment: "оператор отмечался на другом станке, т.к. тут не работает терминал"));
+
+        var result = ShiftReportRuleEvaluator.Evaluate(req);
+
+        Assert.DoesNotContain(result.HardSignals, s => s.Contains("Терминал не работал"));
     }
 
     [Fact]
@@ -966,6 +1028,24 @@ public class ShiftReportRuleTests
 
         Assert.Single(kept);
         Assert.Empty(dropped);
+    }
+
+    [Fact]
+    public void DropTwoMachineRelevanceComplaints_Relocation_Dropped()
+    {
+        // Решение владельца 07.10.2026: перевод на другое рабочее место
+        // («перешёл на др. станок» — отправили/нет работы на своём) объясняет
+        // отсутствие так же, как совмещение; различие важно только для
+        // КПД/машвремени, а не для простоя.
+        var req = Request(Day(master: "Зуев Максим Борисович", stored: 200, fresh: 200,
+            reason: "Отсутствие оператора",
+            comment: "перешел на др станок в связи с установкой вентиляции на рабочем месте"));
+
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropTwoMachineRelevanceComplaints(req,
+            ["Смена День: Причина «Другое» без детализации в комментарии"]);
+
+        Assert.Empty(kept);
+        Assert.Single(dropped);
     }
 
     [Theory]
