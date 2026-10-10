@@ -122,6 +122,12 @@ public class StockService(IConfiguration config, ILogger<StockService> logger)
         // (кейс кампании C.2). Для запросов без чисел (например, «сверло») фильтр
         // выключен — там слово и есть главный признак.
         var numericTerms = terms.Where(t => t.All(char.IsDigit)).ToList();
+        // Тип инструмента из вопроса («сверло 16»): строки с чужим типом
+        // («Метчик») из выдачи исключаются. Раньше число «16» совпадало с
+        // «16,007» и «М16» в названии метчика, и модель перечисляла метчики
+        // как свёрла (прод 09.10). Точное совпадение обозначения сильнее
+        // фильтра: код — авторитетнее слова типа.
+        var queryType = DetectToolType(query);
         var scored = new List<(StockRow Row, int Score)>();
         foreach (var row in _rows)
         {
@@ -141,6 +147,13 @@ public class StockService(IConfiguration config, ILogger<StockService> logger)
             // пустота, а не «похожие позиции» из чужих артикулов (кейс AEKR-D2.25X25
             // → 327R12-22 250VM-TH из-за совпадения по цифрам «25»).
             if (codeQuery && !exact) continue;
+            // Чужой тип инструмента: «метчик» на вопрос про «сверло» не выдаём
+            // (точное совпадение кода выше уже вышло из-под фильтра).
+            if (!exact && queryType != null)
+            {
+                var rowType = DetectToolType(row.Name);
+                if (rowType != null && rowType != queryType) continue;
+            }
             if (!exact && numericTerms.Count > 0 && numericMatched == 0) continue;
             if (distinct == 0 && !exact) continue;
             // Точное совпадение обозначения приоритетнее любых совпадений слов.
@@ -212,6 +225,41 @@ public class StockService(IConfiguration config, ILogger<StockService> logger)
             words.Add(m.Value);
         }
         return [.. words];
+    }
+
+    /// <summary> Тип инструмента по основе слова: «сверло» и «свёрла» — одно и то
+    /// же, «сверлильный» — тоже. Неизвестного типа нет: вернул null — фильтр
+    /// не применяется, строка проходит как раньше. </summary>
+    public static string? DetectToolType(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var t = text.ToLowerInvariant().Replace('ё', 'е');
+        // Порядок важен: более длинные основы раньше («сверло» до «сверл» нет —
+        // Contains ловит основу внутри любого слова, поэтому основы точные).
+        string[][] types =
+        [
+            ["сверл", "сверло"],
+            ["метчик", "метчик"],
+            ["пластин", "пластина"],
+            ["фрез", "фреза"],
+            ["резец", "резец"], ["резц", "резец"],
+            ["разверт", "развертка"], ["развёрт", "развертка"],
+            ["зенкер", "зенкер"], ["зенков", "зенковка"], ["зенк", "зенкер"],
+            ["плашк", "плашка"],
+            ["долбяк", "долбяк"],
+            ["протяжк", "протяжка"],
+            ["цанг", "цанга"],
+            ["патрон", "патрон"],
+            ["оправ", "оправка"],
+            ["держав", "державка"],
+            ["головк", "головка"],
+            ["диск", "диск"],
+            ["круг", "круг"],
+            ["лент", "лента"],
+        ];
+        foreach (var pair in types)
+            if (t.Contains(pair[0], StringComparison.Ordinal)) return pair[1];
+        return null;
     }
 
     /// <summary> Служебные слова склада: двух-трёхбуквенные, но совпадают внутри

@@ -224,6 +224,7 @@ public class ChatAgentService(
         var docsForcedLeft = 1;
         var stockForcedLeft = 1;
         var stockCalls = 0;
+        var serviceForcedLeft = 1;
         var angleForcedLeft = 1;
         var plateAskForcedLeft = 1;
         // Повторно платить за рассуждения незачем там, где модель уже
@@ -356,6 +357,36 @@ public class ChatAgentService(
                         });
                         logger.LogInformation(
                             "Чат-агент ({Machine}): оператор отрицает наши данные", machine);
+                        continue;
+                    }
+                    // Поправка без признания — первой, до траты бюджета на остальные
+                    // поручни. Правило 7 требует начинать с признания, иначе оператор
+                    // читает прежний ответ как верный. Раньше проверка стояла 16-й в
+                    // очереди: в запросе с инструментами бюджет (2 раунда) съедали
+                    // документы и утечка, и «не правильно» стабильно игнорировалось
+                    // (прод 09.10 — финал без признания и с утечкой имени файла).
+                    if (CanForce() && correctionForcedLeft > 0
+                        && WebSearchService.IsCorrection(lastQuestion)
+                        && !AcknowledgesMistake(lastContent))
+                    {
+                        forcedRounds++;
+                    correctionForcedLeft--;
+                        toolProgress?.Report("⚙ исправляюсь…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Оператор указал, что ответ неверный, " +
+                                "а ты начал с другого — признания в ошибке нет. Начни ответ с " +
+                                "признания одним предложением («да, я ошибся» / «это неверно, " +
+                                "проверяю»), затем перепроверь факты инструментами по теме " +
+                                "исходного вопроса «" + Trunc(lastQuestion, 120) + "».",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): автопроверка поправки без признания", machine);
                         continue;
                     }
                     // Угол при вершине не следует из первой буквы — проверочный слой на
@@ -747,7 +778,9 @@ public class ChatAgentService(
                                 "инструментов — оператор про них не знает, и в его вопросе " +
                                 "мастеру это выглядит как служебная белиберда. Замени на " +
                                 "слова: «смотрю смену», «читаю инструкцию», «смотрю " +
-                                "остатки на складе». Смысл ответа и цифры не меняй.",
+                                "остатки на складе». Имена файлов (.md) тоже запрещены: " +
+                                "документ называй человекочитаемо — «инструкция оператора», " +
+                                "а не «instrukciya_operatora.md». Смысл ответа и цифры не меняй.",
                         });
                         // Правка текста: рассуждения не нужны, модель уже думала.
                         thinkNextRound = false;
@@ -783,6 +816,37 @@ public class ChatAgentService(
                         });
                         logger.LogInformation(
                             "Чат-агент ({Machine}): автопроверка простоя без типов", machine);
+                        continue;
+                    }
+                    // Вопрос про обращение к службе (технолог, мастер, наладчик),
+                    // а ответ выбрал «Отказ оборудования»: нужен «Обращение
+                    // в другие службы» (прод 09.10).
+                    if (CanForce() && serviceForcedLeft > 0
+                        && AsksAboutServiceWait(lastQuestion)
+                        && PicksOutageInsteadOfService(lastContent))
+                    {
+                        forcedRounds++;
+                    serviceForcedLeft--;
+                        toolProgress?.Report("⚙ уточняю тип простоя…");
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "assistant", Content = lastContent,
+                        });
+                        messages.Add(new ChatMessage
+                        {
+                            Role = "user",
+                            Content = "[Автопроверка] Ответь на исходный вопрос «" +
+                                Trunc(lastQuestion, 120) + "». Оператор обращается к службе " +
+                                "или ждёт её (технолог, мастер, наладчик) — такой простой " +
+                                "отмечается типом «Обращение в другие службы», а не " +
+                                "«Отказ оборудования» (он — когда оборудование отказало). " +
+                                (downtimeTypesCalls == 0
+                                    ? "Вызови list_operator_downtime_types и ответь по нему. "
+                                    : "Список типов у тебя уже есть — ответь по нему. ") +
+                                "Других типов не выдумывай.",
+                        });
+                        logger.LogInformation(
+                            "Чат-агент ({Machine}): служба вместо отказа", machine);
                         continue;
                     }
                     // «Придумай цифры» / «приведи пример» — в журнал такие числа
@@ -846,34 +910,6 @@ public class ChatAgentService(
                         });
                         logger.LogInformation(
                             "Чат-агент ({Machine}): автопроверка периода без тула", machine);
-                        continue;
-                    }
-                    // Поправка без признания. Правило 7 требует начинать с признания,
-                    // но текстом оно держится не всегда (кейс регресса D.3: на «всё
-                    // не так, проверь ещё раз» модель ответила «Дозор бдит — смена под
-                    // присмотром» — ни «ошибся», ни «прав»).
-                    if (CanForce() && correctionForcedLeft > 0
-                        && WebSearchService.IsCorrection(lastQuestion)
-                        && !AcknowledgesMistake(lastContent))
-                    {
-                        forcedRounds++;
-                    correctionForcedLeft--;
-                        toolProgress?.Report("⚙ исправляюсь…");
-                        messages.Add(new ChatMessage
-                        {
-                            Role = "assistant", Content = lastContent,
-                        });
-                        messages.Add(new ChatMessage
-                        {
-                            Role = "user",
-                            Content = "[Автопроверка] Оператор указал, что ответ неверный, " +
-                                "а ты начал с другого — признания в ошибке нет. Начни ответ с " +
-                                "признания одним предложением («да, я ошибся» / «это неверно, " +
-                                "проверяю»), затем перепроверь факты инструментами по теме " +
-                                "исходного вопроса «" + Trunc(lastQuestion, 120) + "».",
-                        });
-                        logger.LogInformation(
-                            "Чат-агент ({Machine}): автопроверка поправки без признания", machine);
                         continue;
                     }
                     // Количество «N шт», которого нет ни в вопросе, ни в результатах
@@ -1572,6 +1608,38 @@ public class ChatAgentService(
             && t.Contains("инструмент", StringComparison.Ordinal);
     }
 
+    /// <summary>Вопрос про обращение к службе или ожидание её: технолог, мастер,
+    /// наладчик, ремонтники, техподдержка. Такой простой — «Обращение в другие
+    /// службы», а не «Отказ оборудования» (прод 09.10: на «обратиться
+    /// к технологу» модель выбрала «Отказ»). Чистая функция.</summary>
+    public static bool AsksAboutServiceWait(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        var t = question.ToLowerInvariant();
+        string[] services =
+        [
+            "технолог", "мастер", "наладчик", "ремонтник", "техподдержк",
+            "инструментальщик", "служб", "цехов", "отдел",
+        ];
+        if (!services.Any(k => t.Contains(k, StringComparison.Ordinal))) return false;
+        string[] wait =
+        [
+            "обратиться", "обращаться", "обращение", "обращ", "жду", "ждать",
+            "ожидани", "вызвать", "вызывать", "вызов", "привлечь", "нужен",
+            "позов", "какой простой",
+        ];
+        return wait.Any(k => t.Contains(k, StringComparison.Ordinal));
+    }
+
+    /// <summary>Ответ выбрал «Отказ оборудования», хотя вопрос — про обращение
+    /// к службе: выбор неверный, нужен «Обращение в другие службы».</summary>
+    public static bool PicksOutageInsteadOfService(string? reply)
+    {
+        if (string.IsNullOrWhiteSpace(reply)) return false;
+        return reply.Contains("Отказ оборудования", StringComparison.Ordinal)
+            && !reply.Contains("Обращение в другие службы", StringComparison.Ordinal);
+    }
+
     /// <summary>Вопрос о деньгах вне журнала: зарплата, премия, штраф, оклад,
     /// увольнение, разнарядка. Таких данных в ЭЖ нет, и модель на такие вопросы
     /// отвечала количеством деталей (кейс проверки B2). Чистая функция.</summary>
@@ -2249,7 +2317,32 @@ public class ChatAgentService(
         // [текст](url) → текст (url); сначала ссылки, потом жирность.
         text = Regex.Replace(text, @"\[(.+?)\]\((.+?)\)", "$1 ($2)");
         text = text.Replace("**", "");
+        // Заборы кода видны в plain TextBlock как есть (прод 10.10: «Пример записи:
+        // ``` Тип простой: …»).
+        text = text.Replace("```", "");
+        // После снятия заборов остаются двойные пробелы — схлопываем.
+        text = Regex.Replace(text, @" {2,}", " ");
         return text;
+    }
+
+    /// <summary>
+    /// Внутренние имена файлов документов → человекочитаемые названия.
+    /// Страховка после поручня на утечку: модель «исправляла» имена тулов, но
+    /// оставляла «Согласно документу instrukciya_operatora.md» (прод 09.10).
+    /// Не вырезка: оператор должен видеть, откуда правило, — но по-русски.
+    /// </summary>
+    public static string HumanizeDocNames(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return text ?? "";
+        return text
+            .Replace("instrukciya_operatora.md", "«инструкция оператора»",
+                StringComparison.OrdinalIgnoreCase)
+            .Replace("reglament.md", "«регламент мастера»",
+                StringComparison.OrdinalIgnoreCase)
+            .Replace("plan.md", "«план внедрения»",
+                StringComparison.OrdinalIgnoreCase)
+            .Replace("status.md", "«статус внедрения»",
+                StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

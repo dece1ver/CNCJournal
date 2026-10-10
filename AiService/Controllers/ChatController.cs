@@ -353,7 +353,10 @@ public class ChatController(
         {
             // Окно eLog — plain TextBlock: markdown чистим здесь, а не у клиента,
             // чтобы логи и оба транспорта видели один и тот же текст.
-            Reply = ChatAgentService.CleanMarkdown(replyOverride ?? outcome.Reply).Trim(),
+            // Имена файлов документов → читаемые названия («инструкция оператора»),
+            // иначе в ответ уходит «Согласно документу instrukciya_operatora.md».
+            Reply = ChatAgentService.HumanizeDocNames(
+                ChatAgentService.CleanMarkdown(replyOverride ?? outcome.Reply)).Trim(),
             Sources = sources,
             Model = request.Model,
             PromptVersion = promptVersion,

@@ -254,6 +254,42 @@ public class ChatTests
     }
 
     [Theory]
+    [InlineData("есть ли сверло 16", "сверло")]
+    [InlineData("свёрла диаметром 8", "сверло")]
+    [InlineData("остаток метчиков М16", "метчик")]
+    [InlineData("какие пластины 35 градусов", "пластина")]
+    [InlineData("фрезы для фрезерования", "фреза")]
+    [InlineData("сколько стоит фреза", "фреза")]
+    [InlineData("станок встал, что делать", null)]
+    [InlineData("", null)]
+    public void DetectToolType_Shapes(string text, string? expected)
+        => Assert.Equal(expected, StockService.DetectToolType(text));
+
+    [Fact]
+    public void StockService_ExcludesForeignToolType()
+    {
+        // Прод 09.10: на «сверло 16» выдавались метчики (число «16» совпало с
+        // «16,007» и «М16»), и модель перечисляла их как свёрла.
+        var (svc, dir) = TempStock(
+            "# source=test; warehouse=Склад; asof=2026-10-10\n" +
+            "articul;name;unit;qty\n" +
+            ";S740 16.0 Сверло центровочное;шт;7\n" +
+            ";1258 - 16,007 Метчик раск.;шт;3\n" +
+            ";1873 - 16,007 Метчик;шт;1\n");
+        try
+        {
+            var hits = svc.Search("сверло диаметром 16");
+            Assert.NotEmpty(hits);
+            Assert.All(hits, r => Assert.DoesNotContain("Метчик", r.Name));
+            Assert.Contains(hits, r => r.Name.Contains("Сверло"));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Theory]
     [InlineData("смена не запущена, станок другой, всё наврал", true)]
     [InlineData("ты всё наврал", true)]
     [InlineData("это неправда", true)]
@@ -1239,6 +1275,104 @@ public class ChatTests
             m => m.Role == "user" && m.Content.Contains("Ответь ВОПРОСОМ"));
         Assert.Contains("уточни форму", nudge.Content);
         Assert.Contains("собирать", nudge.Content);
+    }
+
+    [Fact]
+    public void HumanizeDocNames_ReplacesFilenames()
+    {
+        // Прод 09.10: «Согласно документу instrukciya_operatora.md» — страховка
+        // после поручня: не вырезка, а читаемое название.
+        Assert.Equal("Согласно документу «инструкция оператора»:",
+            ChatAgentService.HumanizeDocNames("Согласно документу instrukciya_operatora.md:"));
+        Assert.Equal("см. «регламент мастера»",
+            ChatAgentService.HumanizeDocNames("см. reglament.md"));
+        Assert.Equal("обычный ответ без имён",
+            ChatAgentService.HumanizeDocNames("обычный ответ без имён"));
+    }
+
+    [Theory]
+    [InlineData("мне надо обратиться к технологу, какой простой выбрать?", true)]
+    [InlineData("жду мастера уже час, что отметить?", true)]
+    [InlineData("надо вызвать наладчика, какой простой?", true)]
+    [InlineData("обращение в другие службы — когда?", true)]
+    [InlineData("станок сломался, что делать?", false)]
+    [InlineData("как отметить простой?", false)]
+    public void AsksAboutServiceWait_Shapes(string question, bool expected)
+        => Assert.Equal(expected, ChatAgentService.AsksAboutServiceWait(question));
+
+    [Theory]
+    [InlineData("Выберите тип «Отказ оборудования» — это основной вариант", true)]
+    [InlineData("Отмечайте «Обращение в другие службы»", false)]
+    public void PicksOutageInsteadOfService_Shapes(string reply, bool expected)
+        => Assert.Equal(expected, ChatAgentService.PicksOutageInsteadOfService(reply));
+
+    [Fact]
+    public async Task Agent_ServiceWaitWithOutageAnswer_ForcesServiceType()
+    {
+        // Прод 09.10: на «обратиться к технологу» модель выбрала «Отказ».
+        // Цепочка как в жизни: ответ без списка типов → поручень в инструкцию →
+        // ответ с неверным типом → поручень на «Обращение в другие службы».
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "Выберите тип «Отказ оборудования» — основной вариант." },
+            new ChatResult
+            {
+                ToolCalls = [
+                    new AgentToolCall { Id = "c1", Name = "search_docs",
+                        Arguments = "{\"query\":\"обращение к технологу\"}" },
+                    new AgentToolCall { Id = "c2", Name = "list_operator_downtime_types",
+                        Arguments = "{}" },
+                ],
+            },
+            new ChatResult { Content = "По инструкции: выберите «Отказ оборудования»." },
+            new ChatResult { Content = "Отмечайте «Обращение в другие службы»." },
+        ]));
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user",
+                Content = "мне надо обратиться к технологу, какой простой выбрать?" }]),
+            [], 20, 12000);
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null,
+            CancellationToken.None);
+
+        Assert.Null(res.Error);
+        Assert.Equal(2, res.ToolRounds);
+        var nudge = stub.SeenMessages.SelectMany(ms => ms)
+            .First(m => m.Role == "user" && m.Content.Contains("[Автопроверка]")
+                && m.Content.Contains("Обращение в другие службы"));
+        Assert.Contains("Обращение в другие службы", nudge.Content);
+    }
+
+    [Fact]
+    public async Task Agent_CorrectionNudge_GoesFirst()
+    {
+        // Прод 09.10: «не правильно» игнорировалось — поручень поправки стоял
+        // 16-м, бюджет съедали документы и утечка. Теперь поправка первая:
+        // вопрос одновременно и поправка, и «вопрос о программе».
+        // Цепочка: признание → перепроверка инструментом → финал.
+        var stub = new StubChat(new Queue<ChatResult>([
+            new ChatResult { Content = "Вот порядок действий по отметке смены из инструкции." },
+            new ChatResult { Content = "Да, я ошибся, проверяю." },
+            new ChatResult
+            {
+                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_shift_info",
+                    Arguments = "{}" }],
+            },
+            new ChatResult { Content = "Да, я ошибся. Смена выбрана, но не начата." },
+        ]));
+        var build = Builder().BuildChatMessages(
+            Request([new ChatMessageDto { Role = "user", Content = "не правильно" }]),
+            [], 20, 12000);
+
+        var res = await Agent(stub).RunAsync(
+            build.System, build.Messages, Context(), null, null, null, null,
+            CancellationToken.None);
+
+        Assert.Null(res.Error);
+        Assert.True(stub.SeenMessages.Count > 1);
+        var nudge = stub.SeenMessages[1].First(
+            m => m.Role == "user" && m.Content.Contains("[Автопроверка]"));
+        Assert.Contains("признания", nudge.Content);
     }
 
     [Fact]
@@ -2291,6 +2425,14 @@ public class ChatTests
     {
         Assert.Equal("просто ответ без разметки", ChatAgentService.CleanMarkdown("просто ответ без разметки"));
         Assert.Equal("", ChatAgentService.CleanMarkdown(""));
+    }
+
+    [Fact]
+    public void CleanMarkdown_StripsCodeFences()
+    {
+        // Прод 10.10: «Пример записи: ``` Тип простой: …» — забор виден в окне.
+        Assert.Equal("Пример записи: Тип простоя: Обращение",
+            ChatAgentService.CleanMarkdown("Пример записи: ``` Тип простоя: Обращение ```").Trim());
     }
 
     [Fact]
