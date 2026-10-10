@@ -227,17 +227,7 @@ namespace remeLog.Infrastructure
         {
             if (File.Exists(ConfigFilePath)) File.Delete(ConfigFilePath);
             if (File.Exists(ConfigBackupPath)) File.Delete(ConfigBackupPath);
-            if (!Directory.Exists(BasePath))
-            {
-                try
-                {
-                    Directory.CreateDirectory(BasePath);
-                }
-                catch (Exception ex)
-                {
-                    Util.WriteLog(ex, "Не удалось создать директорию для данных приложения.");
-                }
-            }
+            Logs.EnsureWritableDirectory(BasePath);
             DataSource = new DataSource(DataSource.Types.Database);
             InstantUpdateOnMainWindow = false;
             QualificationSourcePath = "";

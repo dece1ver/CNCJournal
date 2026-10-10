@@ -102,7 +102,8 @@
             </Menu>
             <StatusBar DockPanel.Dock="Bottom">
                 <StatusBarItem>
-                    <TextBlock Text="{Binding Status}" FontSize="16" Margin="0 -1"/>
+                    <TextBlock Text="{Binding Status}" FontSize="16" Margin="0 -1"
+                               ToolTip="{Binding LogWarningTooltip, TargetNullValue=''}"/>
                 </StatusBarItem>
                 <StatusBarItem HorizontalAlignment="Right">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center"

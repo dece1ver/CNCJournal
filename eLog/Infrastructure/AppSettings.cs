@@ -1,5 +1,6 @@
 ﻿using eLog.Infrastructure.Extensions;
 using eLog.Models;
+using libeLog.Infrastructure;
 using libeLog.Infrastructure.Enums;
 using libeLog.Models;
 using Newtonsoft.Json;
@@ -333,7 +334,7 @@ namespace eLog.Infrastructure
         {
             if (File.Exists(ConfigFilePath)) File.Move(ConfigFilePath, ConfigFilePath + $".mvd{DateTime.Now.Ticks}");
             if (File.Exists(ConfigBackupPath)) File.Move(ConfigBackupPath, ConfigBackupPath + $".mvd{DateTime.Now.Ticks}");
-            if (!Directory.Exists(BasePath)) Directory.CreateDirectory(BasePath);
+            Logs.EnsureWritableDirectory(BasePath);
             Machines = new();
             Machine = null;
             Operators = new DeepObservableCollection<Operator>();

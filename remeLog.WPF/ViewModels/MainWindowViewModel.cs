@@ -53,6 +53,11 @@ namespace remeLog.ViewModels
         public MainWindowViewModel()
         {
             _uiDispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            // Предупреждение о запасном логе — разовой строкой в статусбар, без модалки.
+            // Стартовые записи идут до создания окна, поэтому сначала показываем
+            // уже случившееся, затем подписываемся на поздние срабатывания.
+            libeLog.Infrastructure.Logs.FallbackWarningChanged += OnLogFallbackWarning;
+            ShowLogFallbackWarning();
             CloseApplicationCommand = new LambdaCommand(OnCloseApplicationCommandExecuted, CanCloseApplicationCommandExecute);
             TestCommand = new LambdaCommand(OnTestCommandExecuted, CanTestCommandExecute);
             UpdateDatabaseCommand = new LambdaCommand(OnUpdateDatabaseCommandExecuted, CanUpdateDatabaseCommandExecute);
@@ -103,6 +108,33 @@ namespace remeLog.ViewModels
         {
             get => _Status;
             set => Set(ref _Status, value);
+        }
+
+        private string? _LogWarningTooltip;
+        /// <summary> Путь запасного лога для тултипа строки статуса </summary>
+        public string? LogWarningTooltip
+        {
+            get => _LogWarningTooltip;
+            set => Set(ref _LogWarningTooltip, value);
+        }
+
+        /// <summary>
+        /// Разово показывает переход на запасной лог в статусбаре.
+        /// Событие прилетает из фонового потока — маршалим на UI.
+        /// </summary>
+        private void OnLogFallbackWarning()
+        {
+            if (!IsUiAlive) return;
+            try { _uiDispatcher.BeginInvoke(ShowLogFallbackWarning); }
+            catch (InvalidOperationException) { }
+        }
+
+        private void ShowLogFallbackWarning()
+        {
+            var warning = libeLog.Infrastructure.Logs.FallbackWarning;
+            if (string.IsNullOrEmpty(warning)) return;
+            Status = warning;
+            LogWarningTooltip = $"Общая папка журнала недоступна. Временный файл: {libeLog.Infrastructure.Logs.FallbackPath}";
         }
 
         private bool _InProgress;

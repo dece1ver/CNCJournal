@@ -5,6 +5,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,6 +22,31 @@ namespace libeLog.Infrastructure
         /// Флаг, что ошибку записи в лог уже показывали оператору.
         /// </summary>
         private static int _errorShown;
+
+        /// <summary>
+        /// Флаг, что переход на запасной лог уже показывали оператору.
+        /// </summary>
+        private static int _fallbackNotified;
+
+        /// <summary>
+        /// Короткий текст предупреждения о запасном логе для статусбара
+        /// (null — общий лог доступен, показывать нечего).
+        /// </summary>
+        public static string? FallbackWarning { get; private set; }
+
+        /// <summary>Путь запасного лога для тултипа строки статуса.</summary>
+        public static string? FallbackPath { get; private set; }
+
+        /// <summary>
+        /// Поднято один раз за сеанс при переходе на запасной лог.
+        /// Подписчик сам маршалит на UI-поток; ранние срабатывания
+        /// (до создания главного окна) видны через <see cref="FallbackWarning"/>.
+        /// </summary>
+        public static event Action? FallbackWarningChanged;
+
+        /// <summary>Пути, для которых ACL уже прогревали в этом сеансе.</summary>
+        private static readonly HashSet<string> _aclWarmedPaths = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly object _aclWarmLock = new();
 
         /// <summary>
         /// Как часто дописывать напоминание, пока сервер недоступен (первый обрыв пишется подробно).
@@ -228,12 +255,208 @@ namespace libeLog.Infrastructure
 
         /// <summary>
         /// Дописывает текст в файл лога. Семафор должен быть уже захвачен.
+        /// При недоступности основного пути (нет прав, путь занят папкой)
+        /// пишет в запасной лог в %LOCALAPPDATA%, работа программы продолжается.
         /// </summary>
         private static async Task AppendLockedAsync(string path, string text, string copyDir)
         {
-            if (!File.Exists(path)) File.Create(path).Dispose();
+            try
+            {
+                await WritePrimaryAsync(path, text, copyDir);
+                return;
+            }
+            catch (UnauthorizedAccessException primaryEx)
+            {
+                // Общий файл создан другим юзером/админом без прав для остальных —
+                // пробуем починить ACL (получится только с правами) и повторить раз.
+                if (TryHealAcl(path))
+                {
+                    try
+                    {
+                        await WritePrimaryAsync(path, text, copyDir);
+                        return;
+                    }
+                    catch { }
+                }
+                await WriteFallbackAsync(path, text, copyDir, primaryEx);
+                return;
+            }
+            catch (IOException primaryEx)
+            {
+                // Путь занят папкой — сразу в fallback, без ретрая.
+                if (Directory.Exists(path))
+                {
+                    await WriteFallbackAsync(path, text, copyDir, primaryEx);
+                    return;
+                }
+                // Транзиент (второй юзер крутит ротацию, антивирус держит файл):
+                // одна короткая пауза и повтор, иначе запись уходит в fallback.
+                try
+                {
+                    await Task.Delay(150);
+                    await WritePrimaryAsync(path, text, copyDir);
+                    return;
+                }
+                catch { }
+                await WriteFallbackAsync(path, text, copyDir, primaryEx);
+                return;
+            }
+            catch (Exception primaryEx)
+            {
+                await WriteFallbackAsync(path, text, copyDir, primaryEx);
+                return;
+            }
+        }
+
+        private static async Task WritePrimaryAsync(string path, string text, string copyDir)
+        {
+            if (Directory.Exists(path))
+                throw new IOException($"Путь лога '{path}' занят папкой.");
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+                TryGrantUsersModify(dir);
+            }
+            if (!File.Exists(path))
+            {
+                File.Create(path).Dispose();
+                // Владелец может править DACL своего файла, поэтому сразу
+                // расширяем права до общих — иначе второй юзер не допишет.
+                TryGrantUsersModifyFile(path);
+            }
             CheckLogSize(path, copyDir);
             await File.AppendAllTextAsync(path, text);
+            // Успешная запись: один раз за сеанс дотягиваем Users:Modify
+            // на папку и файл. Создатель чинит доступ остальным заранее,
+            // до их первой ошибки — владелец на это прав имеет.
+            WarmAclOnce(path);
+        }
+
+        private static async Task WriteFallbackAsync(string primaryPath, string text, string copyDir, Exception cause)
+        {
+            var fallback = GetFallbackPath(primaryPath);
+            try
+            {
+                if (Directory.Exists(fallback)) fallback += ".log";
+                var dir = Path.GetDirectoryName(fallback);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+                if (!File.Exists(fallback)) File.Create(fallback).Dispose();
+                CheckLogSize(fallback, copyDir);
+                await File.AppendAllTextAsync(fallback, text);
+                if (!string.IsNullOrWhiteSpace(copyDir)) TryCopyLog(fallback, copyDir);
+                ReportFallbackUsed(primaryPath, fallback, cause);
+            }
+            catch (Exception fallbackEx)
+            {
+                ReportWriteError(fallbackEx);
+            }
+        }
+
+        private static string GetFallbackPath(string primaryPath)
+        {
+            try
+            {
+                var fileName = Path.GetFileName(primaryPath);
+                if (string.IsNullOrWhiteSpace(fileName)) fileName = "log";
+                var parentName = Path.GetFileName(Path.GetDirectoryName(primaryPath) ?? "");
+                if (string.IsNullOrWhiteSpace(parentName)) parentName = "logs";
+                return Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "dece1ver", parentName, fileName);
+            }
+            catch
+            {
+                return Path.Combine(Path.GetTempPath(), "dece1ver-log");
+            }
+        }
+
+        /// <summary>
+        /// Создаёт каталог при необходимости и best-effort выдаёт Users Modify
+        /// (наследование на содержимое). Без прав молча ничего не делает.
+        /// </summary>
+        public static void EnsureWritableDirectory(string dir)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(dir)) return;
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                TryGrantUsersModify(dir);
+            }
+            catch { }
+        }
+
+        private static bool TryHealAcl(string path)
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                    TryGrantUsersModify(dir);
+                // Наследование с папки уже существующий чужой файл чинит не всегда,
+                // поэтому правило дотягиваем и на сам файл напрямую.
+                if (File.Exists(path))
+                    TryGrantUsersModifyFile(path);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void TryGrantUsersModify(string dir)
+        {
+            try
+            {
+                var info = new DirectoryInfo(dir);
+                var security = info.GetAccessControl();
+                var users = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
+                security.AddAccessRule(new FileSystemAccessRule(users,
+                    FileSystemRights.Modify,
+                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                    PropagationFlags.None, AccessControlType.Allow));
+                info.SetAccessControl(security);
+            }
+            catch { }
+        }
+
+        private static void TryGrantUsersModifyFile(string filePath)
+        {
+            try
+            {
+                var info = new FileInfo(filePath);
+                var security = info.GetAccessControl();
+                var users = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
+                security.AddAccessRule(new FileSystemAccessRule(users,
+                    FileSystemRights.Modify,
+                    InheritanceFlags.None, PropagationFlags.None, AccessControlType.Allow));
+                info.SetAccessControl(security);
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Один раз за сеанс на путь дотягивает Users:Modify на папку и файл.
+        /// Вызывать после успешной записи: создатель файла чинит доступ
+        /// остальным заранее. Без прав молча ничего не делает.
+        /// </summary>
+        private static void WarmAclOnce(string path)
+        {
+            lock (_aclWarmLock)
+            {
+                if (!_aclWarmedPaths.Add(path)) return;
+            }
+            try
+            {
+                var dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                    TryGrantUsersModify(dir);
+                if (File.Exists(path))
+                    TryGrantUsersModifyFile(path);
+            }
+            catch { }
         }
 
         public static string GetVersion() {
@@ -259,15 +482,38 @@ namespace libeLog.Infrastructure
         }
 
         /// <summary>
-        /// Ошибку записи в лог показываем оператору только один раз за сеанс:
-        /// при неисправном логе иначе каждая запись вызывала бы своё модальное окно.
+        /// Ошибку записи в лог показываем оператору только один раз за сеанс
+        /// дружелюбным текстом без стека: при неисправном логе иначе каждая
+        /// запись вызывала бы своё модальное окно. Стек уходит только в Debug
+        /// и в запасной файл, оператору он не нужен.
         /// </summary>
         private static void ReportWriteError(Exception e)
         {
             Debug.WriteLine($"Не удалось записать в лог. {e}");
             if (Interlocked.Exchange(ref _errorShown, 1) == 0)
             {
-                MessageBoxWindow.Show($"Отправь этот текст разработчику:\n{e.GetBaseException()}", $"{e.Message}", MessageBoxButton.OK, MessageBoxImage.Error);
+                try
+                {
+                    MessageBoxWindow.Show("Не удалось записать в файл журнала. Работа программы продолжается.",
+                        "Журнал недоступен", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                catch { }
+            }
+        }
+
+        /// <summary>
+        /// Переход на запасной лог показываем разово строкой в статусбаре
+        /// (подписка — в MainWindowViewModel), без модального окна.
+        /// </summary>
+        private static void ReportFallbackUsed(string primaryPath, string fallbackPath, Exception cause)
+        {
+            Debug.WriteLine($"Лог '{primaryPath}' недоступен ({cause.GetType().Name}: {cause.Message}). Пишем в '{fallbackPath}'.");
+            if (Interlocked.Exchange(ref _fallbackNotified, 1) == 0)
+            {
+                FallbackWarning = "Журнал пишется во временный файл";
+                FallbackPath = fallbackPath;
+                try { FallbackWarningChanged?.Invoke(); }
+                catch (Exception e) { Debug.WriteLine($"Подписчик FallbackWarningChanged упал. {e}"); }
             }
         }
 

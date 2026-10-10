@@ -261,9 +261,10 @@ namespace remeLog.Views
                 if (FindVisualParent<TextBox>(depObj) is { } editingTextBox)
                 {
                     editingTextBox.Focus();
-                    // каретку — в точку клика, чтобы варианты предлагались для кликнутого слова
+                    // каретку — в точку клика, чтобы варианты предлагались для кликнутого слова;
+                    // клик внутри выделения выделение не трогает (иначе Копировать/Вырезать не работают)
                     int clickIndex = editingTextBox.GetCharacterIndexFromPoint(e.GetPosition(editingTextBox), true);
-                    if (clickIndex >= 0) editingTextBox.CaretIndex = clickIndex;
+                    SpellCheckBehavior.MoveCaretToClick(editingTextBox, clickIndex);
                     e.Handled = true;
                     var textBoxMenu = (ContextMenu)FindResource("EditingTextBoxContextMenu");
                     AppendSpellingSuggestions(textBoxMenu, editingTextBox);

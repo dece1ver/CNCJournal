@@ -283,9 +283,23 @@ namespace remeLog.Infrastructure.Spell
             if (Mouse.RightButton == MouseButtonState.Pressed)
             {
                 int clickIndex = box.GetCharacterIndexFromPoint(Mouse.GetPosition(box), true);
-                if (clickIndex >= 0) box.CaretIndex = clickIndex;
+                MoveCaretToClick(box, clickIndex);
             }
             AppendSuggestionsToMenu(menu, box);
+        }
+
+        /// <summary>
+        /// Каретка в точку правого клика, но клик внутри выделения выделение
+        /// не схлопывает (иначе Копировать/Вырезать в контекстном меню нечего взять).
+        /// </summary>
+        public static void MoveCaretToClick(TextBox box, int clickIndex)
+        {
+            if (clickIndex < 0) return;
+            if (box.SelectionLength > 0
+                && clickIndex >= box.SelectionStart
+                && clickIndex < box.SelectionStart + box.SelectionLength)
+                return;
+            box.CaretIndex = clickIndex;
         }
 
         // меню уровня обычного TextBox (как системное): поведение ставит его только

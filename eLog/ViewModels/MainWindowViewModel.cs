@@ -22,6 +22,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using static eLog.Infrastructure.Extensions.Util;
 using Application = System.Windows.Application;
 using Database = eLog.Infrastructure.Database;
@@ -36,8 +37,13 @@ namespace eLog.ViewModels
         bool _needSave = false;
         SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
         private CancellationTokenSource _cts = new();
+        private readonly Dispatcher _uiDispatcher;
         public MainWindowViewModel()
         {
+            _uiDispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            // Предупреждение о запасном логе — разовой строкой в статусбар, без модалки.
+            Logs.FallbackWarningChanged += OnLogFallbackWarning;
+            ShowLogFallbackWarning();
             CloseApplicationCommand = new LambdaCommand(OnCloseApplicationCommandExecuted, CanCloseApplicationCommandExecute);
 
             StartShiftCommand = new LambdaCommand(OnStartShiftCommandExecuted, CanStartShiftCommandExecute);
@@ -206,6 +212,34 @@ namespace eLog.ViewModels
         {
             get => _Status;
             set => Set(ref _Status, value);
+        }
+
+        private string? _LogWarningTooltip;
+        /// <summary> Путь запасного лога для тултипа строки статуса </summary>
+        public string? LogWarningTooltip
+        {
+            get => _LogWarningTooltip;
+            set => Set(ref _LogWarningTooltip, value);
+        }
+
+        /// <summary>
+        /// Разово показывает переход на запасной лог в статусбаре.
+        /// Событие прилетает из фонового потока — маршалим на UI.
+        /// </summary>
+        private void OnLogFallbackWarning()
+        {
+            var dispatcher = _uiDispatcher;
+            if (dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished) return;
+            try { dispatcher.BeginInvoke(ShowLogFallbackWarning); }
+            catch (InvalidOperationException) { }
+        }
+
+        private void ShowLogFallbackWarning()
+        {
+            var warning = Logs.FallbackWarning;
+            if (string.IsNullOrEmpty(warning)) return;
+            Status = warning;
+            LogWarningTooltip = $"Общая папка журнала недоступна. Временный файл: {Logs.FallbackPath}";
         }
 
         private double _Progress = 1;
