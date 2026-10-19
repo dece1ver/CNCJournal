@@ -189,6 +189,9 @@ namespace remeLog.Infrastructure
 
         public List<string> MachineInspectionCalendarSelectedMachines { get; set; } = new();
 
+        /// <summary> Выбранные станки для автозакрытия пустых суток в пакетном окне. </summary>
+        public List<string> BatchAutoCloseSelectedMachines { get; set; } = new();
+
 
         /// <summary> Режим отладки </summary>
         public bool DebugMode

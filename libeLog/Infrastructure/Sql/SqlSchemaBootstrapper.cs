@@ -793,6 +793,24 @@ namespace libeLog.Infrastructure.Sql
                 .AddIndex(new[] { "PartGuid" },    name: "IX_ai_part_flags_part")
                 .Build(),
 
+            // История слепок времён кнопкой «Слепить детали»: Guid строк без FK,
+            // чтобы разбор причин переживал удаление самих деталей.
+            new TableBuilder("part_snap_log")
+                .AddIdColumn()
+                .AddStringColumn("Machine", 50, false)
+                .AddSmallDateTimeColumn("ShiftDate", false)
+                .AddStringColumn("Shift", 10, false)
+                .AddGuidColumn("PrevPartGuid", nullable: false)
+                .AddGuidColumn("NextPartGuid", nullable: false)
+                .AddStringColumn("NextPartName", 255)
+                .AddSmallDateTimeColumn("OldStartSetupTime", false)
+                .AddSmallDateTimeColumn("NewStartSetupTime", false)
+                .AddIntColumn("GapMinutes", false)
+                .AddStringColumn("SnappedBy", 128, false)
+                .AddDateTimeColumn("SnappedAt", false)
+                .AddIndex(new[] { "Machine", "ShiftDate" }, name: "IX_part_snap_log_machine_date")
+                .Build(),
+
         };
     }
 }

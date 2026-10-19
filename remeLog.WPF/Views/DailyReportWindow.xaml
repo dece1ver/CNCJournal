@@ -158,8 +158,23 @@
                         <Border Grid.Row="0" Grid.Column="2" Grid.RowSpan="7" Margin="7" BorderBrush="{DynamicResource Areopag.Line}" BorderThickness="1"/>
 
                         <TextBlock Grid.Row="0" Grid.Column="3" Text="Комментарий мастера по дневной смене:"/>
-                        <TextBox Grid.Row="1" Grid.Column="3" Grid.RowSpan="6" Text="{Binding DayMasterComment}" TextWrapping="Wrap" AcceptsReturn="True"
+                        <TextBox Grid.Row="1" Grid.Column="3" Grid.RowSpan="6" Text="{Binding DayMasterComment, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" TextWrapping="Wrap" AcceptsReturn="True"
                                  Style="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
+                        <!-- Подсказка поверх пустого поля, когда комментарий обязателен, но отсутствует -->
+                        <TextBlock Grid.Row="1" Grid.Column="3" Grid.RowSpan="6" Text="требуется уточняющий комментарий"
+                                   VerticalAlignment="Top" Margin="6 4 0 0" IsHitTestVisible="False"
+                                   Foreground="{DynamicResource Areopag.Alert}" Opacity="0.55">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DayMasterCommentMissing}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
 
                         <Border Grid.Row="0" Grid.Column="4" Grid.RowSpan="7" Margin="7" BorderBrush="{DynamicResource Areopag.Line}" BorderThickness="1"/>
 
@@ -326,8 +341,23 @@
                         <Border Grid.Row="0" Grid.Column="2" Grid.RowSpan="7" Margin="7" BorderBrush="{DynamicResource Areopag.Line}" BorderThickness="1"/>
 
                         <TextBlock Grid.Row="0" Grid.Column="3" Text="Комментарий мастера по ночной смене:"/>
-                        <TextBox Grid.Row="1" Grid.Column="3" Grid.RowSpan="6" Text="{Binding NightMasterComment}" TextWrapping="Wrap" AcceptsReturn="True"
+                        <TextBox Grid.Row="1" Grid.Column="3" Grid.RowSpan="6" Text="{Binding NightMasterComment, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" TextWrapping="Wrap" AcceptsReturn="True"
                                  Style="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
+                        <!-- Подсказка поверх пустого поля, когда комментарий обязателен, но отсутствует -->
+                        <TextBlock Grid.Row="1" Grid.Column="3" Grid.RowSpan="6" Text="требуется уточняющий комментарий"
+                                   VerticalAlignment="Top" Margin="6 4 0 0" IsHitTestVisible="False"
+                                   Foreground="{DynamicResource Areopag.Alert}" Opacity="0.55">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding NightMasterCommentMissing}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
 
                         <Border Grid.Row="0" Grid.Column="4" Grid.RowSpan="7" Margin="7" BorderBrush="{DynamicResource Areopag.Line}" BorderThickness="1"/>
 

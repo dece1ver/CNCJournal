@@ -973,6 +973,24 @@
         </Canvas>
     </Viewbox>
 
+    <!-- Магнит-присасывание (слепка деталей встык).
+         Цвета из палитры, чтобы иконка была видна в тёмной теме. -->
+    <Viewbox x:Key="SnapParts.Themed" Width="16" Height="16" x:Shared="False">
+        <Canvas Width="16" Height="16">
+            <Path Data="M4.5,12.5 L4.5,7.5 A3.5,3.5 0 0 1 11.5,7.5 L11.5,12.5"
+                  Fill="Transparent"
+                  Stroke="{DynamicResource Areopag.IconRed}"
+                  StrokeThickness="3"
+                  SnapsToDevicePixels="True"/>
+            <Path Data="M3,11 H6 V14 H3 Z"
+                  Fill="{DynamicResource Areopag.IconGrey}"
+                  SnapsToDevicePixels="True"/>
+            <Path Data="M10,11 H13 V14 H10 Z"
+                  Fill="{DynamicResource Areopag.IconGrey}"
+                  SnapsToDevicePixels="True"/>
+        </Canvas>
+    </Viewbox>
+
     <Viewbox x:Key="DeleteFilter.Themed" Width="16 " Height="16" x:Shared="False">
         <Rectangle Width="16 " Height="16">
             <Rectangle.Resources>

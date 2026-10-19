@@ -46,19 +46,19 @@ public class AgentDataSourceTests
     // ── Парсер «Фамилия И.О.» ──
 
     [Theory]
-    [InlineData("Крафт А.С.", "Крафт", "А", "С")]
-    [InlineData("Крафт А С", "Крафт", "А", "С")]
-    [InlineData("Крафт АС", "Крафт", "А", "С")]
-    [InlineData("Крафт А.", "Крафт", "А", null)]
-    [InlineData("Крафт", "Крафт", null, null)]
+    [InlineData("Соколов А.С.", "Соколов", "А", "С")]
+    [InlineData("Соколов А С", "Соколов", "А", "С")]
+    [InlineData("Соколов АС", "Соколов", "А", "С")]
+    [InlineData("Соколов А.", "Соколов", "А", null)]
+    [InlineData("Соколов", "Соколов", null, null)]
     // Полное ФИО модель передаёт после get_operator_info. Раньше инициалы
     // склеивались из букв запроса и отчество выходило «л» (вторая буква слова
     // «Алексей») — запись отбрасывалась как «однофамилец», и модель отвечала
-    // «данных нет» при существующей записи (кейс «что делал Крафт во вторник»).
-    [InlineData("Крафт Алексей Сергеевич", "Крафт", "А", "С")]
-    [InlineData("Крафт  Алексей   Сергеевич", "Крафт", "А", "С")]
-    [InlineData("Крафт Алексей", "Крафт", "А", null)]
-    [InlineData("Хомутов Андрей Борисович", "Хомутов", "А", "Б")]
+    // «данных нет» при существующей записи (кейс «что делал Соколов во вторник»).
+    [InlineData("Соколов Алексей Сергеевич", "Соколов", "А", "С")]
+    [InlineData("Соколов  Алексей   Сергеевич", "Соколов", "А", "С")]
+    [InlineData("Соколов Алексей", "Соколов", "А", null)]
+    [InlineData("Иванов Андрей Борисович", "Иванов", "А", "Б")]
     public void OperatorQueryParser_Forms(string query, string last, string? fi, string? pi)
     {
         var parsed = OperatorQueryParser.Parse(query);
@@ -182,11 +182,11 @@ public class AgentDataSourceTests
     [Fact]
     public async Task OperatorInfo_Found()
     {
-        var ops = new List<OperatorInfo> { new("Крафт", "Андрей", "Сергеевич", 5, true) };
+        var ops = new List<OperatorInfo> { new("Соколов", "Андрей", "Сергеевич", 5, true) };
         var r = await AgentTools.Execute(Request(), new StubSource(operators: ops),
-            "get_operator_info", """{"query":"Крафт А.С."}""");
+            "get_operator_info", """{"query":"Соколов А.С."}""");
         using var doc = JsonDocument.Parse(r);
-        Assert.Equal("Крафт", doc.RootElement[0].GetProperty("фамилия").GetString());
+        Assert.Equal("Соколов", doc.RootElement[0].GetProperty("фамилия").GetString());
         Assert.Equal(5, doc.RootElement[0].GetProperty("разряд").GetInt32());
         Assert.True(doc.RootElement[0].GetProperty("активен").GetBoolean());
     }
@@ -204,7 +204,7 @@ public class AgentDataSourceTests
     {
         // Без БД операторов неоткуда взять — честный текст, не выдумка.
         var r = await AgentTools.Execute(Request(), RequestAgentDataSource.Instance,
-            "get_operator_info", """{"query":"Крафт А.С."}""");
+            "get_operator_info", """{"query":"Соколов А.С."}""");
         Assert.Contains("не найден", r);
     }
 

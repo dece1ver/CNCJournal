@@ -35,7 +35,7 @@ namespace remeLog.Core.Services
                 : string.Join(Separator, list.Select(ShortName));
         }
 
-        /// <summary> «Мартынов Дмитрий Юрьевич» → «Мартынов Д.Ю.»; одно слово не трогаем. </summary>
+        /// <summary> «Петров Дмитрий Юрьевич» → «Петров Д.Ю.»; одно слово не трогаем. </summary>
         public static string ShortName(string? fullName)
         {
             var tokens = (fullName ?? "").Trim()

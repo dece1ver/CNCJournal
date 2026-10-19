@@ -5,7 +5,7 @@ namespace AiService.Services;
 /// из ответа LLM. Промпт требует дословного копирования строки, но модели
 /// перефразируют — поэтому кроме точного совпадения принимаем совпадение
 /// по детали + типу сигнала. Типов сейчас два (см. HardRuleEvaluator):
-/// «машинное время >= норматива» и «оператор сообщает о нормативе/технологии».
+/// «машинное время > норматива» и «оператор сообщает о нормативе/технологии».
 /// </summary>
 public static class SoftSignalMatcher
 {
@@ -39,12 +39,13 @@ public static class SoftSignalMatcher
     }
 
     /// <summary>
-    /// Клиентский сигнал-эхо remeLog «Машинное время X >= штучного норматива Y» —
+    /// Клиентский сигнал-эхо remeLog «Машинное время X > штучного норматива Y» —
     /// дубль soft-сигнала о машинном времени (см. AiServiceClient и RequestShaper).
+    /// Старые клиенты и сохранённые запросы присылают «>=» — тоже принимаем.
     /// </summary>
     public static bool IsMachiningTimeEcho(string clientSignal) =>
         clientSignal.Contains("Машинное время", StringComparison.OrdinalIgnoreCase)
-        && clientSignal.Contains(">= штучного норматива", StringComparison.OrdinalIgnoreCase);
+        && clientSignal.Contains("штучного норматива", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Клиентский сигнал-эхо remeLog «Оператор сообщает о некорректном нормативе

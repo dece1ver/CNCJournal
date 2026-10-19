@@ -137,6 +137,7 @@ namespace remeLog.ViewModels
             MarkDayEscalatedCommand = new LambdaCommand(OnMarkDayEscalatedExecuted, CanMarkDayEscalatedExecute);
             TogglePartFlagCommand = new LambdaCommand(OnTogglePartFlagExecuted);
             AnalyzeDayCommand = new LambdaCommand(OnAnalyzeDayExecuted, CanAnalyzeDayExecute);
+            SnapPartsCommand = new LambdaCommand(OnSnapPartsExecuted, CanSnapPartsExecute);
             ShowAiExplanationCommand = new LambdaCommand(OnShowAiExplanationExecuted, CanShowAiExplanationExecute);
             OpenCommentEditorCommand = new LambdaCommand(OnOpenCommentEditorExecuted);
             CloseCommentEditorCommand = new LambdaCommand(OnCloseCommentEditorExecuted);
@@ -2926,6 +2927,111 @@ namespace remeLog.ViewModels
         private bool CanMarkDayEscalatedExecute(object _) => IsSingleMachineSingleDay && !Parts.Any(p => p.NeedUpdate);
         #endregion
 
+        #region SnapParts
+        public ICommand SnapPartsCommand { get; private set; } = null!;
+
+        /// <summary> Максимальный зазор/перекрытие для автослепки, мин. </summary>
+        private const int SnapMaxGapMinutes = 180;
+
+        private static string PluralizeSnap(int n)
+        {
+            var m10 = n % 10;
+            var m100 = n % 100;
+            var word = m10 == 1 && m100 != 11 ? "слепка"
+                : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? "слепки" : "слепок";
+            return $"{n} {word}";
+        }
+
+        private bool CanSnapPartsExecute(object _)
+            => IsSingleMachineSingleDay && Parts.Count > 1
+               && !Parts.Any(p => p.NeedUpdate) && !InProgress;
+
+        // Слепка деталей встык в рамках смены: начало следующей детали тянется
+        // к концу предыдущей. День и ночь не смешиваются, к границам смены
+        // не тянем. Каждая слепка пишется в part_snap_log (кто/когда/что).
+        private async void OnSnapPartsExecuted(object _)
+        {
+            if (!IsSingleMachineSingleDay) return;
+            if (Parts.Any(p => p.NeedUpdate))
+            {
+                MessageBoxWindow.Show(
+                    "Сначала запишите несохранённые правки («Записать»).",
+                    "Слепка деталей", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine
+                          ?? PartsInfo.Machine;
+            var date = FromDate.Date;
+
+            var snap = PartSnapper.Plan(Parts, SnapMaxGapMinutes);
+            var plans = snap.Plans;
+            var skipped = snap.SkippedInvariant;
+            var skippedDowntime = snap.SkippedPartial;
+
+            if (plans.Count == 0)
+            {
+                MessageBoxWindow.Show(
+                    "Стыков для слепки нет: детали уже стоят встык или зазоры больше 180 мин."
+                    + (skipped > 0 ? $" Пропущено стыков: {skipped} (конец предыдущей позже начала изготовления следующей)." : "")
+                    + (skippedDowntime > 0 ? $" Пропущено стыков: {skippedDowntime} (сдвиг увёл бы частичную наладку в минус)." : ""),
+                    "Слепка деталей", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var preview = new StringBuilder();
+            preview.AppendLine($"Станок {machine}, {date:dd.MM.yyyy}.");
+            preview.AppendLine("Начало следующей детали тянется к концу предыдущей:");
+            foreach (var (_, next, oldStart, newStart, gap, oldPartial, newPartial) in plans)
+                preview.AppendLine($"• {next.PartName} (Уст.{next.Setup}): {oldStart:HH:mm} → {newStart:HH:mm} (зазор {gap} мин)"
+                    + (Math.Abs(newPartial - oldPartial) > 1e-9 ? $", частичная {oldPartial:0.#} → {newPartial:0.#} мин" : ""));
+            if (skipped > 0)
+                preview.AppendLine($"Пропущено стыков: {skipped} (конец предыдущей позже начала изготовления следующей).");
+            if (skippedDowntime > 0)
+                preview.AppendLine($"Пропущено стыков: {skippedDowntime} (сдвиг увёл бы частичную наладку в минус).");
+            var answer = MessageBoxWindow.Show(
+                preview.ToString(), "Слепка деталей",
+                MessageBoxButton.YesNo, MessageBoxImage.Question,
+                MessageBoxDefaultButton.No);
+            if (answer != MessageBoxResult.Yes) return;
+
+            var by = Environment.UserName;
+            var at = DateTime.Now;
+            var logs = new List<PartSnapLog>();
+            foreach (var (prev, next, oldStart, newStart, gap, _, newPartial) in plans)
+            {
+                next.StartSetupTime = newStart; // сеттер ставит NeedUpdate
+                if (Math.Abs(next.PartialSetupTime - newPartial) > 1e-9)
+                    next.PartialSetupTime = newPartial;
+                logs.Add(new PartSnapLog
+                {
+                    Machine = machine,
+                    ShiftDate = date,
+                    Shift = next.Shift,
+                    PrevPartGuid = prev.Guid,
+                    NextPartGuid = next.Guid,
+                    NextPartName = next.PartName,
+                    OldStartSetupTime = oldStart,
+                    NewStartSetupTime = newStart,
+                    GapMinutes = gap,
+                    SnappedBy = by,
+                    SnappedAt = at,
+                });
+            }
+
+            Status = "Сохранение слепки...";
+            if (!await SaveDirtyPartsAsync()) { Status = string.Empty; return; }
+
+            var logResult = await Database.SavePartSnapLogsAsync(logs);
+            await LoadPartsAsync();
+            Status = logResult.IsOk
+                ? $"Слепка готова: {PluralizeSnap(plans.Count)}"
+                : $"Слепка сохранена ({PluralizeSnap(plans.Count)}), но история не записалась: {logResult.Error}";
+            await Task.Delay(2500);
+            Status = string.Empty;
+        }
+        #endregion
+
         #region TogglePartFlag
         public ICommand TogglePartFlagCommand { get; private set; } = null!;
         private void OnTogglePartFlagExecuted(object p)
@@ -3330,8 +3436,10 @@ namespace remeLog.ViewModels
                 : AiFeedbackText.TrimEnd() + " " + tag;
         }
 
+        // Пустые сутки тоже анализируются: отсутствие записей само по себе ок,
+        // решают отчёты мастера (та же логика, что пакетное автозакрытие пустых).
         private bool CanAnalyzeDayExecute(object _) =>
-            Util.HasFeature(RemeLogFeature.Ai) && IsAiAvailable && IsSingleMachineSingleDay && Parts.Count > 0 && !InProgress;
+            Util.HasFeature(RemeLogFeature.Ai) && IsAiAvailable && IsSingleMachineSingleDay && !InProgress;
 
         #endregion
 

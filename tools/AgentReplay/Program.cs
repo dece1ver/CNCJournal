@@ -74,8 +74,8 @@ foreach (var file in files)
         var outcome = await agent.AnalyzeAsync(req, hard, shift, CancellationToken.None);
         sw.Stop();
 
-        var (agentRR, agentSigCount, agentSigTexts, agentExplanation, agentDowngraded) = outcome.FinalJson != null
-            ? ExtractVerdict(outcome.FinalJson) : ((bool?)null, -1, new List<string>(), "", new List<string>());
+        var (agentRR, agentSigCount, agentSigTexts, agentExplanation, agentDowngraded, agentShiftIssues) = outcome.FinalJson != null
+            ? ExtractVerdict(outcome.FinalJson) : ((bool?)null, -1, new List<string>(), "", new List<string>(), new List<string>());
 
         // Пайплайн-уровень (зеркало формулы AnalysisController): сырое решение модели
         // складывается с детерминированным контуром. Сравнение сырого requires_review
@@ -99,6 +99,7 @@ foreach (var file in files)
             agentSignalTexts = agentSigTexts.Take(6).ToList(),
             agentExplanation = agentExplanation,
             agentDowngraded = agentDowngraded,
+            agentShiftIssues = agentShiftIssues.Take(6).ToList(),
             hardMust = hard.MustEscalate,
             shiftMust = shift.MustEscalate,
             softLeft = notDowngraded.Count,
@@ -121,7 +122,7 @@ foreach (var file in files)
 File.WriteAllText(opts.Out, JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
 Console.WriteLine($"Готово: {results.Count} строк → {opts.Out}");
 
-static (bool? rr, int signals, List<string> texts, string explanation, List<string> downgraded) ExtractVerdict(string raw)
+static (bool? rr, int signals, List<string> texts, string explanation, List<string> downgraded, List<string> shiftIssues) ExtractVerdict(string raw)
 {
     try
     {
@@ -130,7 +131,7 @@ static (bool? rr, int signals, List<string> texts, string explanation, List<stri
         if (thinkEnd >= 0) text = text[(thinkEnd + "</think>".Length)..].Trim();
         var start = text.IndexOf('{');
         var end = text.LastIndexOf('}');
-        if (start < 0 || end <= start) return (null, -1, [], "", []);
+        if (start < 0 || end <= start) return (null, -1, [], "", [], []);
         using var doc = JsonDocument.Parse(text[start..(end + 1)]);
         var root = doc.RootElement;
         bool? rr = root.TryGetProperty("requires_review", out var r) && r.ValueKind == JsonValueKind.True ? true
@@ -141,9 +142,11 @@ static (bool? rr, int signals, List<string> texts, string explanation, List<stri
         var expl = root.TryGetProperty("explanation", out var e) ? e.GetString() ?? "" : "";
         var down = root.TryGetProperty("downgraded_signals", out var d) && d.ValueKind == JsonValueKind.Array
             ? d.EnumerateArray().Select(e => e.GetString() ?? "").Where(t => t.Length > 0).ToList() : [];
-        return (rr, sig, texts, expl, down);
+        var shift = root.TryGetProperty("shift_report_issues", out var sh) && sh.ValueKind == JsonValueKind.Array
+            ? sh.EnumerateArray().Select(e => e.GetString() ?? "").Where(t => t.Length > 0).ToList() : [];
+        return (rr, sig, texts, expl, down, shift);
     }
-    catch (JsonException) { return (null, -1, [], "", []); }
+    catch (JsonException) { return (null, -1, [], "", [], []); }
 }
 
 static string Fmt(bool? v) => v.HasValue ? v.Value.ToString() : "?";

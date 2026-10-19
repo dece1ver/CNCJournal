@@ -344,9 +344,33 @@ public class HardRuleFlaggedTests
     public void Evaluate_MachiningTime_ClientSignalPresent_TakenOverAsHard()
     {
         // Кейс 06.10.2026, HTC420 №2 17.09: одиночный клиентский сигнал
-        // «Машинное время 10мин >= ... (100%)» ни во что не превращался
+        // «Машинное время 11мин > ... (110%)» ни во что не превращался
         // (правило «2+» его не ловит) — сервер забирает текст клиента
         // дословно (дубля текстом нет) и решает вердикт/флаг здесь же.
+        var part = new PartContext
+        {
+            PartName = "Корпус",
+            Order = "З1",
+            Setup = 1,
+            MachiningTime = 11,
+            SingleProductionTimePlan = 10,
+            ProductionRatio = 0.99,
+            FinishedCount = 18,
+        };
+        part.Signals.Add("Машинное время 11мин > штучного норматива 10мин (110%)");
+
+        var result = HardRuleEvaluator.Evaluate(Request(part));
+
+        Assert.True(result.MustEscalate);
+        Assert.Contains("Машинное время 11мин > штучного норматива 10мин (110%)", result.HardSignals);
+        Assert.Single(result.HardSignals, s => s.Contains("Машинное время"));
+    }
+
+    [Fact]
+    public void Evaluate_MachiningTime_Equality_NoSignal()
+    {
+        // Решение владельца 19.10.2026: равенство м/в нормативу (100%) — не
+        // аномалия. Ни клиентского эха, ни серверного сигнала быть не должно.
         var part = new PartContext
         {
             PartName = "Корпус",
@@ -357,13 +381,11 @@ public class HardRuleFlaggedTests
             ProductionRatio = 0.99,
             FinishedCount = 18,
         };
-        part.Signals.Add("Машинное время 10мин >= штучного норматива 10мин (100%)");
 
         var result = HardRuleEvaluator.Evaluate(Request(part));
 
-        Assert.True(result.MustEscalate);
-        Assert.Contains("Машинное время 10мин >= штучного норматива 10мин (100%)", result.HardSignals);
-        Assert.Single(result.HardSignals, s => s.Contains("Машинное время"));
+        Assert.DoesNotContain(result.HardSignals, s => s.Contains("Машинное время"));
+        Assert.DoesNotContain(result.SoftSignals, s => s.Contains("Машинное время"));
     }
 
     [Fact]
@@ -386,19 +408,19 @@ public class HardRuleFlaggedTests
             MachiningTime = 4.8,
             MasterMachiningComment = "Двустаночное обслуживание",
         };
-        part.Signals.Add("Машинное время 4.8мин >= штучного норматива 2.5мин (192%)");
+        part.Signals.Add("Машинное время 4.8мин > штучного норматива 2.5мин (192%)");
 
         var result = HardRuleEvaluator.Evaluate(Request(part));
 
         Assert.DoesNotContain(result.HardSignals, s => s.Contains("Машинное время"));
-        Assert.Contains("Машинное время 4.8мин >= штучного норматива 2.5мин (192%)", result.SoftSignals);
+        Assert.Contains("Машинное время 4.8мин > штучного норматива 2.5мин (192%)", result.SoftSignals);
         Assert.False(result.MustEscalate);
     }
 
     [Fact]
     public void Evaluate_NonSerial_SkipsMachiningTime()
     {
-        // Несерийный станок (30.09.2026): «машинное время >= норматива» не оценивается,
+        // Несерийный станок (30.09.2026): «машинное время > норматива» не оценивается,
         // время на изготовление здесь не влияет. Клиентский сигнал при этом убирает
         // RequestShaper, серверный — не создаётся здесь.
         var part = new PartContext
@@ -426,7 +448,7 @@ public class HardRuleFlaggedTests
         // Клиентский сигнал убирается на входе — иначе он попадёт и в правило
         // «2+ сигналов от системы», и в промпт, и в список для аналитика.
         var part = new PartContext { PartName = "Седло", Order = "З1", Setup = 1 };
-        part.Signals.Add("Машинное время 4.7мин >= штучного норматива 4мин (117%)");
+        part.Signals.Add("Машинное время 4.7мин > штучного норматива 4мин (117%)");
         part.Signals.Add("Оператор сообщает о некорректном нормативе или технологии");
         var req = Request(part);
         req.IsSerialMachine = false;

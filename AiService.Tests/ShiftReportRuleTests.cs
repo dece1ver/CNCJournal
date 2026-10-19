@@ -47,7 +47,7 @@ public class ShiftReportRuleTests
     [Fact]
     public void Evaluate_CleanDay_NoSignals()
     {
-        var req = Request(Day(stored: 41, fresh: 41));
+        var req = Request(Day(stored: 30, fresh: 30));
 
         var result = ShiftReportRuleEvaluator.Evaluate(req);
 
@@ -368,13 +368,13 @@ public class ShiftReportRuleTests
     [Fact]
     public void Summarize_CleanDay_OkLine()
     {
-        var req = Request(Day(stored: 41, fresh: 41));
+        var req = Request(Day(stored: 30, fresh: 30));
         var det = ShiftReportRuleEvaluator.Evaluate(req);
 
         var summary = ShiftReportRuleEvaluator.Summarize(req, det);
 
         Assert.Single(summary);
-        Assert.Contains("41 мин", summary[0]);
+        Assert.Contains("30 мин", summary[0]);
         Assert.Contains("— ок", summary[0]);
     }
 
@@ -529,7 +529,7 @@ public class ShiftReportRuleTests
         [
             "КПД изготовления 71% объяснён заменой сверла",
             "Низкий КПД в ночную смену",
-            "Машинное время 13мин >= норматива",
+            "Машинное время 13мин > норматива",
         ]);
 
         Assert.Equal(3, data.Count);
@@ -678,6 +678,80 @@ public class ShiftReportRuleTests
     }
 
     [Fact]
+    public void DropCommentDemands_PartialAbsenceEmptyComment_Kept()
+    {
+        // Решение владельца 19.10.2026: «Отсутствие оператора» самодостаточно только
+        // при простое целиком; при частичном свыше 5% без комментария требование
+        // комментария легитимно — не резать.
+        var req = IdleNightRequest();
+        req.ShiftReports[1].FreshUnspecifiedDowntimes = 400;
+        req.ShiftReports[1].HasParts = true;
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropSelfSufficientCommentDemands(
+            req, ["Смена Ночь: отсутствует комментарий к частичному простою"]);
+
+        Assert.Single(kept);
+        Assert.Empty(dropped);
+    }
+
+    [Fact]
+    public void DropCommentDemands_PartialAbsenceWithComment_Dropped()
+    {
+        // Комментарий есть — требовать нечего, режется как раньше.
+        var req = IdleNightRequest();
+        req.ShiftReports[1].FreshUnspecifiedDowntimes = 400;
+        req.ShiftReports[1].HasParts = true;
+        req.ShiftReports[1].MasterComment = "оператора забрали на соседний станок";
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropSelfSufficientCommentDemands(
+            req, ["Смена Ночь: требуется комментарий к частичному простою"]);
+
+        Assert.Empty(kept);
+        Assert.Single(dropped);
+    }
+
+    [Fact]
+    public void DropCommentDemands_PartialOtherReason_Dropped()
+    {
+        // Новое правило — только «Отсутствие оператора»: «Ремонт оборудования»
+        // при частичном без комментария по-прежнему самодостаточно.
+        var req = IdleNightRequest();
+        req.ShiftReports[1].FreshUnspecifiedDowntimes = 400;
+        req.ShiftReports[1].HasParts = true;
+        req.ShiftReports[1].DowntimeReason = "Ремонт оборудования";
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropSelfSufficientCommentDemands(
+            req, ["Смена Ночь: отсутствует комментарий к частичному простою"]);
+
+        Assert.Empty(kept);
+        Assert.Single(dropped);
+    }
+
+    [Fact]
+    public void DropCommentDemands_PartialAbsenceBelowThreshold_Dropped()
+    {
+        // Ниже пола 5% (20/660 ≈ 3%) — как раньше ничего не требуется.
+        var req = IdleNightRequest();
+        req.ShiftReports[0].FreshUnspecifiedDowntimes = 20;
+        req.ShiftReports[0].DowntimeReason = "Отсутствие оператора";
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropSelfSufficientCommentDemands(
+            req, ["Смена День: отсутствует комментарий к простою"]);
+
+        Assert.Empty(kept);
+        Assert.Single(dropped);
+    }
+
+    [Fact]
+    public void DropCommentDemands_FullAbsenceModelOverflag_Dropped()
+    {
+        // Живой кейс L230A 10.10 (реплей v26): модель флагает и полный простой
+        // ночи — дропы чистят, как задумано (полный простой молчит всегда).
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropSelfSufficientCommentDemands(
+            IdleNightRequest(),
+            ["Смена Ночь: Причина «Отсутствие оператора» не релевантна, комментарий отсутствует"]);
+
+        Assert.Empty(kept);
+        Assert.Single(dropped);
+    }
+
+    [Fact]
     public void DropReasonDemands_BezUkazaniya_Dropped()
     {
         // «без указания причины» — та же жалоба на отсутствие, что «не указана».
@@ -703,7 +777,7 @@ public class ShiftReportRuleTests
     [Fact]
     public void DayDowntimeDemand_BelowThreshold_FullChainDropped()
     {
-        // Сквозная цепочка скриншота: эхо из signals → порог 10% → вопрос снят.
+        // Сквозная цепочка скриншота: эхо из signals → порог 5% → вопрос снят.
         var req = IdleNightRequest();
         req.ShiftReports[0].StoredUnspecifiedDowntimes = 22;
         req.ShiftReports[0].FreshUnspecifiedDowntimes = 22;
@@ -877,7 +951,7 @@ public class ShiftReportRuleTests
     [Fact]
     public void Preverdict_SmallIdle_Clear()
     {
-        // Простой 3% без причины — причина не требуется (порог 10%).
+        // Простой 3% без причины — причина не требуется (порог 5%).
         var req = Request(Day(stored: 22, fresh: 22));
         var det = ShiftReportRuleEvaluator.Evaluate(req);
 
@@ -966,15 +1040,15 @@ public class ShiftReportRuleTests
     [Fact]
     public void DropFalseMasterClaims_MasterSpecified_Dropped()
     {
-        // Кейс 06.10.2026, Rontek HTC420 №1 28.09: мастер «Зуев Максим Борисович»
+        // Кейс 06.10.2026, Rontek HTC420 №1 28.09: мастер «Зайцев Максим Борисович»
         // указан в отчёте, а модель написала «мастер не указан в системе» и
-        // «Оператор Зуев ... отсутствует в системе» (искала мастера в операторах).
-        var req = Request(Day(master: "Зуев Максим Борисович", stored: 175, fresh: 175,
+        // «Оператор Зайцев ... отсутствует в системе» (искала мастера в операторах).
+        var req = Request(Day(master: "Зайцев Максим Борисович", stored: 175, fresh: 175,
             reason: "Отсутствие оператора", comment: "Работал на другом станке"));
 
         var (kept, dropped) = ShiftReportRuleEvaluator.DropFalseMasterClaims(req,
             ["Смена День: отсутствие оператора, но мастер не указан в системе",
-             "Смена День: Оператор Зуев Максим Борисович отсутствует в системе",
+             "Смена День: Оператор Зайцев Максим Борисович отсутствует в системе",
              "Смена День: комментарий не о простое"]);
 
         Assert.Equal(["Смена День: комментарий не о простое"], kept);
@@ -1003,7 +1077,7 @@ public class ShiftReportRuleTests
         // причина простоя. Кейс Rontek HTC420 №1 10.09: комментарий с детализацией
         // («Работа на другом станке Шпилька ...»), а модель написала
         // «без детализации в комментарии».
-        var req = Request(Day(master: "Зуев Максим Борисович", stored: 268, fresh: 268,
+        var req = Request(Day(master: "Зайцев Максим Борисович", stored: 268, fresh: 268,
             reason: "Другое",
             comment: "Работа на другом станке Шпилька А М24х160"));
 
@@ -1020,7 +1094,7 @@ public class ShiftReportRuleTests
     {
         // Правило только для пары (Отсутствие оператора/Другое + другой станок):
         // при «Ремонте оборудования» S1-релевантность остаётся за моделью.
-        var req = Request(Day(master: "Зуев Максим Борисович", stored: 268, fresh: 268,
+        var req = Request(Day(master: "Зайцев Максим Борисович", stored: 268, fresh: 268,
             reason: "Ремонт оборудования", comment: "работал на другом станке"));
 
         var (kept, dropped) = ShiftReportRuleEvaluator.DropTwoMachineRelevanceComplaints(req,
@@ -1037,7 +1111,7 @@ public class ShiftReportRuleTests
         // («перешёл на др. станок» — отправили/нет работы на своём) объясняет
         // отсутствие так же, как совмещение; различие важно только для
         // КПД/машвремени, а не для простоя.
-        var req = Request(Day(master: "Зуев Максим Борисович", stored: 200, fresh: 200,
+        var req = Request(Day(master: "Зайцев Максим Борисович", stored: 200, fresh: 200,
             reason: "Отсутствие оператора",
             comment: "перешел на др станок в связи с установкой вентиляции на рабочем месте"));
 
@@ -1061,7 +1135,7 @@ public class ShiftReportRuleTests
     {
         // Словарь по выгрузке cnc_shifts 06.10.2026: сокращения («др»), число
         // станков и «многостаночная» — та же релевантная причина простоя.
-        var req = Request(Day(master: "Зуев Максим Борисович", stored: 200, fresh: 200,
+        var req = Request(Day(master: "Зайцев Максим Борисович", stored: 200, fresh: 200,
             reason: "Другое", comment: comment));
 
         var (kept, dropped) = ShiftReportRuleEvaluator.DropTwoMachineRelevanceComplaints(req,
@@ -1076,7 +1150,7 @@ public class ShiftReportRuleTests
     {
         // «переезд станка в др цех» — содержит «др», но не «др стан»:
         // это не работа на другом станке, придирка сохраняется.
-        var req = Request(Day(master: "Зуев Максим Борисович", stored: 200, fresh: 200,
+        var req = Request(Day(master: "Зайцев Максим Борисович", stored: 200, fresh: 200,
             reason: "Другое", comment: "переезд станка в др цех"));
 
         var (kept, dropped) = ShiftReportRuleEvaluator.DropTwoMachineRelevanceComplaints(req,

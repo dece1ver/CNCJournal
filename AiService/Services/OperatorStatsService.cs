@@ -33,7 +33,7 @@ public sealed class OperatorStatsService(
 {
     /// <summary>Порог, с которого мастер требует причину неотмеченного простоя.
     /// Общий с ShiftReportRules.DowntimeReasonRatioThreshold.</summary>
-    public const double UnmarkedAttentionRatio = 0.1;
+    public const double UnmarkedAttentionRatio = 0.05;
 
     /// <summary>Частичная наладка, выше которой мастер просит объяснение
     /// (ShiftReportRules.PartialSetupAttentionRatio).</summary>

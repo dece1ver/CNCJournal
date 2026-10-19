@@ -75,7 +75,35 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode(o =>
-        o.ContentSecurityFrameAncestorsPolicy = "'self' http://winnum http://192.168.102.13");
+        o.ContentSecurityFrameAncestorsPolicy = FrameAncestorsPolicy());
+
+/// <summary>
+/// Политика предков фреймов: 'self' плюс хосты из конфига FrameAncestors:Hosts —
+/// массивом либо одной ссылкой ${ИМЯ} на переменную окружения со списком через «;»
+/// (как Database:ConnectionString в AiService). Хардкодить внутренние хосты в коде нельзя.
+/// </summary>
+string FrameAncestorsPolicy()
+{
+    var hosts = builder.Configuration.GetSection("FrameAncestors:Hosts").Get<string[]>()
+        ?? Array.Empty<string>();
+    if (hosts.Length == 1)
+    {
+        var single = (hosts[0] ?? "").Trim();
+        if (single.StartsWith("${", StringComparison.Ordinal) && single.EndsWith("}", StringComparison.Ordinal))
+        {
+            var name = single.Substring(2, single.Length - 3).Trim();
+            var fromEnv = string.IsNullOrWhiteSpace(name)
+                ? ""
+                : Environment.GetEnvironmentVariable(name) ?? "";
+            hosts = fromEnv.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+    }
+    var clean = hosts
+        .Select(h => (h ?? "").Trim())
+        .Where(h => h.Length > 0)
+        .Distinct(StringComparer.OrdinalIgnoreCase);
+    return string.Join(" ", (new[] { "'self'" }).Concat(clean));
+}
 
 app.MapPost("/account/login", async (HttpContext context, LoginAttemptLimiter limiter) =>
 {

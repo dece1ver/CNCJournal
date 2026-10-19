@@ -604,15 +604,15 @@ namespace remeLog.Infrastructure
             if (p.SingleProductionTimePlan <= 0 && hasOrder && string.IsNullOrWhiteSpace(p.EffectiveMachiningReason))
                 s.Add("Отсутствует норматив изготовления при реальном заказе — комментарий мастера не указан");
 
-            // Машинное время >= штучного норматива (условия синхронизированы с серверным HardRuleEvaluator).
+            // Машинное время > штучного норматива (условия синхронизированы с серверным HardRuleEvaluator).
             // Не шлём: при б/и (норматив штучный, изготовления не было), для штучных партий
             // (в отчёты не попадают, малая партия не показательна) и при КПД изготовления > 100%
             // (показатели не пострадали — эскалация подождёт проблем).
             if (!noProduction && machMins > 0.5 && p.SingleProductionTimePlan > 0
-                && machMins >= p.SingleProductionTimePlan
+                && machMins > p.SingleProductionTimePlan
                 && !p.IsSmallBatch
                 && !(p.ProductionRatio > 1))
-                s.Add($"Машинное время {machMins:0.#}мин >= штучного норматива {p.SingleProductionTimePlan:0.#}мин ({machMins / p.SingleProductionTimePlan:0%})");
+                s.Add($"Машинное время {machMins:0.#}мин > штучного норматива {p.SingleProductionTimePlan:0.#}мин ({machMins / p.SingleProductionTimePlan:0%})");
 
             // КПД частичной наладки < 70%
             if (p.PartialSetupTime > 0 && p.SetupTimePlan > 0

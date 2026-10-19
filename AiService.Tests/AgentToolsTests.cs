@@ -255,12 +255,12 @@ public class AgentToolsTests
     }
 
     [Theory]
-    [InlineData("Зуев Максим Борисович")]
-    [InlineData("Зуев М.Б.")]
+    [InlineData("Зайцев Максим Борисович")]
+    [InlineData("Зайцев М.Б.")]
     public void OperatorInfo_ShiftMaster_BlockedBeforeDb(string query)
     {
         // Кейс 06.10.2026, Rontek HTC420 №1 28.09: модель взяла мастера из отчёта
-        // смены и получила бы «не найден» — дальше записала «Оператор Зуев
+        // смены и получила бы «не найден» — дальше записала «Оператор Зайцев
         // отсутствует в системе». Мастера нет в cnc_operators по построению:
         // запрос не идёт в БД, ответ сразу объясняет роль.
         var req = Request();
@@ -269,7 +269,7 @@ public class AgentToolsTests
             Shift = "День",
             ShiftMinutes = 660,
             ReportExists = true,
-            Master = "Зуев Максим Борисович",
+            Master = "Зайцев Максим Борисович",
         });
         var r = AgentTools.Execute(req, "get_operator_info",
             "{\"query\":\"" + query + "\"}");
@@ -288,10 +288,10 @@ public class AgentToolsTests
             Shift = "День",
             ShiftMinutes = 660,
             ReportExists = true,
-            Master = "Зуев Максим Борисович",
+            Master = "Зайцев Максим Борисович",
         });
         var r = AgentTools.Execute(req, "get_operator_info",
-            """{"query":"Зуев А.С."}""");
+            """{"query":"Зайцев А.С."}""");
         Assert.Contains("не найден в cnc_operators", r);
     }
 

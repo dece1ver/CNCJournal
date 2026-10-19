@@ -129,12 +129,12 @@ public class FalsePositiveFilterTests
             Setup = 1,
             SingleProductionTimePlan = 4,
         };
-        part.Signals.Add("Машинное время 4.7мин >= штучного норматива 4мин (117%)");
+        part.Signals.Add("Машинное время 4.7мин > штучного норматива 4мин (117%)");
 
         var (filtered, _, removed) = FalsePositiveFilter.Apply(
             Request(part), NoHard, NoDowngraded,
             [
-                "[Седло клапана АР31-01-019_МСЗ03082026 ННГ] Машинное время 4,7мин >= норматива 4мин (118%)",
+                "[Седло клапана АР31-01-019_МСЗ03082026 ННГ] Машинное время 4,7мин > норматива 4мин (118%)",
                 "[Седло клапана АР31-01-019_МСЗ03082026 ННГ] КПД наладки 40% без объяснения",
             ]);
 
@@ -173,13 +173,13 @@ public class FalsePositiveFilterTests
     }
 
     [Theory]
-    [InlineData("[Гильза] Машинное время 4,7мин >= норматива 4мин (118%)")]
+    [InlineData("[Гильза] Машинное время 4,7мин > норматива 4мин (118%)")]
     [InlineData("[Гильза] Машинное время превышает норматив — требует разбора")]
     [InlineData("[Гильза] Изготовление не по техпроцессу: машинное время 1,8мин при нормативе 5, детали делали не по карте")]
     [InlineData("[Гильза] Оператор сообщает о некорректном нормативе, машинное время ниже плана")]
     public void LowMachiningTimeClaim_Kept_RealFindings(string signal)
     {
-        // Аномалия «машинное время >= норматива» — правило настоящее, режется только
+        // Аномалия «машинное время > норматива» — правило настоящее, режется только
         // претензия «ниже норматива». Явная жалоба/причина с числами — тоже сигнал.
         var part = new PartContext
         {
@@ -694,7 +694,7 @@ public class FalsePositiveFilterTests
             NonSerialRequest(), NoHard, NoDowngraded,
             ["[Гильза] КПД изготовления 44% ниже нормы",
              "[Гильза] КПД изготовления вне нормы",
-             "[Гильза] Машинное время 5мин >= норматива 5мин (100%)",
+             "[Гильза] Машинное время 5мин > норматива 5мин (100%)",
              "[Гильза] Причина отклонения в наладке: нормативы некорректны"]);
 
         Assert.Single(filtered);
@@ -788,12 +788,12 @@ public class FalsePositiveFilterTests
     [Fact]
     public void ShiftMasterRoleConfusion_NamedMasterAsOperator_Removed()
     {
-        // Кейс 06.10.2026, Rontek HTC420 №1 28.09: «Оператор Зуев ... отсутствует
-        // в системе» — а Зуев в отчёте мастер, операторов с такой фамилией нет
+        // Кейс 06.10.2026, Rontek HTC420 №1 28.09: «Оператор Зайцев ... отсутствует
+        // в системе» — а Зайцев в отчёте мастер, операторов с такой фамилией нет
         // по построению.
         var (filtered, _, removed) = FalsePositiveFilter.Apply(
-            ReportRequest("День", "Зуев Максим Борисович"), NoHard, NoDowngraded,
-            ["Оператор Зуев Максим Борисович отсутствует в системе"]);
+            ReportRequest("День", "Зайцев Максим Борисович"), NoHard, NoDowngraded,
+            ["Оператор Зайцев Максим Борисович отсутствует в системе"]);
 
         Assert.Empty(filtered);
         Assert.Single(removed);
@@ -802,13 +802,13 @@ public class FalsePositiveFilterTests
     [Fact]
     public void ShiftMasterRoleConfusion_UntaggedAbsence_AllReportsHaveMasters_Removed()
     {
-        var req = ReportRequest("День", "Зуев Максим Борисович");
+        var req = ReportRequest("День", "Зайцев Максим Борисович");
         req.ShiftReports.Add(new ShiftReportContext
         {
             Shift = "Ночь",
             ShiftMinutes = 630,
             ReportExists = true,
-            Master = "Зуев Максим Борисович",
+            Master = "Зайцев Максим Борисович",
         });
         var (filtered, _, removed) = FalsePositiveFilter.Apply(
             req, NoHard, NoDowngraded,
@@ -823,7 +823,7 @@ public class FalsePositiveFilterTests
     {
         // Содержательная претензия без ролевой путаницы — сохраняется.
         var (filtered, _, removed) = FalsePositiveFilter.Apply(
-            ReportRequest("День", "Зуев Максим Борисович"), NoHard, NoDowngraded,
+            ReportRequest("День", "Зайцев Максим Борисович"), NoHard, NoDowngraded,
             ["Смена День: комментарий не о простое"]);
 
         Assert.Single(filtered);

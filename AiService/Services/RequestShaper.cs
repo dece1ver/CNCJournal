@@ -12,7 +12,7 @@ public static class RequestShaper
 {
     public static void Shape(AnalyzeRequest request)
     {
-        // Несерийный станок: изготовление не оценивается, поэтому «машинное время >=
+        // Несерийный станок: изготовление не оценивается, поэтому «машинное время >
         // норматива» здесь ничего не значит (решение владельца 30.09.2026). Сигнал
         // убираем на входе — иначе он попадёт и в правило «2+ сигналов от системы»,
         // и в промпт, и в список сигналов для аналитика.
@@ -20,7 +20,7 @@ public static class RequestShaper
 
         foreach (var p in request.Parts)
         {
-            // «Машинное время >= штучного норматива» отсекаем когда сигнал не имеет
+            // «Машинное время > штучного норматива» отсекаем когда сигнал не имеет
             // смысла (условия зеркалят HardRuleEvaluator, клиент remeLog новых версий
             // сам не шлёт, старые клиенты и сохранённые запросы чистим здесь):
             //  • несерийный станок — изготовление не учитывается;
@@ -35,7 +35,7 @@ public static class RequestShaper
             {
                 p.Signals.RemoveAll(s =>
                     s.Contains("Машинное время", StringComparison.OrdinalIgnoreCase)
-                    && s.Contains(">= штучного норматива", StringComparison.OrdinalIgnoreCase));
+                    && s.Contains("штучного норматива", StringComparison.OrdinalIgnoreCase));
             }
         }
     }

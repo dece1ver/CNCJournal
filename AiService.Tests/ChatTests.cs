@@ -100,7 +100,7 @@ public class ChatTests
         Assert.Contains("Выбрана", res.System);
         // Примеры обезличены (схема словами, не «Фамилия И. О.»): конкретные ФИО
         // модель копирует в вызовы вместо фамилии из смены — так делать нечего.
-        Assert.DoesNotContain("Крафт", res.System);
+        Assert.DoesNotContain("Соколов", res.System);
         Assert.DoesNotContain("Фамилия И. О.", res.System);
     }
 
@@ -317,13 +317,13 @@ public class ChatTests
     }
 
     [Theory]
-    [InlineData("Крафт А. С.", "Крафт Алексей Сергеевич")]
+    [InlineData("Соколов А. С.", "Соколов Алексей Сергеевич")]
     [InlineData("Неизвестный Ы.", "Неизвестный")]
     [InlineData("", "оператор")]
     public void GreetingDisplayName_Forms(string contextName, string expected)
     {
-        var found = contextName.StartsWith("Крафт")
-            ? new List<OperatorInfo> { new("Крафт", "Алексей", "Сергеевич", 3, true) }
+        var found = contextName.StartsWith("Соколов")
+            ? new List<OperatorInfo> { new("Соколов", "Алексей", "Сергеевич", 3, true) }
             : new List<OperatorInfo>();
         Assert.Equal(expected, ChatAgentService.GreetingDisplayName(contextName, found));
     }
@@ -439,10 +439,10 @@ public class ChatTests
         // про журнал — гонял get_operator_history и ещё три раунда. Факты смены и
         // так подставлены детерминированно, проверять нечего: один раунд.
         var stub = new StubChat(new Queue<ChatResult>([
-            new ChatResult { Content = "Здравствуйте, Ермаков Алексей Сергеевич! Станок Mazak QTS350." },
+            new ChatResult { Content = "Здравствуйте, Егоров Алексей Сергеевич! Станок Mazak QTS350." },
         ]));
         var greeting = "[Автостарт] Оператор только что открыл чат. Поздоровайся.\n\n" +
-            "Контекст смены (eLog):\nСтанок: Mazak QTS350 | Смена: День | Оператор: Ермаков А. С.\n" +
+            "Контекст смены (eLog):\nСтанок: Mazak QTS350 | Смена: День | Оператор: Егоров А. С.\n" +
             "Активная деталь: «Шестерня А-47» (А-47), наладка с 30.09.2026 08:12";
         var build = Builder().BuildChatMessages(
             Request([new ChatMessageDto { Role = "user", Content = greeting }]),
@@ -649,9 +649,9 @@ public class ChatTests
     }
 
     [Theory]
-    [InlineData("Вы на станке Mazak QTS350, смена не начата.", "Хомутов А. Б.", true)]
-    [InlineData("Вы Хомутов А. Б., смена не начата.", "Хомутов А. Б.", false)]
-    [InlineData("вы хомутов на станке", "Хомутов А. Б.", false)]
+    [InlineData("Вы на станке Mazak QTS350, смена не начата.", "Иванов А. Б.", true)]
+    [InlineData("Вы Иванов А. Б., смена не начата.", "Иванов А. Б.", false)]
+    [InlineData("вы иванов на станке", "Иванов А. Б.", false)]
     [InlineData("Отвечаю по инструкции", "", false)]
     public void ЛичныйОтвет_БезФамилии_Опознаётся(string reply, string op, bool omits)
     {
@@ -837,7 +837,7 @@ public class ChatTests
     {
         // Кейс кампании: в приветствии уезжал блок результатов поиска.
         var reply =
-            "Здравствуйте, Хомутов Андрей Борисович! Смена День (выбрана, но не начата).\n\n"
+            "Здравствуйте, Иванов Андрей Борисович! Смена День (выбрана, но не начата).\n\n"
             + "Результаты поиска в сети:\n"
             + "[1] Автоответы в чатах — https://chat2desk.com/baza\n"
             + "[2] Как настроить автоответы — https://docs.avchat.ru/avto-otveti\n"
@@ -845,7 +845,7 @@ public class ChatTests
 
         var text = ChatAgentService.StripSearchDump(reply);
 
-        Assert.Equal("Здравствуйте, Хомутов Андрей Борисович! Смена День (выбрана, но не начата).", text);
+        Assert.Equal("Здравствуйте, Иванов Андрей Борисович! Смена День (выбрана, но не начата).", text);
     }
 
     [Fact]
@@ -880,10 +880,10 @@ public class ChatTests
     public void CorrectOperatorArg_InitialOrSubstring_NotTreatedAsMentioned()
     {
         // Кейс регресса A.2: на «а я?» модель вызвала get_operator_info с name="А."
-        // (инициал из «Хомутов А. Б.»). Проверка «упомянут ли в вопросе» проходила,
+        // (инициал из «Иванов А. Б.»). Проверка «упомянут ли в вопросе» проходила,
         // потому что буква «а» есть в любом тексте, и в БД уходил мусор — модель в
         // ответе перечислила случайных операторов из базы.
-        var ctx = new ElogChatContext { OperatorName = "Хомутов А. Б." };
+        var ctx = new ElogChatContext { OperatorName = "Иванов А. Б." };
         var messages = new List<ChatMessage>
         {
             new() { Role = "user", Content = "а я?" },
@@ -891,15 +891,15 @@ public class ChatTests
 
         var (name, corrected) = ChatAgentService.CorrectOperatorArg("А.", ctx, messages);
         Assert.True(corrected);
-        Assert.Equal("Хомутов А. Б.", name);
+        Assert.Equal("Иванов А. Б.", name);
 
         // Фамилия внутри другого слова — тоже не упоминание.
-        var (n2, c2) = ChatAgentService.CorrectOperatorArg("Крафт", new ElogChatContext
-            { OperatorName = "Хомутов А. Б." }, [
-                new ChatMessage { Role = "user", Content = "крафтовый станок сломался" },
+        var (n2, c2) = ChatAgentService.CorrectOperatorArg("Соколов", new ElogChatContext
+            { OperatorName = "Иванов А. Б." }, [
+                new ChatMessage { Role = "user", Content = "соколововый станок сломался" },
             ]);
         Assert.True(c2);
-        Assert.Equal("Хомутов А. Б.", n2);
+        Assert.Equal("Иванов А. Б.", n2);
     }
 
     [Theory]
@@ -1382,7 +1382,7 @@ public class ChatTests
         // активной любую запись журнала.
         var facts = ChatAgentService.ShiftFacts(new ElogChatContext
         {
-            Machine = "Mazak QTS350", Shift = "День", OperatorName = "Ермаков А. С.",
+            Machine = "Mazak QTS350", Shift = "День", OperatorName = "Егоров А. С.",
             PartsCount = 5, ShiftStarted = false,
         });
         Assert.Contains("Активной детали нет", facts);
@@ -1632,7 +1632,7 @@ public class ChatTests
         // оператора нет. Теперь список приходит от клиента.
         var ctx = new ElogChatContext
         {
-            Machine = "Mazak QTS350", OperatorName = "Хомутов А. Б.",
+            Machine = "Mazak QTS350", OperatorName = "Иванов А. Б.",
             OperatorDowntimeTypes =
             [
                 "Написание УП", "Обслуживание", "Поиск и получение инструмента",
@@ -2005,11 +2005,11 @@ public class ChatTests
     [Fact]
     public void GreetingOperatorFact_Single_ExactFio()
     {
-        var text = ChatAgentService.GreetingOperatorFact("Крафт А. С.", [
-            new OperatorInfo("Крафт", "Алексей", "Сергеевич", 3, true),
+        var text = ChatAgentService.GreetingOperatorFact("Соколов А. С.", [
+            new OperatorInfo("Соколов", "Алексей", "Сергеевич", 3, true),
         ]);
 
-        Assert.Contains("Крафт Алексей Сергеевич", text);
+        Assert.Contains("Соколов Алексей Сергеевич", text);
         Assert.Contains("разряд 3", text);
         Assert.Contains("расшифровка инициалов запрещена", text);
     }
@@ -2037,12 +2037,12 @@ public class ChatTests
     [Fact]
     public void FormatOperatorHistory_LinesAndTotal()
     {
-        var dto = new OperatorHistoryDto("Крафт Алексей Сергеевич", [
+        var dto = new OperatorHistoryDto("Соколов Алексей Сергеевич", [
             new OperatorHistoryLine(new DateTime(2026, 9, 24), "Goodway GS-1500", "Корпус клапана", "УЧ1", 1, 108),
             new OperatorHistoryLine(new DateTime(2026, 9, 23), "Goodway GS-1500", "Корпус клапана", "УЧ1", 1, 129),
         ]);
 
-        var text = ChatAgentService.FormatOperatorHistory("Крафт А. С.", 30, dto);
+        var text = ChatAgentService.FormatOperatorHistory("Соколов А. С.", 30, dto);
 
         Assert.Contains("24.09.2026", text);
         Assert.Contains("Goodway GS-1500", text);
@@ -2070,12 +2070,12 @@ public class ChatTests
     [Fact]
     public void FormatOperatorHistory_SingleDay_OnlyThisDay()
     {
-        var dto = new OperatorHistoryDto("Крафт Алексей Сергеевич", [
+        var dto = new OperatorHistoryDto("Соколов Алексей Сергеевич", [
             new OperatorHistoryLine(new DateTime(2026, 9, 22), "Goodway GS-1500", "Корпус", "УЧ1", 1, 63),
             new OperatorHistoryLine(new DateTime(2026, 9, 22), "Goodway GS-1500", "Корпус", "УЧ1", 1, 11),
         ]);
 
-        var text = ChatAgentService.FormatOperatorHistory("Крафт А. С.", 30, dto);
+        var text = ChatAgentService.FormatOperatorHistory("Соколов А. С.", 30, dto);
 
         Assert.Contains("22.09.2026", text);
         Assert.Contains("ТОЛЬКО про этот день", text);
@@ -2084,11 +2084,11 @@ public class ChatTests
     [Fact]
     public void FormatOperatorHistory_Approximate_Warns()
     {
-        var dto = new OperatorHistoryDto("Хомутов Андрей Борисович", [
+        var dto = new OperatorHistoryDto("Иванов Андрей Борисович", [
             new OperatorHistoryLine(new DateTime(2026, 9, 22), "Mazak QTS350", "Гильза", "УЧ1", 1, 1),
         ], true);
 
-        var text = ChatAgentService.FormatOperatorHistory("Хомутов И. О.", 30, dto);
+        var text = ChatAgentService.FormatOperatorHistory("Иванов И. О.", 30, dto);
 
         Assert.Contains("однофамильцы", text);
         Assert.Contains("Гильза", text);
@@ -2110,12 +2110,12 @@ public class ChatTests
         // модель приняла его за полный и объявила «данных за 22–23 сентября нет».
         // Об усечении обязано быть сказано в тексте тула, иначе вывод о
         // неполноте делается из усечённого списка.
-        var dto = new OperatorHistoryDto("Хомутов Андрей Борисович", [
+        var dto = new OperatorHistoryDto("Иванов Андрей Борисович", [
             new OperatorHistoryLine(new DateTime(2026, 9, 29), "Mazak QTS350", "Корпус нижний", "УЧ1", 4, 1.8),
             new OperatorHistoryLine(new DateTime(2026, 9, 28), "Mazak QTS350", "Корпус нижний", "УЧ1", 4, 2.2),
         ], Approximate: false, Truncated: true);
 
-        var text = ChatAgentService.FormatOperatorHistory("Хомутов А. Б.", 7, dto);
+        var text = ChatAgentService.FormatOperatorHistory("Иванов А. Б.", 7, dto);
 
         Assert.Contains("обрезан", text);
         Assert.Contains("БОЛЬШЕ", text);
@@ -2126,19 +2126,19 @@ public class ChatTests
     [Fact]
     public void FormatOperatorHistory_FullWindow_NoTruncationNotice()
     {
-        var dto = new OperatorHistoryDto("Хомутов Андрей Борисович", [
+        var dto = new OperatorHistoryDto("Иванов Андрей Борисович", [
             new OperatorHistoryLine(new DateTime(2026, 9, 25), "Mazak QTS350", "Гильза", "УЧ1", 1, 1),
         ]);
 
-        var text = ChatAgentService.FormatOperatorHistory("Хомутов А. Б.", 30, dto);
+        var text = ChatAgentService.FormatOperatorHistory("Иванов А. Б.", 30, dto);
 
         Assert.DoesNotContain("обрезан", text);
         Assert.DoesNotContain("БОЛЬШЕ", text);
     }
 
     [Theory]
-    [InlineData("Крафт Алексей Сергеевич", "А", "С", true)]
-    [InlineData("Крафт  Алексей   Сергеевич", "А", "С", true)]
+    [InlineData("Соколов Алексей Сергеевич", "А", "С", true)]
+    [InlineData("Соколов  Алексей   Сергеевич", "А", "С", true)]
     [InlineData("Алексеев Иван", "И", null, true)]
     [InlineData("Алексеев Иван", "И", "А", false)]
     [InlineData("Алексеев Иван Александрович", "Р", null, false)]
@@ -2152,43 +2152,43 @@ public class ChatTests
     [Fact]
     public void CorrectOperatorArg_MatchOrMentioned_Unchanged()
     {
-        var ctx = new ElogChatContext { OperatorName = "Громов А. А." };
+        var ctx = new ElogChatContext { OperatorName = "Григорьев А. А." };
         var noMessages = new List<ChatMessage>();
 
         // Та же фамилия — как есть.
-        Assert.Equal(("Громов А. А.", false),
-            ChatAgentService.CorrectOperatorArg("Громов А. А.", ctx, noMessages));
+        Assert.Equal(("Григорьев А. А.", false),
+            ChatAgentService.CorrectOperatorArg("Григорьев А. А.", ctx, noMessages));
         // Пустые — нечего сверять.
         Assert.Equal(("", false),
             ChatAgentService.CorrectOperatorArg("", ctx, noMessages));
-        Assert.Equal(("Крафт А. С.", false),
+        Assert.Equal(("Соколов А. С.", false),
             ChatAgentService.CorrectOperatorArg(
-                "Крафт А. С.", new ElogChatContext(), noMessages));
+                "Соколов А. С.", new ElogChatContext(), noMessages));
         // Чужая фамилия, но пользователь сам о ней спросил, — легитимно.
         var asked = new List<ChatMessage>
         {
-            new() { Role = "user", Content = "что Крафт делал на прошлой неделе?" },
+            new() { Role = "user", Content = "что Соколов делал на прошлой неделе?" },
         };
-        Assert.Equal(("Крафт А. С.", false),
-            ChatAgentService.CorrectOperatorArg("Крафт А. С.", ctx, asked));
+        Assert.Equal(("Соколов А. С.", false),
+            ChatAgentService.CorrectOperatorArg("Соколов А. С.", ctx, asked));
     }
 
     [Fact]
     public void CorrectOperatorArg_CopiedExample_FixedToShift()
     {
-        // Регрессия: история Крафта, выданная за историю Громова, —
+        // Регрессия: история Соколова, выданная за историю Громова, —
         // молча чиним на фамилию из смены.
-        var ctx = new ElogChatContext { OperatorName = "Громов А. А." };
+        var ctx = new ElogChatContext { OperatorName = "Григорьев А. А." };
         var messages = new List<ChatMessage>
         {
             new() { Role = "user", Content = "чем я занимался на прошлой неделе?" },
         };
 
         var (name, corrected) =
-            ChatAgentService.CorrectOperatorArg("Крафт А. С.", ctx, messages);
+            ChatAgentService.CorrectOperatorArg("Соколов А. С.", ctx, messages);
 
         Assert.True(corrected);
-        Assert.Equal("Громов А. А.", name);
+        Assert.Equal("Григорьев А. А.", name);
     }
 
     [Fact]
@@ -2198,7 +2198,7 @@ public class ChatTests
         // подставила слово «оператор» в name, оно же дословно есть в вопросе,
         // поэтому проверка «упомянут ли пользователем» проходила и в БД уходил
         // мусор. Служебное слово фамилией быть не может.
-        var ctx = new ElogChatContext { OperatorName = "Хомутов А. Б." };
+        var ctx = new ElogChatContext { OperatorName = "Иванов А. Б." };
         var messages = new List<ChatMessage>
         {
             new() { Role = "user", Content = "а что делал оператор на станке CNC-513 на прошлой неделе?" },
@@ -2207,16 +2207,16 @@ public class ChatTests
         var (name, corrected) = ChatAgentService.CorrectOperatorArg("оператор CNC-513", ctx, messages);
 
         Assert.True(corrected);
-        Assert.Equal("Хомутов А. Б.", name);
+        Assert.Equal("Иванов А. Б.", name);
 
         // Настоящая фамилия из вопроса — легитимна, даже если в вопросе есть
         // и служебные слова.
         var askedKraft = new List<ChatMessage>
         {
-            new() { Role = "user", Content = "а что делал оператор Крафт на прошлой неделе?" },
+            new() { Role = "user", Content = "а что делал оператор Соколов на прошлой неделе?" },
         };
-        Assert.Equal(("Крафт", false),
-            ChatAgentService.CorrectOperatorArg("Крафт", ctx, askedKraft));
+        Assert.Equal(("Соколов", false),
+            ChatAgentService.CorrectOperatorArg("Соколов", ctx, askedKraft));
     }
 
     [Fact]
@@ -2226,12 +2226,12 @@ public class ChatTests
             new ChatResult
             {
                 Content = "",
-                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_operator_history", Arguments = """{"name":"Крафт А. С.","days":30}""" }],
+                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_operator_history", Arguments = """{"name":"Соколов А. С.","days":30}""" }],
             },
             new ChatResult { Content = "Раньше делали Корпус клапана." },
         ]));
         var source = new StubDataSource(operatorHistory: new OperatorHistoryDto(
-            "Крафт Алексей Сергеевич",
+            "Соколов Алексей Сергеевич",
             [new OperatorHistoryLine(new DateTime(2026, 9, 24), "Goodway GS-1500", "Корпус клапана", "УЧ1", 1, 108)]));
         var build = Builder().BuildChatMessages(Request(), [], 20, 12000);
 
@@ -2249,7 +2249,7 @@ public class ChatTests
     [Fact]
     public async Task Agent_OperatorHistory_WrongSurname_CorrectedToShift()
     {
-        // Тул вызван с чужой фамилией (в смене Иванов, запрошен Крафт):
+        // Тул вызван с чужой фамилией (в смене Иванов, запрошен Соколов):
         // сервер молча исправляет на фамилию из смены, модель видит пометку.
         // Стаб запрос игнорирует (возвращает фиксированный DTO), поэтому проверяем
         // заголовок с исправленной фамилией и пометку, а не строки.
@@ -2257,7 +2257,7 @@ public class ChatTests
             new ChatResult
             {
                 Content = "",
-                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_operator_history", Arguments = """{"name":"Крафт А. С.","days":30}""" }],
+                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_operator_history", Arguments = """{"name":"Соколов А. С.","days":30}""" }],
             },
             new ChatResult { Content = "Вот история." },
         ]));
@@ -2288,11 +2288,11 @@ public class ChatTests
     [Fact]
     public void FormatOperators_Single_FullFioFirst()
     {
-        var text = ChatAgentService.FormatOperators("Крафт А. С.", [
-            new OperatorInfo("Крафт", "Алексей", "Сергеевич", 5, true),
+        var text = ChatAgentService.FormatOperators("Соколов А. С.", [
+            new OperatorInfo("Соколов", "Алексей", "Сергеевич", 5, true),
         ]);
 
-        Assert.Contains("Крафт Алексей Сергеевич", text);
+        Assert.Contains("Соколов Алексей Сергеевич", text);
         Assert.Contains("разряд 5", text);
     }
 
@@ -2317,12 +2317,12 @@ public class ChatTests
             new ChatResult
             {
                 Content = "",
-                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_operator_info", Arguments = """{"name":"Крафт А. С."}""" }],
+                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_operator_info", Arguments = """{"name":"Соколов А. С."}""" }],
             },
             new ChatResult { Content = "Здравствуйте, Алексей Сергеевич!" },
         ]));
         var source = new StubDataSource([
-            new OperatorInfo("Крафт", "Алексей", "Сергеевич", 5, true),
+            new OperatorInfo("Соколов", "Алексей", "Сергеевич", 5, true),
         ]);
         var build = Builder().BuildChatMessages(Request(), [], 20, 12000);
 
@@ -2333,7 +2333,7 @@ public class ChatTests
         Assert.Equal("Здравствуйте, Алексей Сергеевич!", res.Reply);
         Assert.Equal(1, res.ToolRounds);
         var toolMsg = Assert.Single(stub.SeenMessages[^1], m => m.Role == "tool");
-        Assert.Contains("Крафт Алексей Сергеевич", toolMsg.Content);
+        Assert.Contains("Соколов Алексей Сергеевич", toolMsg.Content);
     }
 
     [Fact]
@@ -2345,7 +2345,7 @@ public class ChatTests
             new ChatResult
             {
                 Content = "",
-                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_operator_info", Arguments = """{"name":"Крафт А. С."}""" }],
+                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_operator_info", Arguments = """{"name":"Соколов А. С."}""" }],
             },
             new ChatResult { Content = "Здравствуйте!" },
         ]));
@@ -2481,7 +2481,7 @@ public class ChatTests
     }
 
     [Theory]
-    [InlineData("У меня нет данных о работе «Крафт Алексей Сергеевич» 29.09.2026", true)]
+    [InlineData("У меня нет данных о работе «Соколов Алексей Сергеевич» 29.09.2026", true)]
     [InlineData("По этому оператору записей не найдено", true)]
     [InlineData("Я ничего не нашёл по этому станку", true)]
     [InlineData("22.09 работал: Корпус верхний, 2 шт", false)]
@@ -2546,33 +2546,33 @@ public class ChatTests
     {
         // Кейс кампании E.2: «нет данных» сказано про журнал, который не открывали.
         var stub = new StubChat(new Queue<ChatResult>([
-            new ChatResult { Content = "У меня нет данных об операторе «Крафт» в текущей смене." },
+            new ChatResult { Content = "У меня нет данных об операторе «Соколов» в текущей смене." },
             new ChatResult
             {
                 Content = "",
-                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_operator_history", Arguments = """{"name":"Крафт"}""" }],
+                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_operator_history", Arguments = """{"name":"Соколов"}""" }],
             },
-            new ChatResult { Content = "29.09 Крафт: Кольцо опорное, 60 шт." },
+            new ChatResult { Content = "29.09 Соколов: Кольцо опорное, 60 шт." },
         ]));
         var source = new StubDataSource(operatorHistory: new OperatorHistoryDto(
-            "Крафт Алексей Сергеевич",
+            "Соколов Алексей Сергеевич",
             [new OperatorHistoryLine(new DateTime(2026, 9, 29), "Hyundai L230A",
                 "Кольцо опорное АР30-01-015-22 13х25", "УЧ2609-0078.1.1", 1, 60)]));
         var build = Builder().BuildChatMessages(
-            Request([new ChatMessageDto { Role = "user", Content = "а что делал Крафт во вторник?" }]),
+            Request([new ChatMessageDto { Role = "user", Content = "а что делал Соколов во вторник?" }]),
             [], 20, 12000);
 
         var res = await Agent(stub, source: source).RunAsync(
             build.System, build.Messages, Context(), null, null, null, null, CancellationToken.None);
 
         Assert.Null(res.Error);
-        Assert.Equal("29.09 Крафт: Кольцо опорное, 60 шт.", res.Reply);
+        Assert.Equal("29.09 Соколов: Кольцо опорное, 60 шт.", res.Reply);
         var nudge = stub.SeenMessages[^1].First(
             m => m.Role == "user" && m.Content.Contains("[Автопроверка]"));
         Assert.Contains("get_operator_history", nudge.Content);
         // Нудж цитирует исходный вопрос: без этого модель уходила с темы
         // (кейс C.4 — проверка чисел уводила в историю смены).
-        Assert.Contains("а что делал Крафт во вторник?", nudge.Content);
+        Assert.Contains("а что делал Соколов во вторник?", nudge.Content);
     }
 
     [Fact]
@@ -2597,7 +2597,7 @@ public class ChatTests
 
     [Theory]
     [InlineData("что я делал во вторник?", true)]
-    [InlineData("а что делал Крафт?", true)]
+    [InlineData("а что делал Соколов?", true)]
     [InlineData("что делал вчера?", true)]
     [InlineData("как я работал на прошлой неделе", true)]
     [InlineData("сколько CNMG120408?", false)]
@@ -2618,7 +2618,7 @@ public class ChatTests
             new ChatResult { Content = "Вчера 3 детали, 7.2 шт." },
         ]));
         var source = new StubDataSource(operatorHistory: new OperatorHistoryDto(
-            "Хомутов Андрей Борисович",
+            "Иванов Андрей Борисович",
             [new OperatorHistoryLine(new DateTime(2026, 9, 28), "Mazak QTS350",
                 "Корпус нижний", "УЧ2609-0053.7.1", 4, 2.2)]));
         var build = Builder().BuildChatMessages(Request(), [], 20, 12000);
@@ -2678,12 +2678,12 @@ public class ChatTests
             new ChatResult
             {
                 Content = "",
-                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_operator_history", Arguments = """{"name":"Крафт А. С."}""" }],
+                ToolCalls = [new AgentToolCall { Id = "c1", Name = "get_operator_history", Arguments = """{"name":"Соколов А. С."}""" }],
             },
             new ChatResult { Content = "22.09 делали Корпус." },
         ]));
         var source = new StubDataSource(operatorHistory: new OperatorHistoryDto(
-            "Крафт Алексей Сергеевич",
+            "Соколов Алексей Сергеевич",
             [new OperatorHistoryLine(new DateTime(2026, 9, 22), "Goodway", "Корпус", "УЧ1", 1, 5)]));
         var build = Builder().BuildChatMessages(Request(), [], 20, 12000);
 

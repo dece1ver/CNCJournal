@@ -19,12 +19,12 @@ public record ShiftReportRuleResult(
 public static class ShiftReportRuleEvaluator
 {
     // Порог обязательности причины простоя — зеркалит DailyReportWindowViewModel:
-    // UnspecifiedDayDowntimesNeedAttention => ratio is > 0.1 or < -0.1.
-    private const double DowntimeReasonRatioThreshold = 0.1;
+    // UnspecifiedDayDowntimesNeedAttention => ratio is > 0.05 or < -0.05.
+    private const double DowntimeReasonRatioThreshold = 0.05;
 
     // Допуск переполнения журнала сверх смены (ранний приход/задержка).
-    // Ниже −10% длительности — hard R3, комментарии не объясняют.
-    private const double OverflowToleranceRatio = 0.1;
+    // Ниже −5% длительности — hard R3, комментарии не объясняют.
+    private const double OverflowToleranceRatio = 0.05;
 
     // Допуск расхождения снимка простоя из БД со свежим пересчётом (R4, минуты).
     // Формула детерминирована: любое расхождение сверх допуска — правки журнала
@@ -185,12 +185,12 @@ public static class ShiftReportRuleEvaluator
                 continue;
             }
 
-            // Причина при |доле| ≤10% не требуется вообще — кроме «Другое»,
+            // Причина при |доле| ≤5% не требуется вообще — кроме «Другое»,
             // которому детализация нужна всегда (шаг 3 скелета).
             if (Math.Abs(ratio) <= DowntimeReasonRatioThreshold
                 && !OtherReason.Equals(reason, StringComparison.OrdinalIgnoreCase))
             {
-                result.Add(Clear("простой в пределах 10% — причина не требуется"));
+                result.Add(Clear("простой в пределах 5% — причина не требуется"));
                 continue;
             }
 
@@ -295,7 +295,7 @@ public static class ShiftReportRuleEvaluator
     /// <summary>
     /// Требование причины дневного простоя («Дневной простой 22 мин (3% смены)
     /// без указания причины», кейс 21.09.2026) — вопрос суточного отчёта (R1,
-    /// порог 10%), а не данных: судьбу решает DropUnneededReasonDemands
+    /// порог 5%), а не данных: судьбу решает DropUnneededReasonDemands
     /// по свежему пересчёту смены, в блоке «Данные» ему не место.
     /// </summary>
     private static bool IsDayDowntimeReasonDemand(string signal)
@@ -365,6 +365,17 @@ public static class ShiftReportRuleEvaluator
 
         foreach (var issue in modelIssues)
         {
+            // «Отсутствие оператора» самодостаточно только при простое целиком: при
+            // частичном свыше порога без комментария требование комментария легитимно —
+            // не резать (решение владельца 19.10.2026, зеркало валидации DailyReportWindow).
+            if (ShiftTag(issue) is { } absenceTag
+                && byShift.TryGetValue(absenceTag, out var absenceRep)
+                && RequiresAbsenceComment(absenceRep))
+            {
+                kept.Add(issue);
+                continue;
+            }
+
             if (ShiftTag(issue) is { } tag
                 && byShift.TryGetValue(tag, out var rep)
                 && IsSelfSufficientReason(rep.DowntimeReason)
@@ -380,6 +391,18 @@ public static class ShiftReportRuleEvaluator
         }
         return (kept, dropped);
     }
+
+    /// <summary>
+    /// Комментарий обязателен, но пуст: причина «Отсутствие оператора» при частичном
+    /// простое свыше порога. Полный простой и остальные причины — как раньше
+    /// (причина самодостаточна, требования модели режутся).
+    /// </summary>
+    private static bool RequiresAbsenceComment(ShiftReportContext rep) =>
+        string.Equals(rep.DowntimeReason?.Trim(), "Отсутствие оператора", StringComparison.OrdinalIgnoreCase)
+        && rep.FreshUnspecifiedDowntimes > 0
+        && rep.FreshUnspecifiedDowntimes < rep.ShiftMinutes
+        && Math.Abs(rep.FreshUnspecifiedDowntimes / rep.ShiftMinutes) > DowntimeReasonRatioThreshold
+        && string.IsNullOrWhiteSpace(rep.MasterComment);
 
     /// <summary>
     /// Заявление о полном отсутствии терминальной записи за смену: терминал
@@ -465,7 +488,7 @@ public static class ShiftReportRuleEvaluator
 
     /// <summary>
     /// Режет требования причины простоя, когда она не требуется: доля простоя
-    /// в пределах ±10% смены (зеркало R1 и валидации DailyReportWindow) либо
+    /// в пределах ±5% смены (зеркало R1 и валидации DailyReportWindow) либо
     /// причина уже указана, а модель галлюцинирует её отсутствие. Релевантность
     /// имеющейся причины («нерелевантна», «не о простое») — другая претензия,
     /// сохраняется. Без привязки к смене — консервативно сохраняется.
@@ -615,9 +638,9 @@ public static class ShiftReportRuleEvaluator
     /// Режет выдумки про мастера, который в отчёте указан: «мастер не указан»
     /// при непустом поле мастер, и «оператор &lt;ФИО мастера&gt;» — модель берёт
     /// имя из отчёта смены и ищет его в cnc_operators, где мастеров нет
-    /// по построению (кейс 06.10.2026, Rontek HTC420 №1 28.09: «Оператор Зуев
+    /// по построению (кейс 06.10.2026, Rontek HTC420 №1 28.09: «Оператор Зайцев
     /// Максим Борисович отсутствует в системе» + «мастер не указан в системе»
-    /// при мастере «Зуев Максим Борисович» в обеих сменах). Содержательные
+    /// при мастере «Зайцев Максим Борисович» в обеих сменах). Содержательные
     /// претензии («комментарий не о простое», «причина не релевантна») не
     /// задеваются — только ложь про наличие/роль мастера.
     /// </summary>
@@ -674,7 +697,7 @@ public static class ShiftReportRuleEvaluator
 
     /// <summary>
     /// Сигнал/вопрос называет мастера смены из отчёта: полное ФИО либо
-    /// фамилия + инициал («оператор Зуев М.» при мастере «Зуев М.Б.»).
+    /// фамилия + инициал («оператор Зайцев М.» при мастере «Зайцев М.Б.»).
     /// Голая фамилия без инициалов — не match (возможен однофамилец).
     /// </summary>
     internal static bool NamesShiftMaster(string text, string master)

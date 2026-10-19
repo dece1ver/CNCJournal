@@ -5,6 +5,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:remeLog.ViewModels"
+        xmlns:controls="clr-namespace:remeLog.Views.Controls"
         mc:Ignorable="d" WindowStartupLocation="CenterOwner"
         WindowStyle="SingleBorderWindow" WindowState="Maximized" ResizeMode="CanResize"
         d:DataContext="{d:DesignInstance Type=vm:BatchAiAnalysisViewModel}"
@@ -43,6 +44,11 @@
                       VerticalAlignment="Center"
                       FontSize="14" Margin="0 0 8 0"
                       IsChecked="{Binding OnlyPending}"/>
+            <CheckBox Content="Автозакрытие пустых"
+                      VerticalAlignment="Center"
+                      FontSize="14" Margin="0 0 8 0"
+                      IsChecked="{Binding AutoCloseEmpty}"
+                      ToolTip="Отдельный режим: закрыть сутки без записей при наличии обоих отчётов мастера. ИИ не используется."/>
              <CheckBox Content="Агент"
                        VerticalAlignment="Center"
                        FontSize="14" Margin="0 0 8 0"
@@ -55,6 +61,43 @@
                 <Run Text="/"/>
                 <Run Text="{Binding TotalCount, Mode=OneWay}"/>
             </TextBlock>
+        </DockPanel>
+
+        <!-- Период для режима автозакрытия: какие сутки искать -->
+        <DockPanel DockPanel.Dock="Top" Margin="6 0 6 6"
+                   Visibility="{Binding AutoCloseEmpty, Converter={StaticResource VisibilityConverter}}">
+            <TextBlock DockPanel.Dock="Left" Text="С:" VerticalAlignment="Center"
+                       FontSize="14" Margin="0 0 4 0"
+                       FontFamily="{DynamicResource Areopag.FontMono}"
+                       Foreground="{DynamicResource Areopag.Text}"/>
+            <DatePicker DockPanel.Dock="Left" SelectedDate="{Binding FromDate}" Width="130"
+                        FontFamily="{DynamicResource Areopag.FontMono}" FontSize="14" Margin="0 0 12 0"
+                        BorderThickness="0" Style="{StaticResource DatePickerOutlineStyle}"
+                        CalendarStyle="{StaticResource Areopag.CalendarStyle}"/>
+            <TextBlock DockPanel.Dock="Left" Text="По:" VerticalAlignment="Center"
+                       FontSize="14" Margin="0 0 4 0"
+                       FontFamily="{DynamicResource Areopag.FontMono}"
+                       Foreground="{DynamicResource Areopag.Text}"/>
+            <DatePicker DockPanel.Dock="Left" SelectedDate="{Binding ToDate}" Width="130"
+                        FontFamily="{DynamicResource Areopag.FontMono}" FontSize="14" Margin="0 0 12 0"
+                        BorderThickness="0" Style="{StaticResource DatePickerOutlineStyle}"
+                        CalendarStyle="{StaticResource Areopag.CalendarStyle}"/>
+            <!-- Фильтр по станкам — общий контрол, как в календаре проверки -->
+            <controls:MachineFilterSelector DockPanel.Dock="Left" VerticalAlignment="Center"
+                                            Margin="0 0 12 0" Width="184"
+                                            ItemsSource="{Binding MachineFilters}"
+                                            Summary="{Binding MachineFilterSummary}"
+                                            ShowAllCommand="{Binding ShowAllMachinesCommand}"
+                                            HideAllCommand="{Binding HideAllMachinesCommand}"
+                                            InvertCommand="{Binding InvertMachinesCommand}"/>
+            <Button DockPanel.Dock="Left" Content="История" Width="110" Margin="0 0 12 0"
+                    FontSize="14" VerticalAlignment="Center"
+                    Command="{Binding ShowAutoCloseHistoryCommand}"
+                    ToolTip="Кто и когда пакетно закрывал пустые сутки"/>
+            <!-- Принцип отбора кандидатов -->
+            <TextBlock VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Areopag.Text2}"
+                       Text="В списке только пустые сутки: оба отчёта мастера есть, записей нет, день ещё не проверен. Уже зелёные в календаре проверки пропускаются."/>
         </DockPanel>
 
         <ListView ItemsSource="{Binding Items}"

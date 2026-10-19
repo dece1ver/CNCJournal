@@ -6,7 +6,7 @@ namespace AiService.Services;
 /// Результат детерминированной проверки жёстких правил.
 /// HardSignals — требуют ОБЯЗАТЕЛЬНОЙ эскалации, LLM не может отменить.
 /// SoftSignals — оставлены для будущих случаев, где контекст важен.
-///               Машинное время >= норматива переведено в HardSignals после того,
+///               Машинное время > норматива переведено в HardSignals после того,
 ///               как LLM стабильно игнорировала его в soft-режиме.
 /// </summary>
 public record HardRuleResult(
@@ -82,7 +82,7 @@ public static class HardRuleEvaluator
     }
 
     // Причины из комбобокса MasterMachiningComment, при наличии которых и непустого
-    // MasterComment правило "машинное время >= норматива" понижается до soft — решает
+    // MasterComment правило "машинное время > норматива" понижается до soft — решает
     // модель по soft_signal_explanation.txt: если объяснение причинно-релевантно
     // именно станочному времени, эскалация не требуется И деталь — кандидат в
     // suggest_exclude_from_reports (как следствие, не наоборот).
@@ -244,12 +244,15 @@ public static class HardRuleEvaluator
                 AddHard($"[{p.PartName}] КПД изготовления = 0% при {p.FinishedCount:0} изготовленных деталях");
             }
 
-            // машинное время >= норматива
+            // машинное время > норматива
             // Переведено из soft в hard: LLM стабильно игнорировала soft-сигнал,
             // не перенося его в downgraded_signals, но и не эскалируя.
             // Физический смысл: норматив = машинное время + ручные операции,
-            // поэтому machiningTime >= plan означает, что на ручные операции
+            // поэтому machiningTime > plan означает, что на ручные операции
             // времени не осталось вообще — это структурная аномалия, не шум.
+            //
+            // 2026-10-19: равенство (100%) больше не аномалия (решение владельца:
+            // культура заполнения вынуждает, возможен откат обратно на >=).
             //
             // 2026-07-15: исключение — разовые причины (проблемы с инструментом/оборудованием,
             // несоответствующие заготовки) при непустом MasterComment → soft. Модель верифицирует
@@ -271,11 +274,11 @@ public static class HardRuleEvaluator
             // в комментариях и «не по техпроцессу» (см. JudgedOnNonSerialMachining).
             if (checkProductionKpd
                 && p.MachiningTime > 0.5 && p.SingleProductionTimePlan > 0
-                && p.MachiningTime >= p.SingleProductionTimePlan
+                && p.MachiningTime > p.SingleProductionTimePlan
                 && !p.NoProductionHappened
                 && !p.IsSmallBatch)
             {
-                // Клиент уже прислал тот же факт («Машинное время X >= штучного
+                // Клиент уже прислал тот же факт («Машинное время X > штучного
                 // норматива Y») — второй текст о том же в ответе только шумит
                 // (кейс 30.09.2026, SKT21 27.09), поэтому берём текст клиента
                 // дословно: в итоговом списке они склеятся через Distinct,
@@ -285,7 +288,7 @@ public static class HardRuleEvaluator
                 // что не превращается (правило «2+» его не ловит) — кейс
                 // 06.10.2026, HTC420 №2 17.09 уходил в ok с сигналом в списке.
                 var signal = p.Signals.FirstOrDefault(s => s.Contains("Машинное время", StringComparison.OrdinalIgnoreCase))
-                    ?? $"[{p.PartName}] Машинное время {p.MachiningTime:0.#}мин >= " +
+                    ?? $"[{p.PartName}] Машинное время {p.MachiningTime:0.#}мин > " +
                        $"норматива {p.SingleProductionTimePlan:0.#}мин " +
                        $"({p.MachiningTime / p.SingleProductionTimePlan:0%})";
 

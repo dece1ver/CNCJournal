@@ -131,8 +131,8 @@ namespace remeLog.Models
         public double SpecifiedDowntimesRatio => Parts.SpecifiedDowntimesRatio(new Shift(ShiftType.All));
         public double UnspecifiedDowntimesRatio => Parts.UnspecifiedDowntimesRatio(FromDate, ToDate, new Shift(ShiftType.All));
 
-        public bool SpecifiedDowntimesRatioNeedAttention => SpecifiedDowntimesRatio is > 0.1 or < -0.1;
-        public bool UnspecifiedDowntimesRatioNeedAttention => UnspecifiedDowntimesRatio is > 0.1 or < -0.1;
+        public bool SpecifiedDowntimesRatioNeedAttention => SpecifiedDowntimesRatio is > 0.05 or < -0.05;
+        public bool UnspecifiedDowntimesRatioNeedAttention => UnspecifiedDowntimesRatio is > 0.05 or < -0.05;
 
         public bool AverageSetupRatioNeedAttention => AverageSetupRatio is < 0.695 or > 1.2;
         public bool SetupTimeRatioNeedAttention => SetupTimeRatio is < 0.695 or > 1.2;

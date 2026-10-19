@@ -182,7 +182,16 @@ namespace remeLog.ViewModels
         public string DayDowntimesReason
         {
             get => _DayDowntimesReason;
-            set => Set(ref _DayDowntimesReason, value);
+            set
+            {
+                if (Set(ref _DayDowntimesReason, value))
+                {
+                    // Условие обязательного комментария зависит от причины —
+                    // перепроверить поле комментария и подсказку.
+                    OnPropertyChanged(nameof(DayMasterComment));
+                    OnPropertyChanged(nameof(DayMasterCommentMissing));
+                }
+            }
         }
 
         private string _NightDowntimesReason;
@@ -190,7 +199,14 @@ namespace remeLog.ViewModels
         public string NightDowntimesReason
         {
             get => _NightDowntimesReason;
-            set => Set(ref _NightDowntimesReason, value);
+            set
+            {
+                if (Set(ref _NightDowntimesReason, value))
+                {
+                    OnPropertyChanged(nameof(NightMasterComment));
+                    OnPropertyChanged(nameof(NightMasterCommentMissing));
+                }
+            }
         }
 
 
@@ -199,7 +215,11 @@ namespace remeLog.ViewModels
         public string DayMasterComment
         {
             get => _DayMasterComment;
-            set => Set(ref _DayMasterComment, value);
+            set
+            {
+                if (Set(ref _DayMasterComment, value))
+                    OnPropertyChanged(nameof(DayMasterCommentMissing));
+            }
         }
 
         private string _NightMasterComment;
@@ -207,8 +227,33 @@ namespace remeLog.ViewModels
         public string NightMasterComment
         {
             get => _NightMasterComment;
-            set => Set(ref _NightMasterComment, value);
+            set
+            {
+                if (Set(ref _NightMasterComment, value))
+                    OnPropertyChanged(nameof(NightMasterCommentMissing));
+            }
         }
+
+        private static bool IsNoOperatorReason(string? reason) =>
+            string.Equals(reason?.Trim(), "Отсутствие оператора", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Частичный простой: неотмеченное время есть, но не вся смена.</summary>
+        public bool DayDowntimeIsPartial => UnspecifiedDayDowntimes > 0 && UnspecifiedDayDowntimes < (int)ShiftType.Day;
+        /// <summary>Частичный простой: неотмеченное время есть, но не вся смена.</summary>
+        public bool NightDowntimeIsPartial => UnspecifiedNightDowntimes > 0 && UnspecifiedNightDowntimes < (int)ShiftType.Night;
+
+        /// <summary>
+        /// Комментарий обязателен, но пуст: «Отсутствие оператора» самодостаточно только
+        /// при простое целиком, при частичном свыше 5% без комментария — нарушение.
+        /// </summary>
+        public bool DayMasterCommentMissing => IsNoOperatorReason(DayDowntimesReason)
+            && DayDowntimeIsPartial && UnspecifiedDayDowntimesNeedAttention && string.IsNullOrWhiteSpace(DayMasterComment);
+        /// <summary>
+        /// Комментарий обязателен, но пуст: «Отсутствие оператора» самодостаточно только
+        /// при простое целиком, при частичном свыше 5% без комментария — нарушение.
+        /// </summary>
+        public bool NightMasterCommentMissing => IsNoOperatorReason(NightDowntimesReason)
+            && NightDowntimeIsPartial && UnspecifiedNightDowntimesNeedAttention && string.IsNullOrWhiteSpace(NightMasterComment);
 
         private string _Title;
         /// <summary> Описание </summary>
@@ -230,12 +275,12 @@ namespace remeLog.ViewModels
 
         public List<string> DowntimeReasons => AppSettings.Instance.UnspecifiedDowntimesReasons;
 
-        public bool UnspecifiedDayDowntimesNeedAttention => UnspecifiedDayDowntimesRatio is > 0.1 or < -0.1;
-        public bool UnspecifiedNightDowntimesNeedAttention => UnspecifiedNightDowntimesRatio is > 0.1 or < -0.1;
+        public bool UnspecifiedDayDowntimesNeedAttention => UnspecifiedDayDowntimesRatio is > 0.05 or < -0.05;
+        public bool UnspecifiedNightDowntimesNeedAttention => UnspecifiedNightDowntimesRatio is > 0.05 or < -0.05;
         public bool DayPartialSetupNeedAttention => DayPartialSetupRatio is > 0.3;
         public bool NightPartialSetupNeedAttention => NightPartialSetupRatio is > 0.3;
-        public bool SpecifiedDayDowntimesNeedAttention => SpecifiedDayDowntimesRatio is > 0.1 or < -0.1;
-        public bool SpecifiedNightDowntimesNeedAttention => SpecifiedNightDowntimesRatio is > 0.1 or < -0.1;
+        public bool SpecifiedDayDowntimesNeedAttention => SpecifiedDayDowntimesRatio is > 0.05 or < -0.05;
+        public bool SpecifiedNightDowntimesNeedAttention => SpecifiedNightDowntimesRatio is > 0.05 or < -0.05;
         
         public List<Part> DayParts => Parts.Where(p => p.Shift == Shifts.Day).ToList();
         public List<Part> NightParts => Parts.Where(p => p.Shift == Shifts.Night).ToList();
@@ -465,7 +510,9 @@ namespace remeLog.ViewModels
             {
                 if (string.IsNullOrWhiteSpace(this[nameof(CurrentMaster)]) &&
                     string.IsNullOrWhiteSpace(this[nameof(DayDowntimesReason)]) &&
-                    string.IsNullOrWhiteSpace(this[nameof(NightDowntimesReason)]))
+                    string.IsNullOrWhiteSpace(this[nameof(NightDowntimesReason)]) &&
+                    string.IsNullOrWhiteSpace(this[nameof(DayMasterComment)]) &&
+                    string.IsNullOrWhiteSpace(this[nameof(NightMasterComment)]))
                 {
                     return null!;
                 }
@@ -486,6 +533,10 @@ namespace remeLog.ViewModels
                         return "Не указана причина дневных простоев";
                     case nameof(NightDowntimesReason) when UnspecifiedNightDowntimesNeedAttention && string.IsNullOrEmpty(NightDowntimesReason):
                         return "Не указана причина ночных простоев";
+                    case nameof(DayMasterComment) when DayMasterCommentMissing:
+                        return "Требуется уточняющий комментарий";
+                    case nameof(NightMasterComment) when NightMasterCommentMissing:
+                        return "Требуется уточняющий комментарий";
                     default:
                         return null!;
                 }

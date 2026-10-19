@@ -149,7 +149,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             removedSignals.AddRange(droppedCommentDemands
                 .Select(d => (d, "причина простоя самодостаточна, комментарий не требуется")));
             removedSignals.AddRange(droppedReasonDemands
-                .Select(d => (d, "причина простоя не требуется (порог 10%) или уже указана")));
+                .Select(d => (d, "причина простоя не требуется (порог 5%) или уже указана")));
             removedSignals.AddRange(droppedNoReport
                 .Select(d => (d, "отчёта нет — проверять нечего")));
             removedSignals.AddRange(droppedMasterClaims
@@ -249,6 +249,27 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 .Concat(shiftSurvivors)
                 .Concat(notDowngraded)
                 .Distinct()];
+
+            // Протухшее объяснение: модель описала конкретную деталь, чей сигнал
+            // срезан пост-фильтрами, а выжившие сигналы — про другое (кейс 08.10.2026
+            // QTS200ML 20.09: explanation про «Корпус верхний», чей сигнал «Другое
+            // с детализацией» срезан как объяснённый, выжил только hard по «Крышке»).
+            // Вердикт не трогаем (его держат выжившие сигналы), слова модели
+            // сбрасываем на базу EnsureExplanation, причину — на детерминированный
+            // fallback: претензия опровергнута, повторять её аналитику — враньё.
+            if (ExplanationHygiene.ReferencesOnlyRemovedParts(
+                result.Explanation, result.Signals,
+                [.. removedSignals.Select(r => r.Signal)],
+                [.. request.Parts.Select(p => p.PartName)]))
+            {
+                logger.LogInformation(
+                    "Протухшее объяснение ({Machine} {Date}): ссылается только на срезанные сигналы — сброшено на базу",
+                    request.Machine, request.ShiftDate);
+                llmResult.Explanation = "";
+                llmResult.SuggestedReason = "";
+                result.Explanation = EnsureExplanation(llmResult, hardRules, shiftRules, modelShiftIssues, notDowngraded);
+                result.SuggestedReason = FallbackReason(hardRules, shiftRules, modelShiftIssues, notDowngraded, llmResult.HasError);
+            }
 
             // Вердикт модели зажигает «Данные», только если она назвала проблемы
             // по данным (почищенные сигналы непусты). Формула эскалации не меняется.
@@ -363,6 +384,19 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                     request.Machine, request.ShiftDate, request.Part.PartName);
                 await requestLog.WriteVerifyAsync(request, autoResult);
                 return Ok(autoResult);
+            }
+
+            // Массовые пустые формулировки с устойчивым вердиктом (M4 «нет норм»,
+            // «ТП на 230», «работа с технологом»): модель на них флипает между
+            // запусками — см. MasterCheckGuards. Совпадение — вердикт без модели.
+            if (MasterCheckGuards.CheckKnownFalsePattern(request.Part, request.Anomalies) is { } guardRemark)
+            {
+                var guardResult = new VerifyPartResponse { Ok = false, Remark = guardRemark, PromptVersion = "known-pattern" };
+                logger.LogInformation(
+                    "Verify-part: {Machine} {Date} «{Part}» → Ok=false (гард, известный паттерн): {Remark}",
+                    request.Machine, request.ShiftDate, request.Part.PartName, guardRemark);
+                await requestLog.WriteVerifyAsync(request, guardResult);
+                return Ok(guardResult);
             }
 
             var promptBuild = promptBuilder.BuildMasterCheck(request);
@@ -732,7 +766,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         removedSignals.AddRange(droppedCommentDemands
             .Select(d => (d, "причина простоя самодостаточна, комментарий не требуется")));
             removedSignals.AddRange(droppedReasonDemands
-                .Select(d => (d, "причина простоя не требуется (порог 10%) или уже указана")));
+                .Select(d => (d, "причина простоя не требуется (порог 5%) или уже указана")));
             removedSignals.AddRange(droppedNoReport
                 .Select(d => (d, "отчёта нет — проверять нечего")));
             removedSignals.AddRange(droppedMasterClaims
@@ -816,6 +850,22 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         .Concat(shiftSurvivors)
         .Concat(notDowngraded)
         .Distinct()];
+
+        // Протухшее объяснение — см. комментарий в Analyze(): слова модели про
+        // срезанную деталь сбрасываем на базу, причину — на fallback.
+        if (ExplanationHygiene.ReferencesOnlyRemovedParts(
+            result.Explanation, result.Signals,
+            [.. removedSignals.Select(r => r.Signal)],
+            [.. request.Parts.Select(p => p.PartName)]))
+        {
+            logger.LogInformation(
+                "Протухшее объяснение ({Machine} {Date}): ссылается только на срезанные сигналы — сброшено на базу",
+                request.Machine, request.ShiftDate);
+            llmResult.Explanation = "";
+            llmResult.SuggestedReason = "";
+            result.Explanation = EnsureExplanation(llmResult, hardRules, shiftRules, modelShiftIssues, notDowngraded);
+            result.SuggestedReason = FallbackReason(hardRules, shiftRules, modelShiftIssues, notDowngraded, llmResult.HasError);
+        }
 
         var llmDataCaused = ShiftReportRuleEvaluator.LlmDataCaused(llmResult.RequiresReview, llmResult.Signals);
         var (dataCaused, shiftCaused) = ShiftReportRuleEvaluator.EscalationCauses(
@@ -1092,7 +1142,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
     /// <summary>
     /// Клиентские сигналы деталей для ответа. Если soft-сигнал по детали понижен
-    /// моделью, его клиентский дубль («>= штучного норматива» / «Оператор сообщает
+    /// моделью, его клиентский дубль («> штучного норматива» / «Оператор сообщает
     /// о некорректном нормативе») тоже не должен попасть в ответ — иначе аналитик
     /// видит сигнал, который система уже сочла объяснённым.
     /// </summary>

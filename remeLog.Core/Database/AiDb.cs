@@ -271,6 +271,43 @@ namespace remeLog.Infrastructure
             return result;
         }
 
+        public static async Task<List<DayReview>> GetAutoCloseHistoryAsync(CancellationToken ct = default)
+        {
+            // Кто и когда пакетно закрывал пустые сутки: маркер — комментарий
+            // «Автозакрытие: ...», который ставит автозакрытие пустых.
+            if (DomainSettings.DemoMode) return await Task.FromResult(new List<DayReview>());
+            var result = new List<DayReview>();
+
+            const string sql = @"
+                SELECT Id, Machine, ShiftDate, ReviewedBy, ReviewedAt,
+                       Decision, IsFullyReviewed, Comment,
+                       AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
+                       AiModelVersion, AiPromptVersion, AiAnalyzedAt,
+                       AiThinkingEnabled, AiFeedback, AiVerdict
+                FROM ai_day_reviews
+                WHERE Comment LIKE @Marker + N'%'
+                ORDER BY ShiftDate DESC, Machine";
+
+            try
+            {
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
+                await conn.OpenAsync(ct);
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@Marker", "Автозакрытие:");
+                await using var r = await cmd.ExecuteReaderAsync(ct);
+                while (await r.ReadAsync(ct))
+                {
+                    result.Add(ReadDayReview(r));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.WriteError(ex,"GetAutoCloseHistoryAsync");
+            }
+
+            return result;
+        }
+
         public static async Task<DbResult<string>>
             SavePartFlagAsync(PartFlag flag)
         {

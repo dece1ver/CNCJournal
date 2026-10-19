@@ -49,7 +49,7 @@ public class PromptBuilderShiftReportTests
         Assert.Contains("такой причине добавить", res.Prompt);
         Assert.Contains("Внутреннее рассуждение (think) веди на русском языке", res.Prompt);
         Assert.Contains("НИКОГДА не пиши", res.Prompt);
-        Assert.Contains("свыше 10% смены", res.Prompt);
+        Assert.Contains("свыше 5% смены", res.Prompt);
         Assert.Contains("дословно включая скобки", res.Prompt);
         Assert.Contains("НЕ перечисляй их нигде, кроме signals", res.Prompt);
         Assert.NotEqual("unknown", res.Version);

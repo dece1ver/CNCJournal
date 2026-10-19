@@ -9,6 +9,12 @@ namespace AiService
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+            // Database:ConnectionString в appsettings.json — ссылка ${ИМЯ} на переменную
+            // окружения (сырые строки в репозитории запрещены). Резолвится здесь один раз —
+            // дальше все читатели (SqlAgentDataSource, OperatorStatsService) видят готовое
+            // значение через IConfiguration. Пусто/сырая строка деплоя — как есть.
+            builder.Configuration["Database:ConnectionString"] =
+                ConnectionStringReference.Resolve(builder.Configuration);
             builder.Logging.AddSimpleConsole(o =>
             {
                 o.TimestampFormat = "HH:mm:ss.fff ";

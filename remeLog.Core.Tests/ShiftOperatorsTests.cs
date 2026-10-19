@@ -11,28 +11,28 @@ public class ShiftOperatorsTests
     [Fact]
     public void Join_SingleOperator_NoSeparator()
     {
-        Assert.Equal("Мартынов Дмитрий Юрьевич",
-            ShiftOperators.Join(["Мартынов Дмитрий Юрьевич"]));
+        Assert.Equal("Петров Дмитрий Юрьевич",
+            ShiftOperators.Join(["Петров Дмитрий Юрьевич"]));
     }
 
     [Fact]
     public void Join_TwoOperators_OrderOfFirstAppearance()
     {
-        // Кейс Rontek HTC420 №1 05.10.2026: Мартынов начал смену, Шабаров вышел
-        // на одну деталь, снова Мартынов — в отчёте должны быть оба.
-        Assert.Equal("Мартынов Дмитрий Юрьевич, Шабаров Дмитрий Игоревич",
+        // Кейс Rontek HTC420 №1 05.10.2026: Петров начал смену, Сидоров вышел
+        // на одну деталь, снова Петров — в отчёте должны быть оба.
+        Assert.Equal("Петров Дмитрий Юрьевич, Сидоров Дмитрий Игоревич",
             ShiftOperators.Join([
-                "Мартынов Дмитрий Юрьевич",
-                "Шабаров Дмитрий Игоревич",
-                "Мартынов Дмитрий Юрьевич",
+                "Петров Дмитрий Юрьевич",
+                "Сидоров Дмитрий Игоревич",
+                "Петров Дмитрий Юрьевич",
             ]));
     }
 
     [Fact]
     public void Join_EmptyAndWhitespace_Skipped()
     {
-        Assert.Equal("Мартынов Дмитрий Юрьевич",
-            ShiftOperators.Join([null, "", "  ", "Мартынов Дмитрий Юрьевич", " "]));
+        Assert.Equal("Петров Дмитрий Юрьевич",
+            ShiftOperators.Join([null, "", "  ", "Петров Дмитрий Юрьевич", " "]));
     }
 
     [Fact]
@@ -45,15 +45,15 @@ public class ShiftOperatorsTests
     [Fact]
     public void Join_TrimsAndIgnoresCase()
     {
-        Assert.Equal("Мартынов Дмитрий Юрьевич",
-            ShiftOperators.Join(["  Мартынов Дмитрий Юрьевич  ", "мартынов дмитрий юрьевич"]));
+        Assert.Equal("Петров Дмитрий Юрьевич",
+            ShiftOperators.Join(["  Петров Дмитрий Юрьевич  ", "петров дмитрий юрьевич"]));
     }
 
     [Fact]
     public void ShortName_FullName_Initials()
     {
-        Assert.Equal("Мартынов Д.Ю.", ShiftOperators.ShortName("Мартынов Дмитрий Юрьевич"));
-        Assert.Equal("Мартынов Д.Ю.", ShiftOperators.ShortName("  Мартынов Дмитрий Юрьевич  "));
+        Assert.Equal("Петров Д.Ю.", ShiftOperators.ShortName("Петров Дмитрий Юрьевич"));
+        Assert.Equal("Петров Д.Ю.", ShiftOperators.ShortName("  Петров Дмитрий Юрьевич  "));
     }
 
     [Fact]
@@ -67,16 +67,16 @@ public class ShiftOperatorsTests
     [Fact]
     public void Format_SingleOperator_FullName()
     {
-        Assert.Equal("Мартынов Дмитрий Юрьевич",
-            ShiftOperators.Format(["Мартынов Дмитрий Юрьевич"]));
+        Assert.Equal("Петров Дмитрий Юрьевич",
+            ShiftOperators.Format(["Петров Дмитрий Юрьевич"]));
     }
 
     [Fact]
     public void Format_MultipleOperators_SurnameWithInitials()
     {
         // Двое в смену — полные ФИО в одну строку не влезают, показываем «Фамилия И.О.».
-        Assert.Equal("Мартынов Д.Ю., Шабаров Д.И.",
-            ShiftOperators.Format(["Мартынов Дмитрий Юрьевич", "Шабаров Дмитрий Игоревич"]));
+        Assert.Equal("Петров Д.Ю., Сидоров Д.И.",
+            ShiftOperators.Format(["Петров Дмитрий Юрьевич", "Сидоров Дмитрий Игоревич"]));
     }
 
     [Fact]

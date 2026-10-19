@@ -40,7 +40,7 @@ public class OperatorStatsTests
             machine: "Mazak QTS350",
             shift: shift,
             shiftDate: Day,
-            @operator: "Хомутов Александр Борисович",
+            @operator: "Иванов Александр Борисович",
             partName: partName,
             order: order,
             setup: setup,
@@ -92,7 +92,7 @@ public class OperatorStatsTests
         var marked = parts.Sum(p => p.SetupTimeFact + p.ProductionTimeFact
             + p.SetupDowntimes + p.MachiningDowntimes + p.PartialSetupTime);
         var review = new ShiftReviewResult(
-            "Mazak QTS350", Shifts.Day, DateOnly.FromDateTime(Day), "Хомутов А. Б.",
+            "Mazak QTS350", Shifts.Day, DateOnly.FromDateTime(Day), "Иванов А. Б.",
             660, marked, (int)ShiftType.Day - marked, 2, 50, 0.05, 0, 0, 0, [], []);
 
         Assert.Equal(expected, (int)review.UnmarkedMinutes);
@@ -102,9 +102,9 @@ public class OperatorStatsTests
     [Fact]
     public void Пороги_Совпадают_С_ПравиламиМастера()
     {
-        // Те же числа, что у мастера: ShiftReportRules (0.1 и 0.3) и
+        // Те же числа, что у мастера: ShiftReportRules (0.05 и 0.3) и
         // remeLog.Core.Models.Part — валидация строки (0.5).
-        Assert.Equal(0.1, OperatorStatsService.UnmarkedAttentionRatio, 6);
+        Assert.Equal(0.05, OperatorStatsService.UnmarkedAttentionRatio, 6);
         Assert.Equal(0.3, OperatorStatsService.PartialSetupAttentionRatio, 6);
         Assert.Equal(0.5, OperatorStatsService.DowntimeCommentRatio, 6);
     }
@@ -150,7 +150,7 @@ public class OperatorStatsTests
         double marked = 600, int minutes = 660, int records = 3,
         double downtimeRatio = 0.1, double partialRatio = 0.05,
         IReadOnlyList<(string Field, string Description)>? anomalies = null) =>
-        new("Mazak QTS350", Shifts.Day, new DateOnly(2026, 9, 29), "Хомутов А. Б.",
+        new("Mazak QTS350", Shifts.Day, new DateOnly(2026, 9, 29), "Иванов А. Б.",
             minutes, marked, minutes - marked, records, 90, downtimeRatio,
             30, partialRatio, 0,
             [new DowntimeRemark("Отказ оборудования", 40, true)],
@@ -160,10 +160,10 @@ public class OperatorStatsTests
     public void ПроверкаСмены_Неотмеченное_ВНорме_БезДействий()
     {
         var review = new ShiftReviewResult(
-            "Mazak QTS350", Shifts.Day, new DateOnly(2026, 9, 29), "Хомутов А. Б.",
-            660, 600, 60, 3, 90, 0.05, 0, 0, 0, [], []);
-        var text = OperatorStatsFormatter.FormatShiftReview(review, "Хомутов А. Б.");
-        Assert.Contains("Не отмечено: 60 мин", text);
+            "Mazak QTS350", Shifts.Day, new DateOnly(2026, 9, 29), "Иванов А. Б.",
+            660, 630, 30, 3, 90, 0.05, 0, 0, 0, [], []);
+        var text = OperatorStatsFormatter.FormatShiftReview(review, "Иванов А. Б.");
+        Assert.Contains("Не отмечено: 30 мин", text);
         Assert.DoesNotContain("больше 10%", text);
         Assert.Contains("Явных проблем нет", text);
     }
@@ -172,7 +172,7 @@ public class OperatorStatsTests
     public void ПроверкаСмены_МногоНеотмеченного_ПроситЗакрытьВремя()
     {
         var text = OperatorStatsFormatter.FormatShiftReview(
-            Review(marked: 500, minutes: 660), "Хомутов А. Б.");
+            Review(marked: 500, minutes: 660), "Иванов А. Б.");
         Assert.Contains("Не отмечено 160 мин", text);
         Assert.Contains("длительности смены", text);
         // Ключевое по инструкции: отмечать только если потребность возникла во время
@@ -189,7 +189,7 @@ public class OperatorStatsTests
     public void ПроверкаСмены_ПростоиБольшеПоловины_ПроситПроверить()
     {
         var text = OperatorStatsFormatter.FormatShiftReview(
-            Review(downtimeRatio: 0.62), "Хомутов А. Б.");
+            Review(downtimeRatio: 0.62), "Иванов А. Б.");
         Assert.Contains("больше половины", text);
         Assert.Contains("не отмечено ли лишнего", text);
     }
@@ -198,7 +198,7 @@ public class OperatorStatsTests
     public void ПроверкаСмены_ЧастичнаяНалдка_ПроситОбъяснить()
     {
         var text = OperatorStatsFormatter.FormatShiftReview(
-            Review(partialRatio: 0.45), "Хомутов А. Б.");
+            Review(partialRatio: 0.45), "Иванов А. Б.");
         Assert.Contains("Частичная наладка 45%", text);
         Assert.Contains("попросит объяснить причину в комментарии", text);
     }
@@ -206,7 +206,7 @@ public class OperatorStatsTests
     [Fact]
     public void ПроверкаСмены_ПростойБезПояснения_УпоминаетИнструкцию()
     {
-        var text = OperatorStatsFormatter.FormatShiftReview(Review(), "Хомутов А. Б.");
+        var text = OperatorStatsFormatter.FormatShiftReview(Review(), "Иванов А. Б.");
         Assert.Contains("дополнительная информация", text);
         Assert.Contains("Отказ оборудования", text);
     }
@@ -216,7 +216,7 @@ public class OperatorStatsTests
     {
         var text = OperatorStatsFormatter.FormatShiftReview(
             Review(anomalies: [("Вал (12345)", "Отсутствует норматив наладки при реальном заказе")]),
-            "Хомутов А. Б.");
+            "Иванов А. Б.");
         Assert.Contains("ЗАМЕЧАНИЯ МАСТЕРА ПО СТРОКАМ", text);
         Assert.Contains("Вал (12345)", text);
         Assert.Contains("Отсутствует норматив наладки", text);
@@ -227,7 +227,7 @@ public class OperatorStatsTests
     public void ПроверкаСмены_БезЗаписей_НеВыдумываетЧисла()
     {
         var text = OperatorStatsFormatter.FormatShiftReview(
-            Review(marked: 0, records: 0), "Хомутов А. Б.");
+            Review(marked: 0, records: 0), "Иванов А. Б.");
         Assert.Contains("Записей в журнале за эту смену нет", text);
         Assert.DoesNotContain("Отмечено времени", text);
         // Инструкция: либо простои при прерывании работы, либо ничего при ремонте.
@@ -238,7 +238,7 @@ public class OperatorStatsTests
     [Fact]
     public void ПроверкаСмены_НетДанных_ЧестныйОтказ()
     {
-        var text = OperatorStatsFormatter.FormatShiftReview(null, "Хомутов А. Б.");
+        var text = OperatorStatsFormatter.FormatShiftReview(null, "Иванов А. Б.");
         Assert.Contains("нет", text);
         Assert.Contains("Не выдумывай цифры", text);
     }
@@ -301,7 +301,7 @@ public class OperatorStatsTests
         int workedShifts = 5, int workDays = 30, int minShifts = 5,
         double setupRatio = 0.87, double productionRatio = 0.96,
         double includedTimeRatio = 0.82, int excluded = 0) =>
-        new("Хомутов Александр Борисович", "Mazak QTS350",
+        new("Иванов Александр Борисович", "Mazak QTS350",
             new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30),
             workedShifts, workDays, minShifts, 4, 6, 5, 43, 210, 980, 240, 0.16,
             1450, setupRatio, productionRatio, includedTimeRatio,
@@ -311,7 +311,7 @@ public class OperatorStatsTests
     [Fact]
     public void Статистика_ПоказываетКлючевыеЧисла()
     {
-        var text = OperatorStatsFormatter.FormatPeriodStats(Stats(), "Хомутов А. Б.");
+        var text = OperatorStatsFormatter.FormatPeriodStats(Stats(), "Иванов А. Б.");
         Assert.Contains("Смен с записями: 5", text);
         Assert.Contains("М/Л: 4", text);
         Assert.Contains("Наладок: 6", text);
@@ -353,7 +353,7 @@ public class OperatorStatsTests
     [Fact]
     public void Статистика_БезДанных_ЧестныйОтказ()
     {
-        var text = OperatorStatsFormatter.FormatPeriodStats(null, "Хомутов А. Б.");
+        var text = OperatorStatsFormatter.FormatPeriodStats(null, "Иванов А. Б.");
         Assert.Contains("нет", text);
         Assert.Contains("выдумывать нельзя", text);
     }

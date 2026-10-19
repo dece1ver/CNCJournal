@@ -1794,6 +1794,14 @@
                         <StaticResource ResourceKey="DeleteCell.Themed"/>
                     </MenuItem.Header>
                 </MenuItem>
+                <!-- Слепка деталей встык в рамках смены (зазоры до 180 мин), день и ночь отдельно -->
+                <MenuItem Command="{Binding SnapPartsCommand}"
+                          ToolTip="Слепить детали встык в рамках смены">
+                    <MenuItem.Header>
+                        <StaticResource ResourceKey="SnapParts.Themed"/>
+                    </MenuItem.Header>
+                </MenuItem>
+                <MenuItem Header="|" Margin="0" Padding="0 -4 0 0" IsEnabled="False"/>
                 <MenuItem Command="{Binding SearchInWinnumCommand}" 
                           CommandParameter="{Binding SelectedPart}" 
                           ToolTip="Посмотреть в Winnum">
@@ -1920,6 +1928,7 @@
                               Command="{Binding ManageColumnProfilesCommand}"
                               CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:PartsInfoWindow}}"/>
                 </MenuItem>
+                <MenuItem Header="|" Margin="0" Padding="0 -4 0 0" IsEnabled="False"/>
                 <MenuItem Header="Расчет">
                     <MenuItem Header="От исправленного" Padding="0"
                               Command="{Binding ChangeCalcFixedCommand}"
