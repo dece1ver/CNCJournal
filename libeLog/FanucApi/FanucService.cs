@@ -1,4 +1,5 @@
 ﻿using libeLog.Extensions;
+using libeLog.Views;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -19,7 +20,7 @@ namespace libeLog.FanucApi
         {
             var odbspeed = new Focas1.ODBSPEED();
             var _ret = Focas1.cnc_rdspeed(handle, -1, odbspeed);
-            if (_ret != Focas1.EW_OK) MessageBox.Show(_ret.ToString(), "cnc_rdspeed");
+            if (_ret != Focas1.EW_OK) MessageBoxWindow.Show(_ret.ToString(), "cnc_rdspeed", MessageBoxButton.OK, MessageBoxImage.Error);
             return (odbspeed.acts.data, odbspeed.actf.data);
         }
 
@@ -67,7 +68,7 @@ namespace libeLog.FanucApi
             var ret = Focas1.cnc_rdproginfo(handle, 0, 12, odbnc);
             if (ret != Focas1.EW_OK)
             {
-                MessageBox.Show(ret.ToString(), "GetProgramDataInfo");
+                MessageBoxWindow.Show(ret.ToString(), "GetProgramDataInfo", MessageBoxButton.OK, MessageBoxImage.Error);
                 return (null, null, null, null);
             }
             return (odbnc.reg_prg, odbnc.unreg_prg, odbnc.used_mem, odbnc.unused_mem);
@@ -79,7 +80,7 @@ namespace libeLog.FanucApi
             var ret = Focas1.cnc_rdspmeter(handle, 0, ref spindleNumber, buf);
             if (ret != Focas1.EW_OK)
             {
-                MessageBox.Show(ret.ToString(), "GetSpindleLoad");
+                MessageBoxWindow.Show(ret.ToString(), "GetSpindleLoad", MessageBoxButton.OK, MessageBoxImage.Error);
                 return 0;
             }
             return buf.spload1.spload.data;

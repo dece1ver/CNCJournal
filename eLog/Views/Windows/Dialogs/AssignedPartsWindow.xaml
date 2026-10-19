@@ -6,16 +6,18 @@
         xmlns:local="clr-namespace:eLog.Views.Windows.Dialogs"
         xmlns:cmd="clr-namespace:eLog.Infrastructure.Commands"
         xmlns:inf="clr-namespace:eLog.Infrastructure" FontSize="16"
+        FontFamily="{StaticResource Areopag.FontUI}"
+        Background="{StaticResource Areopag.Bg0}"
         WindowStartupLocation="CenterOwner"
         mc:Ignorable="d" DataContext="{Binding RelativeSource={RelativeSource Self}}"
         Title="Закреплённые детали" Height="600" Width="1080"
         WindowStyle="None">
-    <Border BorderBrush="Gray" BorderThickness="0">
+    <Border BorderBrush="{StaticResource Areopag.Line}" BorderThickness="0">
         <DockPanel>
             <TextBlock DockPanel.Dock="Top" Text="{Binding Machine}" TextAlignment="Center" HorizontalAlignment="Right" FontWeight="SemiBold" 
                        Margin="0 -3 10 2"/>
-            <Button DockPanel.Dock="Bottom" Margin="10" Width="120" Height="42"
-                VerticalAlignment="Bottom" HorizontalAlignment="Right" Content="{StaticResource ConfirmIcon}" 
+            <Button DockPanel.Dock="Bottom" Margin="10" Width="120" Height="42" Style="{StaticResource Areopag.PrimaryButton}"
+                VerticalAlignment="Bottom" HorizontalAlignment="Right" Content="{StaticResource ConfirmIconWhite}" 
                 CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:AssignedPartsWindow}}">
                 <Button.Command>
                     <cmd:CloseDialogCommand DialogResult="True"/>

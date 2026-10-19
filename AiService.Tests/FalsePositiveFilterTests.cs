@@ -1,0 +1,832 @@
+using AiService.Models;
+using AiService.Services;
+
+namespace AiService.Tests;
+
+/// <summary>
+/// Пост-фильтр галлюцинаций в data-сигналах. Здесь — правило plan=0 без заказа:
+/// строка без заказа (Order пустой или «Без М/Л») с нулевым планом — норма,
+/// сомнения модели режутся (кейс 21.09.2026 Rontek HTC420 №2).
+/// </summary>
+public class FalsePositiveFilterTests
+{
+    private static AnalyzeRequest Request(params PartContext[] parts) => new()
+    {
+        Machine = "Станок1",
+        ShiftDate = "2026-09-21",
+        Parts = [.. parts],
+    };
+
+    private static readonly HardRuleResult NoHard = new([], []);
+    private static readonly List<string> NoDowngraded = [];
+
+    private static PartContext NoOrderPart() => new()
+    {
+        PartName = "Втулка",
+        Order = "",
+        Setup = 1,
+        SetupTimePlan = 0,
+        SingleProductionTimePlan = 0,
+    };
+
+    [Fact]
+    public void NoOrderPlan0_NamedPart_RemovedAndReset()
+    {
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(NoOrderPart()), NoHard, NoDowngraded,
+            ["[Втулка] plan=0 без заказа — требует проверки"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void OrderedPlan0_Kept()
+    {
+        // Строка с заказом: plan=0 — недоработка нормирования, детерминированный hard.
+        // (SetupTimeFact задан, чтобы не сработало б/н-правило на дефолтных нулях.)
+        var part = NoOrderPart();
+        part.Order = "З1";
+        part.SetupTimeFact = 50;
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["[Втулка] отсутствует норматив наладки"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void MixedDay_UnnamedClaim_Kept()
+    {
+        // Безымянная жалоба при смешанном дне может относиться к строке
+        // с заказом — консервативно сохраняем.
+        var ordered = NoOrderPart();
+        ordered.Order = "З1";
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(NoOrderPart(), ordered), NoHard, NoDowngraded,
+            ["plan=0 без заказа — требует проверки"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void BezMl_NamedPart_Removed()
+    {
+        var part = NoOrderPart();
+        part.Order = "Без М/Л";
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["[Втулка] план=0, норматив отсутствует"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+    }
+
+    [Fact]
+    public void NoOrderPlan0_PrefixNameCollision_Removed()
+    {
+        // Кейс QTS350 2026-09-24: имя «Кольцо …» — префикс имени
+        // «Кольцо … расточка кулачков» (Без М/Л, plan=0). Сигнал «plan=0
+        // при наличии заказа» относится к Без М/Л-строке и обязан резаться;
+        // generic-совпадения со строками с заказом — артефакт подстроки.
+        PartContext Part(string name, string order, int plan) => new()
+        {
+            PartName = name,
+            Order = order,
+            Setup = 1,
+            SetupTimePlan = plan,
+            SetupTimeFact = plan > 0 ? plan : 64,
+            SingleProductionTimePlan = plan > 0 ? 30 : 0,
+        };
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(
+                Part("Кольцо АРМ2-49.3-01-041", "УЧ2608-0028.1.1", 86),
+                Part("Кольцо АРМ2-49.3-01-041 расточка кулачков", "Без М/Л", 0),
+                Part("Кольцо АРМ2-49.3-01-041", "УЧ2608-0028.1.1", 86)),
+            NoHard, NoDowngraded,
+            ["plan=0 при наличии заказа для «Кольцо АРМ2-49.3-01-041 расточка кулачков»"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void ClientSignalRestatedByModel_Removed()
+    {
+        // Кейс 30.09.2026, SKT21 27.09 (дословно): клиент прислал «Машинное время
+        // 4.7мин >= штучного норматива 4мин (117%)», модель переписала то же самое
+        // своими числами («4,7мин >= норматива 4мин (118%)») и с названием детали
+        // в префиксе. Факт система показывает сама и точно — пересказ с искажением
+        // только мешает. Настоящие находки про ту же деталь остаются.
+        var part = new PartContext
+        {
+            PartName = "Седло клапана АР31-01-019_МСЗ03082026 ННГ",
+            Order = "УЧ2609-0016.1.1",
+            Setup = 1,
+            SingleProductionTimePlan = 4,
+        };
+        part.Signals.Add("Машинное время 4.7мин > штучного норматива 4мин (117%)");
+
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            [
+                "[Седло клапана АР31-01-019_МСЗ03082026 ННГ] Машинное время 4,7мин > норматива 4мин (118%)",
+                "[Седло клапана АР31-01-019_МСЗ03082026 ННГ] КПД наладки 40% без объяснения",
+            ]);
+
+        Assert.Equal(
+            ["[Седло клапана АР31-01-019_МСЗ03082026 ННГ] КПД наладки 40% без объяснения"],
+            filtered);
+        Assert.Single(removed);
+    }
+
+    [Fact]
+    public void LowMachiningTimeClaim_Removed_AnyMachine()
+    {
+        // Кейс 30.09.2026, Hyundai L230A 22.09 (дословно): модель 6 прогонов подряд
+        // писала «Низкое машВремя (1.8) ниже норматива (5) без объяснения» — такого
+        // правила нет, время быстрее плана это норма. Аналитик: «Машинное время в норме».
+        // Станок СЕРИЙНЫЙ (IsSerial не задан), правило действует на любом.
+        var part = new PartContext
+        {
+            PartName = "Прокладка АР415-01-022",
+            Order = "З1",
+            Setup = 1,
+            MachiningTime = 1.8,
+            SingleProductionTimePlan = 5,
+        };
+
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            [
+                "Низкое машВремя (1.8) ниже норматива (5) без объяснения",
+                "[Прокладка АР415-01-022] Машинное время 1,8мин ниже штучного норматива 5мин",
+            ]);
+
+        Assert.Empty(filtered);
+        Assert.Equal(2, removed.Count);
+        Assert.All(removed, r => Assert.Equal("машинное время ниже норматива — не аномалия", r.Reason));
+    }
+
+    [Theory]
+    [InlineData("[Гильза] Машинное время 4,7мин > норматива 4мин (118%)")]
+    [InlineData("[Гильза] Машинное время превышает норматив — требует разбора")]
+    [InlineData("[Гильза] Изготовление не по техпроцессу: машинное время 1,8мин при нормативе 5, детали делали не по карте")]
+    [InlineData("[Гильза] Оператор сообщает о некорректном нормативе, машинное время ниже плана")]
+    public void LowMachiningTimeClaim_Kept_RealFindings(string signal)
+    {
+        // Аномалия «машинное время > норматива» — правило настоящее, режется только
+        // претензия «ниже норматива». Явная жалоба/причина с числами — тоже сигнал.
+        var part = new PartContext
+        {
+            PartName = "Гильза",
+            Order = "З1",
+            Setup = 1,
+            MachiningTime = 4.7,
+            // Партия не штучная: иначе сработает другое правило (пороги штучной партии)
+            // и проверить машинное время было бы нельзя.
+            FinishedCount = 50,
+            SingleProductionTimePlan = 4,
+        };
+
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded, [signal]);
+
+        Assert.Equal([signal], filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void ServerSignalRestatedByModel_Removed()
+    {
+        // Кейс 30.09.2026, Mazak QTS350 26.09: 4 сигнала на 2 сущности. Модель
+        // переписала серверные hard-факты своими словами и без скобок — два раза.
+        var part = new PartContext
+        {
+            PartName = "Фланец АРМ2-49.4-01-008",
+            Order = "ФЛ2609-0003.1.1",
+            Setup = 1,
+            SingleProductionTimePlan = 5,
+            MasterSetupComment = "Изготовление не по техпроцессу",
+        };
+        var hard = new HardRuleResult(
+            [
+                "[Фланец АРМ2-49.4-01-008] Причина отклонения в наладке требует пересмотра технологии: «Изготовление не по техпроцессу»",
+                "[Фланец АРМ2-49.4-01-008] Причина отклонения в изготовлении требует пересмотра технологии: «Изготовление не по техпроцессу»",
+            ],
+            []);
+
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), hard, NoDowngraded,
+            [
+                "Фланец АРМ2-49.4-01-008: Причина отклонения в наладке требует пересмотра технологии",
+                "Фланец АРМ2-49.4-01-008: Причина отклонения в изготовлении требует пересмотра технологии",
+                "[Фланец АРМ2-49.4-01-008] КПД наладки 40% без объяснения мастера",
+            ]);
+
+        Assert.Equal(["[Фланец АРМ2-49.4-01-008] КПД наладки 40% без объяснения мастера"], filtered);
+        Assert.Equal(2, removed.Count);
+        Assert.All(removed, r => Assert.Equal("пересказ системного сигнала (цитировать дословно)", r.Reason));
+    }
+
+    [Fact]
+    public void ServerSignalRestated_OtherPart_Kept()
+    {
+        // Эхом детали A нельзя срезать сигнал по детали B с той же комбобокс-причиной:
+        // пул сужается до названной детали.
+        var a = new PartContext { PartName = "Вал", Order = "З1", Setup = 1, SingleProductionTimePlan = 5 };
+        var b = new PartContext { PartName = "Штуцер", Order = "З1", Setup = 1, SingleProductionTimePlan = 5 };
+        var hard = new HardRuleResult(
+            ["[Вал] Причина отклонения в изготовлении требует пересмотра технологии: «Некорректные нормативы»"],
+            []);
+
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(a, b), hard, NoDowngraded,
+            ["[Штуцер] Причина отклонения в изготовлении требует пересмотра технологии: «Некорректные нормативы»"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void AbsentSetup_AmbiguousName_FactPositivePart_Removed()
+    {
+        // Кейс QTS350 2026-09-24 (второй заход): «Отсутствие наладки при наличии
+        // заказа (Кольцо…, уст 1)» матчит ДВЕ одноимённые строки — б/н (план 86)
+        // и нормальную (факт 70). Претензия неверна про обе: про первую запрещена
+        // (такой категории нет), про вторую фактически ложна → режется.
+        var bn = new PartContext
+        {
+            PartName = "Кольцо", Order = "З1", Setup = 1,
+            NoSetupHappened = true, SetupTimePlan = 86, SetupTimeFact = 0,
+            SingleProductionTimePlan = 30,
+        };
+        var ok = new PartContext
+        {
+            PartName = "Кольцо", Order = "З1", Setup = 1,
+            SetupRatio = 1.2286, SetupTimePlan = 86, SetupTimeFact = 70,
+            SingleProductionTimePlan = 30,
+        };
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(bn, ok), NoHard, NoDowngraded,
+            ["Отсутствие наладки при наличии заказа (Кольцо, уст 1)"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void AbsentProduction_FinishedPart_Removed()
+    {
+        // Зеркало для изготовления: «не выполнено» про строку с фактом/готовыми —
+        // фактически ложно; про б/и-строку — запрещённая категория. Режется.
+        var bi = new PartContext
+        {
+            PartName = "Втулка", Order = "З1", Setup = 1,
+            NoProductionHappened = true, SingleProductionTimePlan = 5,
+        };
+        var ok = new PartContext
+        {
+            PartName = "Втулка", Order = "З1", Setup = 1,
+            ProductionRatio = 0.9, ProductionTimeFact = 40, FinishedCount = 5,
+            SingleProductionTimePlan = 5,
+        };
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(bi, ok), NoHard, NoDowngraded,
+            ["Изготовление не выполнено при наличии заказа (Втулка, уст 1)"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void NormativeAbsenceClaim_WithFact_Kept()
+    {
+        // Страж от регрессии: «отсутствует норматив» — не про отсутствие работы,
+        // даже с фактом. Недоработка нормирования, решает hard, не этот фильтр.
+        var part = new PartContext
+        {
+            PartName = "Гильза", Order = "З1", Setup = 1,
+            SetupRatio = 0.5, SetupTimePlan = 0, SetupTimeFact = 56,
+            SingleProductionTimePlan = 0,
+        };
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["[Гильза] отсутствует норматив наладки"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    private static PartContext NoSetupOrderedPart() => new()
+    {
+        PartName = "Гильза",
+        Order = "З1",
+        Setup = 1,
+        SetupTimePlan = 114,
+        SetupTimeFact = 0,
+        NoSetupHappened = true,
+        ProductionRatio = 1.0,
+        FinishedCount = 10,
+        SingleProductionTimePlan = 5,
+    };
+
+    [Fact]
+    public void ForbiddenBnCategory_NamedNoSetupPart_Removed()
+    {
+        // Запрещённая категория «наладка не выполнена при наличии заказа» —
+        // б/н при заказе НЕ аномалия (кейс Goodway 2026-09-23, A/B Integrex 2026-09-21).
+        // Все формулировки модели обязаны гаснуть, заказ значения не имеет.
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(NoSetupOrderedPart()), NoHard, NoDowngraded,
+            [
+                "[Гильза] наладка не выполнена при наличии заказа",
+                "[Гильза] отсутствие наладки при наличии норматива",
+                "[Гильза] КПД наладки вне нормы (б/н), не объяснено",
+            ]);
+
+        Assert.Empty(filtered);
+        Assert.Equal(3, removed.Count);
+    }
+
+    [Fact]
+    public void ForbiddenBnCategory_RealSetupPart_Kept()
+    {
+        // Та же формулировка, но наладка реально была — сигнал сохраняется.
+        var part = NoSetupOrderedPart();
+        part.NoSetupHappened = false;
+        part.SetupTimeFact = 60;
+        part.SetupRatio = 0.5;
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["[Гильза] наладка не выполнена при наличии заказа"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void AbsentSetup_NoFactParaphrase_Removed()
+    {
+        // Кейс QTS350 2026-09-24 (v14): «план наладки=86мин при наличии заказа,
+        // но факта нет» — та же запрещённая категория новыми словами.
+        // Привязка двусмысленна (б/н-строка + строка с фактом 70) → режется.
+        var bn = new PartContext
+        {
+            PartName = "Кольцо", Order = "З1", Setup = 1,
+            NoSetupHappened = true, SetupTimePlan = 86, SetupTimeFact = 0,
+            SingleProductionTimePlan = 30,
+        };
+        var ok = new PartContext
+        {
+            PartName = "Кольцо", Order = "З1", Setup = 1,
+            SetupRatio = 1.2286, SetupTimePlan = 86, SetupTimeFact = 70,
+            SingleProductionTimePlan = 30,
+        };
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(bn, ok), NoHard, NoDowngraded,
+            ["план наладки=86мин при наличии заказа, но факта нет"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void AbsentSetup_NoSetupParaphrase_Removed()
+    {
+        // Кейс Mazak Nexus 5000 24.06.2026: «Нет наладки при наличии заказа
+        // и плане» — часть б/н (план 209, факт 0, заказ).
+        var part = new PartContext
+        {
+            PartName = "Корпус АР41.5-02-005", Order = "З1", Setup = 1,
+            NoSetupHappened = true, SetupTimePlan = 209, SetupTimeFact = 0,
+        };
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["Нет наладки при наличии заказа и плане"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void AbsentSetup_UndefinedKpdParaphrase_Removed()
+    {
+        // Кейс Mazak Nexus 5000 16.07.2026: «КПД наладки … не определён
+        // при наличии заказа и норматива» — часть б/н (план 171, факт 0);
+        // вторая строка дня (факт 110) в сигнале не названа.
+        var bn = new PartContext
+        {
+            PartName = "Корпус АР30-02-006 (литьё)", Order = "З1", Setup = 1,
+            NoSetupHappened = true, SetupTimePlan = 171, SetupTimeFact = 0,
+        };
+        var ok = new PartContext
+        {
+            PartName = "Эксцентрик", Order = "З2", Setup = 1,
+            SetupRatio = 1.0, SetupTimePlan = 114, SetupTimeFact = 110,
+        };
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(bn, ok), NoHard, NoDowngraded,
+            ["КПД наладки корпуса АР30-02-006 (литьё) не определён при наличии заказа и норматива"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void AbsentProduction_NoProductionParaphrase_Removed()
+    {
+        // Зеркало для изготовления: «Нет изготовления при наличии заказа», б/и.
+        var part = new PartContext
+        {
+            PartName = "Втулка", Order = "З1", Setup = 1,
+            NoProductionHappened = true, SingleProductionTimePlan = 5,
+        };
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["Нет изготовления при наличии заказа"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void ZeroMinutes_InsideBiggerNumber_Kept()
+    {
+        // Кейсы QTS350 06-26 / Victor A110 06-27.2026: «план 90мин»/«план 80мин»
+        // в клиентском сигнале частичной наладки — «0мин» внутри числа НЕ означает
+        // отсутствие работы. Часть с клиентским partial-сигналом, чтобы молчала
+        // и partial-проверка (как в проде).
+        var part = new PartContext
+        {
+            PartName = "Гильза", Order = "З1", Setup = 1,
+            SetupRatio = 0.2, SetupTimePlan = 90, SetupTimeFact = 508,
+            Signals = ["КПД частичной наладки 18% < 70% (план 90мин, факт 508мин)"],
+        };
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["КПД частичной наладки 18% <70% (план 90мин, факт 508мин)"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void ZeroMinutes_StandaloneZero_Cut()
+    {
+        // Страж: отдельно стоящий «факт 0 мин» — по-прежнему отсутствие работы.
+        var part = new PartContext
+        {
+            PartName = "Гильза", Order = "З1", Setup = 1,
+            NoSetupHappened = true, SetupTimePlan = 114, SetupTimeFact = 0,
+        };
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["[Гильза] факт наладки 0 мин"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+    }
+
+    [Fact]
+    public void PositiveFinishedCount_NotRemoved()
+    {
+        // Позитивное «выполнено N шт» про деталь с реальной наладкой —
+        // новые ключевые формы («выполнена/выполнено») его не задевают.
+        var part = NoSetupOrderedPart();
+        part.NoSetupHappened = false;
+        part.SetupTimeFact = 60;
+        part.SetupRatio = 0.5;
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["[Гильза] КПД наладки 50%, выполнено 10 шт"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void VagueOutOfNormClaim_NamedNoSetupPart_Removed()
+    {
+        // Расплывчатое «вне нормы» без чисел про б/н-деталь (пилот 24.09.2026:
+        // «КПД наладки вне нормы» при setupRatio=null) — та же галлюцинация.
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(NoSetupOrderedPart()), NoHard, NoDowngraded,
+            ["[Гильза] КПД наладки вне нормы"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+    }
+
+    [Fact]
+    public void NumericOutOfNormClaim_RealSetupPart_Kept()
+    {
+        // Конкретное значение вне диапазона по реальной наладке — не задевается:
+        // у претензии есть число, у детали — факт работы.
+        var part = NoSetupOrderedPart();
+        part.NoSetupHappened = false;
+        part.SetupTimeFact = 200;
+        part.SetupTimePlan = 100;
+        part.SetupRatio = 0.5;
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["[Гильза] КПД наладки 50% вне нормы, объяснение сомнительно"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void IsIncoherentOk_SignalsWithoutReview_True()
+    {
+        // Пилот 24.09.2026 (Goodway 01.06): модель перечислила необъяснённые
+        // проблемы, но вердикт False — противоречие, поднимаем в True.
+        Assert.True(FalsePositiveFilter.IsIncoherentOk(false, ["КПД изготовления=67%"]));
+        Assert.False(FalsePositiveFilter.IsIncoherentOk(true, ["КПД изготовления=67%"]));
+        Assert.False(FalsePositiveFilter.IsIncoherentOk(false, []));
+    }
+
+    private static PartContext DrugoePart() => new()
+    {
+        PartName = "Корпус проточной части",
+        Order = "З1",
+        Setup = 1,
+        SetupTimePlan = 57,
+        SetupTimeFact = 270,
+        SetupRatio = 0.21,
+        MasterSetupComment = "Другое",
+        MasterSetupDetail = "Вмятины по диаметру. Реставрация.",
+    };
+
+    private static PartContext BareDrugoePart() => new()
+    {
+        PartName = "Втулка",
+        Order = "З1",
+        Setup = 1,
+        SetupTimePlan = 60,
+        SetupTimeFact = 100,
+        SetupRatio = 0.6,
+        MasterSetupComment = "Другое",
+        MasterSetupDetail = "",
+        MasterComment = "",
+    };
+
+    [Fact]
+    public void DrugoeWithDetail_NamedClaim_Removed()
+    {
+        // Пилот 25.09 (QTS350 23.09): «без подтверждения освоения» при детальном
+        // «Другом» — детализация есть, жалоба неверна фактом.
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(DrugoePart()), NoHard, NoDowngraded,
+            ["[Корпус проточной части] КПД наладки=21% без подтверждения освоения"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void DrugoeBareDetail_Claim_Kept()
+    {
+        // Детализации правда нет — жалобе есть на что указывать.
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(BareDrugoePart()), NoHard, NoDowngraded,
+            ["[Втулка] КПД наладки 60% без детализации причины «Другое»"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void DrugoeUnnamed_MixedDay_Kept()
+    {
+        // Безымянная жалоба при смешанном дне: у одной строки детализация есть,
+        // у другой нет — может относиться к пустой, сохраняем.
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(DrugoePart(), BareDrugoePart()), NoHard, NoDowngraded,
+            ["КПД наладки вне нормы без детализации причины «Другое»"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    private static PartContext DetailedOtherPart() => new()
+    {
+        PartName = "Корпус проточной части",
+        Order = "З1",
+        Setup = 1,
+        SetupTimePlan = 57,
+        SetupTimeFact = 270,
+        SetupRatio = 0.21,
+        MasterSetupComment = "Другое",
+        MasterSetupDetail = "Вмятины по диаметру. Реставрация.",
+    };
+
+    [Fact]
+    public void MisaddressedDemand_NumberAnchored_Removed()
+    {
+        // Пилот 25.09 (QTS350 23.09, флип): «без подтверждения освоения/заготовок»,
+        // хотя выбрано детальное «Другое»; число 21% привязывает к строке.
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(DetailedOtherPart()), NoHard, NoDowngraded,
+            ["КПД наладки=21% (ниже нормы) без подтверждения освоения/некорректных заготовок"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void MisaddressedDemand_CorrectAddressee_Kept()
+    {
+        // Требование относится к выбранной причине — сохраняем.
+        var part = DetailedOtherPart();
+        part.MasterSetupComment = "Освоение";
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["КПД наладки=21% без подтверждения освоения"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void MisaddressedDemand_EmptyReasonRow_Kept()
+    {
+        // У второй строки причины нет вообще — требование может относиться к ней.
+        // Число 21% привязывает только первую строку... поэтому здесь БЕЗ числа:
+        // безымянно и без чисел, при пустой строке — сохраняем.
+        var bare = BareDrugoePart();
+        bare.MasterSetupComment = "";
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(DetailedOtherPart(), bare), NoHard, NoDowngraded,
+            ["КПД наладки вне нормы без подтверждения освоения"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    private static AnalyzeRequest NonSerialRequest(params PartContext[] parts) => new()
+    {
+        Machine = "Станок1",
+        ShiftDate = "2026-09-21",
+        Parts = [.. parts],
+        IsSerialMachine = false,
+    };
+
+    [Fact]
+    public void NonSerial_ProductionKpdClaim_Removed()
+    {
+        // Несерийный станок: претензии к КПД изготовления режутся (с числами и
+        // без), и машинное время против норматива тоже (30.09.2026: изготовление
+        // здесь не оценивается). Норматив наладки не задевается.
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            NonSerialRequest(), NoHard, NoDowngraded,
+            ["[Гильза] КПД изготовления 44% ниже нормы",
+             "[Гильза] КПД изготовления вне нормы",
+             "[Гильза] Машинное время 5мин > норматива 5мин (100%)",
+             "[Гильза] Причина отклонения в наладке: нормативы некорректны"]);
+
+        Assert.Single(filtered);
+        Assert.Equal(3, removed.Count);
+    }
+
+    [Fact]
+    public void NonSerial_MachiningNormativeClaim_Removed()
+    {
+        // Несерийный станок: эскалация «изготовление + спор о нормативе» режется —
+        // время здесь не учитывается. «не по техпроцессу» и «некорректное
+        // заполнение» (технология/данные) остаются, как и сигналы наладки.
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            NonSerialRequest(), NoHard, NoDowngraded,
+            ["[Гильза] Причина отклонения в изготовлении требует пересмотра технологии: нормативы некорректны",
+             "[Гильза] Изготовление по нормативам не выполнялось, норматив отсутствует",
+             "[Гильза] Машинное время 4,7мин превышает норматив 4мин",
+             "[Гильза] МашВремя 12мин выше штучного норматива 5мин",
+             "[Гильза] Изготовление не по техпроцессу — детализация в отчёте не соответствует",
+             "[Гильза] Данные по изготовлению заполнены некорректно, показатели не подтверждаются",
+             "[Гильза] Причина отклонения в наладке: нормативы некорректны"]);
+
+        Assert.Equal(3, filtered.Count);
+        Assert.Equal(4, removed.Count);
+    }
+
+    [Fact]
+    public void Serial_ProductionKpdClaim_Kept()
+    {
+        // Серийный (IsSerialMachine=null, старый клиент): правило не действует.
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(), NoHard, NoDowngraded,
+            ["[Гильза] КПД изготовления 44% ниже нормы"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void NormBandKpd_DigitPartName_Removed()
+    {
+        // Кейс Goodway 24.09.2026: «КПД изготовления корпуса клапана
+        // АР110-01-001 > 100%» — 101% в диапазоне 70–120, но цифры в имени
+        // детали не давали регулярке пересечь промежуток — сигнал выживал
+        // и через IsIncoherentOk зажигал True при базовом False.
+        var part = new PartContext
+        {
+            PartName = "Корпус клапана АР110-01-001", Order = "З1", Setup = 1,
+            ProductionRatio = 1.0112, FinishedCount = 108,
+            SingleProductionTimePlan = 5,
+        };
+        var (filtered, reset, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["КПД изготовления корпуса клапана АР110-01-001 > 100% (без объяснения)"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+        Assert.True(reset);
+    }
+
+    [Fact]
+    public void NormBandKpd_OutOfBand_Kept()
+    {
+        // Страж: расширение промежутка не должно съедать реальные нарушения.
+        var part = new PartContext
+        {
+            PartName = "Гильза", Order = "З1", Setup = 1,
+            SetupRatio = 2.5, SetupTimePlan = 100, SetupTimeFact = 250,
+        };
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            Request(part), NoHard, NoDowngraded,
+            ["[Гильза] КПД наладки 250% без объяснения"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+
+    private static AnalyzeRequest ReportRequest(string shift, string master)
+    {
+        var req = Request();
+        req.ShiftReports.Add(new ShiftReportContext
+        {
+            Shift = shift,
+            ShiftMinutes = 660,
+            ReportExists = true,
+            Master = master,
+        });
+        return req;
+    }
+
+    [Fact]
+    public void ShiftMasterRoleConfusion_NamedMasterAsOperator_Removed()
+    {
+        // Кейс 06.10.2026, Rontek HTC420 №1 28.09: «Оператор Зайцев ... отсутствует
+        // в системе» — а Зайцев в отчёте мастер, операторов с такой фамилией нет
+        // по построению.
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            ReportRequest("День", "Зайцев Максим Борисович"), NoHard, NoDowngraded,
+            ["Оператор Зайцев Максим Борисович отсутствует в системе"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+    }
+
+    [Fact]
+    public void ShiftMasterRoleConfusion_UntaggedAbsence_AllReportsHaveMasters_Removed()
+    {
+        var req = ReportRequest("День", "Зайцев Максим Борисович");
+        req.ShiftReports.Add(new ShiftReportContext
+        {
+            Shift = "Ночь",
+            ShiftMinutes = 630,
+            ReportExists = true,
+            Master = "Зайцев Максим Борисович",
+        });
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            req, NoHard, NoDowngraded,
+            ["мастер не указан в системе"]);
+
+        Assert.Empty(filtered);
+        Assert.Single(removed);
+    }
+
+    [Fact]
+    public void ShiftMasterRoleConfusion_GenuineComplaint_Kept()
+    {
+        // Содержательная претензия без ролевой путаницы — сохраняется.
+        var (filtered, _, removed) = FalsePositiveFilter.Apply(
+            ReportRequest("День", "Зайцев Максим Борисович"), NoHard, NoDowngraded,
+            ["Смена День: комментарий не о простое"]);
+
+        Assert.Single(filtered);
+        Assert.Empty(removed);
+    }
+}

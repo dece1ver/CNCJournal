@@ -1,8 +1,8 @@
 ﻿using DocumentFormat.OpenXml.Office2019.Drawing.Diagram11;
 using eLog.Infrastructure;
-using eLog.Infrastructure.Extensions;
 using eLog.Models;
 using libeLog.Models;
+using libeLog.Views;
 using Microsoft.Data.SqlClient;
 using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
@@ -162,6 +162,38 @@ namespace eLog.Views.Windows.Settings
             set => Set(ref _TimerForNotify, value);
         }
 
+        private string _AiHost = "";
+        /// <summary> Хост AiService (ИИ-помощник) </summary>
+        public string AiHost
+        {
+            get => _AiHost;
+            set => Set(ref _AiHost, value);
+        }
+
+        private int _AiPort;
+        /// <summary> Порт AiService (ИИ-помощник) </summary>
+        public int AiPort
+        {
+            get => _AiPort;
+            set => Set(ref _AiPort, value);
+        }
+
+        private string _AiModel = "";
+        /// <summary> Модель для чата (пусто — дефолт сервера) </summary>
+        public string AiModel
+        {
+            get => _AiModel;
+            set => Set(ref _AiModel, value);
+        }
+
+        private bool _AiChatAllowWebSearch;
+        /// <summary> Чат ищет в сети по умолчанию </summary>
+        public bool AiChatAllowWebSearch
+        {
+            get => _AiChatAllowWebSearch;
+            set => Set(ref _AiChatAllowWebSearch, value);
+        }
+
         private bool _EnableWriteShiftHandover;
         /// <summary> Передача смены </summary>
         public bool EnableWriteShiftHandover
@@ -199,6 +231,10 @@ namespace eLog.Views.Windows.Settings
             _TimerForNotify = AppSettings.Instance.TimerForNotify;
             _EnableWriteShiftHandover = AppSettings.Instance.EnableWriteShiftHandover;
             _DebugMode = AppSettings.Instance.DebugMode;
+            _AiHost = AppSettings.Instance.AiHost ?? "localhost";
+            _AiPort = AppSettings.Instance.AiPort <= 0 ? 5050 : AppSettings.Instance.AiPort;
+            _AiModel = AppSettings.Instance.AiModel ?? "";
+            _AiChatAllowWebSearch = AppSettings.Instance.AiChatAllowWebSearch;
             InitializeComponent();
             _ = LoadMachinesAsync();
         }
@@ -268,11 +304,11 @@ namespace eLog.Views.Windows.Settings
                 if (!Directory.Exists(tempPath)) Directory.CreateDirectory(tempPath);
                 var exportPath = Path.Combine(tempPath, "config.json");
                 File.Copy(AppSettings.ConfigFilePath, exportPath);
-                MessageBox.Show($"Параменры экспортированы:\n{exportPath}", "Экспорт");
+                MessageBoxWindow.Show($"Параменры экспортированы:\n{exportPath}", "Экспорт");
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Не удалось выполнить экспорт из-за непредвиденной ошибки.\n{ex.Message}", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show($"Не удалось выполнить экспорт из-за непредвиденной ошибки.\n{ex.Message}", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -324,18 +360,22 @@ namespace eLog.Views.Windows.Settings
                 PathToRecievers = AppSettings.Instance.PathToRecievers ?? "";
                 TimerForNotify = AppSettings.Instance.TimerForNotify;
                 DebugMode = AppSettings.Instance.DebugMode;
+                AiHost = AppSettings.Instance.AiHost ?? "localhost";
+                AiPort = AppSettings.Instance.AiPort <= 0 ? 5050 : AppSettings.Instance.AiPort;
+                AiModel = AppSettings.Instance.AiModel ?? "";
+                AiChatAllowWebSearch = AppSettings.Instance.AiChatAllowWebSearch;
 
                 File.Copy(tempName, AppSettings.ConfigFilePath, true);
                 AppSettings.Instance.ReadConfig();
                 File.Delete(tempName);
 
 
-                MessageBox.Show($"Параметры импортированы", "Импорт");
+                MessageBoxWindow.Show($"Параметры импортированы", "Импорт");
             }
             catch (Exception ex)
             {
                 AppSettings.Instance.ReadConfig();
-                MessageBox.Show($"Не удалось выполнить импорт конфигурации.\n{ex.Message}", "Импорт", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show($"Не удалось выполнить импорт конфигурации.\n{ex.Message}", "Импорт", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -383,13 +423,13 @@ namespace eLog.Views.Windows.Settings
                 {
                     if (string.IsNullOrWhiteSpace(ConnectionString))
                     {
-                        MessageBox.Show("Не указана строка подключения", "Нет", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBoxWindow.Show("Не указана строка подключения", "Нет", MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                      }
                     connection.Open();
                     connection.Close();
                     _ = LoadMachinesAsync();
-                    MessageBox.Show("Ок", $"Подключение доступно.", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBoxWindow.Show("Ок", $"Подключение доступно.", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
             catch (SqlException sqlEx)
@@ -397,16 +437,16 @@ namespace eLog.Views.Windows.Settings
                 switch (sqlEx.Number)
                 {
                     case 18456:
-                        MessageBox.Show($"Ошибка авторизации №{sqlEx.Number}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBoxWindow.Show($"Ошибка авторизации №{sqlEx.Number}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                         break;
                     default:
-                        MessageBox.Show($"Ошибка №{sqlEx.Number}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBoxWindow.Show($"Ошибка №{sqlEx.Number}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                         break;
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"{ex}", $"{ex.Message}", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show($"{ex}", $"{ex.Message}", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

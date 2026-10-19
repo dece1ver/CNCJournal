@@ -1,5 +1,6 @@
 ﻿using eLog.Infrastructure.Extensions;
 using eLog.Models;
+using libeLog.Infrastructure;
 using libeLog.Infrastructure.Enums;
 using libeLog.Models;
 using Newtonsoft.Json;
@@ -219,6 +220,47 @@ namespace eLog.Infrastructure
         }
 
 
+        private string _AiHost = "localhost";
+        /// <summary> Хост AiService (ИИ-помощник) </summary>
+        public string AiHost
+        {
+            get => _AiHost;
+            set => Set(ref _AiHost, value);
+        }
+
+
+        private int _AiPort = 5050;
+        /// <summary> Порт AiService (ИИ-помощник) </summary>
+        public int AiPort
+        {
+            get => _AiPort;
+            set => Set(ref _AiPort, value);
+        }
+
+
+        private string _AiModel = "";
+        /// <summary> Модель для чата (пусто — дефолт сервера, qwen3:14b) </summary>
+        public string AiModel
+        {
+            get => _AiModel;
+            set => Set(ref _AiModel, value);
+        }
+
+
+        private bool _AiChatAllowWebSearch;
+        /// <summary>
+        /// Чат по умолчанию ищет в сети (галка «Искать в сети»). Дефолт выкл:
+        /// включённый поиск дёргается на КАЖДОЕ сообщение, даже «привет», —
+        /// лишняя задержка и мусорные сниппеты в ответах. Фактовые вопросы
+        /// (цены, курсы, документация) сервер находит сам по эвристике.
+        /// </summary>
+        public bool AiChatAllowWebSearch
+        {
+            get => _AiChatAllowWebSearch;
+            set => Set(ref _AiChatAllowWebSearch, value);
+        }
+
+
         private int _TimerForNotify;
         /// <summary> Таймер до уведомления (в часах) </summary>
         public int TimerForNotify
@@ -292,7 +334,7 @@ namespace eLog.Infrastructure
         {
             if (File.Exists(ConfigFilePath)) File.Move(ConfigFilePath, ConfigFilePath + $".mvd{DateTime.Now.Ticks}");
             if (File.Exists(ConfigBackupPath)) File.Move(ConfigBackupPath, ConfigBackupPath + $".mvd{DateTime.Now.Ticks}");
-            if (!Directory.Exists(BasePath)) Directory.CreateDirectory(BasePath);
+            Logs.EnsureWritableDirectory(BasePath);
             Machines = new();
             Machine = null;
             Operators = new DeepObservableCollection<Operator>();
@@ -318,6 +360,10 @@ namespace eLog.Infrastructure
             TimerForNotify = 4;
             EnableWriteShiftHandover = true;
             PathToRecievers = "";
+            AiHost = "localhost";
+            AiPort = 5050;
+            AiModel = "";
+            AiChatAllowWebSearch = false;
             NotWritedShiftHandovers = new();
             NotSendedToolComments = new();
             var settings = new JsonSerializerSettings()
@@ -379,12 +425,15 @@ namespace eLog.Infrastructure
                 };
 
                 Operators ??= new() { CurrentOperator };
-                CurrentShift ??= "День";
+                CurrentShift ??= Text.DayShift;
                 Parts ??= new();
                 ConnectionString ??= "";
                 SmtpAddress ??= "";
                 SmtpUsername ??= "";
                 PathToRecievers ??= "";
+                AiHost ??= "localhost";
+                AiModel ??= "";
+                if (AiPort <= 0) AiPort = 5050;
                 NotSendedToolComments ??= new();
                 if (string.IsNullOrWhiteSpace(Instance.UpdatePath)) Instance.UpdatePath = Database.TryGetUpdatePath();
             }

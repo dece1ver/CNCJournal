@@ -1,0 +1,141 @@
+﻿<Window x:Class="remeLog.Views.LongSetupsWindow" chrome:WindowChromeTheme.Enabled="True"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:chrome="clr-namespace:libeLog.Infrastructure;assembly=libeLog"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:remeLog.Views"
+        mc:Ignorable="d" WindowStartupLocation="CenterOwner"
+        WindowStyle="SingleBorderWindow" WindowState="Maximized" ResizeMode="CanResize"
+        xmlns:vm="clr-namespace:remeLog.ViewModels" xmlns:md="clr-namespace:remeLog.Models" 
+        d:DataContext="{d:DesignInstance Type=vm:LongSetupsViewModel}"
+        Title="Длительные наладки" Height="450" Width="800"
+        Background="{DynamicResource Areopag.Bg0}">
+    <DockPanel>
+        <StatusBar DockPanel.Dock="Bottom" HorizontalContentAlignment="Stretch">
+            <StatusBarItem HorizontalContentAlignment="Stretch">
+                <TextBlock d:Text="Статус"/>
+            </StatusBarItem>
+        </StatusBar>
+        <ProgressBar DockPanel.Dock="Bottom" IsIndeterminate="{Binding InProgress}"/>
+        <DockPanel DockPanel.Dock="Bottom" Height="40">
+            <Button Content="Вернуть взад" Width="100" HorizontalAlignment="Right" Margin="2"
+                    Command="{Binding UpdatePartsCommand}"/>
+            <Button Content="Записать" Width="100" HorizontalAlignment="Right" Margin="2"
+                    Command="{Binding SavePartsCommand}"
+                    Style="{StaticResource Areopag.PrimaryButton}" FontFamily="{DynamicResource Areopag.FontMono}"/>
+        </DockPanel>
+        <DataGrid ItemsSource="{Binding Parts, UpdateSourceTrigger=PropertyChanged}" AutoGenerateColumns="False" 
+          VerticalGridLinesBrush="{DynamicResource Areopag.LineSoft}" HorizontalGridLinesBrush="{DynamicResource Areopag.LineSoft}"
+          ColumnWidth="SizeToCells" CanUserSortColumns="False" 
+          VerticalScrollBarVisibility="Visible" 
+          SelectionUnit="CellOrRowHeader" CanUserReorderColumns="False" 
+          SelectionMode="Extended" EnableColumnVirtualization="True" 
+          EnableRowVirtualization="True"
+          VirtualizingPanel.IsVirtualizing="True" 
+          VirtualizingPanel.VirtualizationMode="Recycling"
+          IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}" Margin="0 -1 0 0" BorderThickness="0" SelectedItem="{Binding SelectedPart, UpdateSourceTrigger=PropertyChanged}">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow" BasedOn="{StaticResource Areopag.DataGridRow}">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding NeedUpdate, UpdateSourceTrigger=PropertyChanged}" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Accent}"/>
+                        </DataTrigger>
+                        <Trigger Property="IsEditing" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Alert}"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Resources>
+                <!-- Остальное (фон, рамка, шрифт, шаблон с грипперами) — из глобального Areopag.DataGridColumnHeader -->
+                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource Areopag.DataGridColumnHeader}">
+                    <Setter Property="Padding" Value="3"/>
+                    <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
+                    <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+                </Style>
+            </DataGrid.Resources>
+
+            <DataGrid.Columns>
+                <DataGridTextColumn IsReadOnly="True" Header="Дата" Binding="{Binding ShiftDate, StringFormat=dd.MM.yy, Converter={StaticResource ShortDateConverter}}" Width="50">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+
+                <DataGridTextColumn IsReadOnly="True" Header="Смена" Binding="{Binding Shift}" Width="44">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+
+                <DataGridTextColumn IsReadOnly="True" Header="Станок" Binding="{Binding Machine}" Width="110">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+
+                <DataGridTextColumn IsReadOnly="True" Header="Оператор" Binding="{Binding Operator}" Width="150">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+
+                <DataGridTextColumn IsReadOnly="True" Header="Уст" Binding="{Binding Setup}" Width="28">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+
+                <DataGridTextColumn IsReadOnly="True" Header="Деталь" Binding="{Binding PartName}" Width="*">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+                
+                <DataGridTextColumn IsReadOnly="True" Header="Комментарий оператора" Binding="{Binding OperatorComment}" Width="*">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource TableLargeTextBlock}"/>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+
+                <DataGridTextColumn IsReadOnly="True" Header="Норматив" Binding="{Binding SetupTimePlan}" Width="70">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+
+                <DataGridTextColumn IsReadOnly="True" Header="Факт" Binding="{Binding SetupTimeFactIncludePartialAndDowntimes}" Width="70">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+                
+                <DataGridTextColumn Header="Причина" Binding="{Binding LongSetupReasonComment}" Width="250">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource TableLargeTextBlock}"/>
+                    </DataGridTextColumn.ElementStyle>
+                    <DataGridTextColumn.EditingElementStyle>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox}"/>
+                    </DataGridTextColumn.EditingElementStyle>
+                </DataGridTextColumn>
+                <DataGridTextColumn Header="Кооректирующие мероприятия" Binding="{Binding LongSetupFixComment}" Width="250">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource TableLargeTextBlock}"/>
+                    </DataGridTextColumn.ElementStyle>
+                    <DataGridTextColumn.EditingElementStyle>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox}"/>
+                    </DataGridTextColumn.EditingElementStyle>
+                </DataGridTextColumn>
+                <DataGridTextColumn Header="Комментарий СГТ" Binding="{Binding LongSetupEngeneerComment}" Width="250">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource TableLargeTextBlock}"/>
+                    </DataGridTextColumn.ElementStyle>
+                    <DataGridTextColumn.EditingElementStyle>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox}"/>
+                    </DataGridTextColumn.EditingElementStyle>
+                </DataGridTextColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

@@ -3,6 +3,7 @@ using eLog.Infrastructure.Extensions;
 using eLog.Models;
 using libeLog.Extensions;
 using libeLog.Models;
+using libeLog.Views;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -12,7 +13,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
-using Text = eLog.Infrastructure.Extensions.Text;
+using Text = eLog.Infrastructure.Text;
 
 namespace eLog.Views.Windows.Dialogs
 {
@@ -209,7 +210,7 @@ namespace eLog.Views.Windows.Dialogs
             {
                 if (gridChild is AdornedElementPlaceholder { AdornedElement: TextBox textBox } && Validation.GetErrors(textBox) is ICollection<ValidationError> { Count: > 0 } errors)
                 {
-                    MessageBox.Show(errors.First().ErrorContent.ToString(), "Некорректный ввод", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBoxWindow.Show(errors.First().ErrorContent.ToString(), "Некорректный ввод", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
         }

@@ -2,6 +2,7 @@
 using eLog.Models;
 using eLog.ViewModels;
 using libeLog.Models;
+using libeLog.Views;
 using System;
 using System.ComponentModel;
 using System.Linq;
@@ -36,7 +37,7 @@ namespace eLog.Views.Windows
                     return;
                 case true when AppSettings.Instance.Parts.Count == AppSettings.Instance.Parts.Count(x => x.IsFinished is not Part.State.InProgress):
                     {
-                        var res = MessageBox.Show("Смена не завершена.", "Внимание!", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                        var res = MessageBoxWindow.Show("Смена не завершена.", "Внимание!", MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxDefaultButton.Cancel);
                         switch (res)
                         {
                             case MessageBoxResult.OK:
@@ -49,7 +50,7 @@ namespace eLog.Views.Windows
                     }
                 case true when AppSettings.Instance.Parts.Count != AppSettings.Instance.Parts.Count(x => x.IsFinished is not Part.State.InProgress):
                     {
-                        var res = MessageBox.Show("Есть незавершенные детали.", "Внимание!", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                        var res = MessageBoxWindow.Show("Есть незавершенные детали.", "Внимание!", MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxDefaultButton.Cancel);
                         switch (res)
                         {
                             case MessageBoxResult.OK:

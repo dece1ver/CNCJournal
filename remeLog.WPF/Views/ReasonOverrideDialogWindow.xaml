@@ -1,0 +1,117 @@
+<Window x:Class="remeLog.Views.ReasonOverrideDialogWindow" chrome:WindowChromeTheme.Enabled="True"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:chrome="clr-namespace:libeLog.Infrastructure;assembly=libeLog"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008" mc:Ignorable="d"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:remeLog.Views"
+        Title="{Binding Title, RelativeSource={RelativeSource Self}}"
+        SizeToContent="Height" Width="460"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        WindowStyle="ToolWindow"
+        Background="{DynamicResource Areopag.Bg0}">
+    <Window.Resources>
+        <!-- Дублирует MasterCommentCellContextMenu/EditingTextBoxContextMenu из PartsInfoWindow.xaml:
+             там отдельное меню редактирования показывается только при активном вводе в ячейке,
+             здесь TextBox всегда «в редактировании», поэтому оба набора пунктов объединены. -->
+        <ContextMenu x:Key="CommentContextMenu">
+            <MenuItem Header="Копировать" Command="ApplicationCommands.Copy" />
+            <MenuItem Header="Вырезать" Command="ApplicationCommands.Cut" />
+            <MenuItem Header="Вставить" Command="ApplicationCommands.Paste" />
+            <MenuItem Header="Выделить все" Command="ApplicationCommands.SelectAll" />
+            <Separator/>
+            <MenuItem Header="Вставка спецсимволов">
+                <MenuItem Header="Градус (°)" Tag="°" Click="OnInsertValueClick"/>
+                <MenuItem Header="Плюс-минус (±)" Tag="±" Click="OnInsertValueClick"/>
+                <MenuItem Header="Диаметр (Ø)" Tag="Ø" Click="OnInsertValueClick"/>
+                <MenuItem Header="Микрон (µ)" Tag="µ" Click="OnInsertValueClick"/>
+            </MenuItem>
+            <Separator/>
+            <MenuItem Header="Другая операция">
+                <MenuItem Header="Заложена универсальная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена токарная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена токарно-фрезерная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена фрезерная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена вертикально-фрезерная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена горизонтально-фрезерная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена сверлильная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена долбежная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена электроэрозионная операция" Click="OnVariantClick"/>
+            </MenuItem>
+            <MenuItem Header="Другой станок">
+                <MenuItem Header="Деталь с Goodway GS-1500" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Hyundai L230A" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Hyundai WIA SKT21 №104" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Hyundai WIA SKT21 №105" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Hyundai XH6300" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Mazak Integrex i200" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Mazak Nexus 5000" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Mazak QTS200ML" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Mazak QTS350" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Quaser MV134" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HB1316" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HTC420 №1" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HTC420 №2" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HTC550MY" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HTC650M" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek VMC40C" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek VMC90C" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Victor A110" Click="OnVariantClick"/>
+            </MenuItem>
+            <Separator/>
+            <MenuItem Header="Очистить" Click="OnClearVariantClick"/>
+        </ContextMenu>
+    </Window.Resources>
+    <StackPanel Margin="12">
+        <TextBlock Text="{Binding CategoryTitle}" d:Text="Отклонения в наладке"
+                   FontWeight="Bold" TextWrapping="Wrap" Margin="0 0 0 8"/>
+
+        <!-- Отметка мастера — только контекст, аналитик её не правит -->
+        <Border BorderThickness="1" BorderBrush="{DynamicResource Areopag.Line}"
+                Padding="8" Margin="0 0 0 10">
+            <StackPanel>
+                <TextBlock Text="Отметка мастера" Opacity="0.7" FontSize="11" Margin="0 0 0 3"/>
+                <TextBlock Text="{Binding MasterReason}" d:Text="Освоение" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding MasterDetail}" d:Text="Деталь новая, долго искали оснастку"
+                           TextWrapping="Wrap" Opacity="0.75" Margin="0 4 0 0"
+                           Visibility="{Binding HasMasterDetail, Converter={StaticResource VisibilityConverter}}"/>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="Причина по решению СГТ:" Margin="0 0 0 3"/>
+        <ComboBox ItemsSource="{Binding Reasons}"
+                  SelectedItem="{Binding SelectedReason, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+
+        <StackPanel Orientation="Horizontal" Margin="0 10 0 3">
+            <TextBlock Text="Комментарий:"/>
+            <TextBlock Text=" (обязательно для этой причины)" Opacity="0.7" FontSize="11"
+                       VerticalAlignment="Center"
+                       Visibility="{Binding CommentRequired, Converter={StaticResource VisibilityConverter}}"/>
+        </StackPanel>
+        <TextBox x:Name="CommentBox"
+                 Text="{Binding OverrideComment, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" MaxHeight="180"
+                 VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                 ContextMenu="{StaticResource CommentContextMenu}"/>
+
+        <CheckBox IsChecked="{Binding IsMasterFault, Mode=TwoWay}" Margin="0 10 0 0"
+                  Content="Ошибка мастера"
+                  ToolTip="Отметьте, если у мастера была возможность выбрать верно — тогда переопределение попадёт в статистику его ошибок."/>
+
+        <StackPanel Margin="0 6 0 0" Visibility="{Binding IsMasterFault, Converter={StaticResource VisibilityConverter}}">
+            <TextBlock Text="В чём ошибка (опционально):" Margin="0 0 0 3"/>
+            <TextBox Text="{Binding MasterFaultComment, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     AcceptsReturn="True" TextWrapping="Wrap" MinHeight="50" MaxHeight="120"
+                     VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                     ContextMenu="{StaticResource CommentContextMenu}"/>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 12 0 0">
+            <Button Content="Отмена" Width="80" IsCancel="True"/>
+            <Button Content="OK" Width="80" Margin="10 0 0 0" IsDefault="True"
+                    Click="Ok_Click" IsEnabled="{Binding CanConfirm}"
+                    Style="{StaticResource Areopag.PrimaryButton}" FontFamily="{DynamicResource Areopag.FontMono}"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

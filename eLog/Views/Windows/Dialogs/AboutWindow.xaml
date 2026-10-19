@@ -8,13 +8,15 @@
         DataContext="{Binding RelativeSource={RelativeSource Self}}"
         xmlns:cnv="clr-namespace:eLog.Infrastructure.Converters"
         xmlns:cmd="clr-namespace:eLog.Infrastructure.Commands"
-        Title="О программе" Height="320" Width="640" ResizeMode="NoResize" ShowInTaskbar="False" WindowStartupLocation="CenterOwner" WindowStyle="None">
+        Title="О программе" Height="320" Width="640" ResizeMode="NoResize" ShowInTaskbar="False" WindowStartupLocation="CenterOwner" WindowStyle="None"
+        FontFamily="{StaticResource Areopag.FontUI}"
+        Background="{StaticResource Areopag.Bg0}">
     <Window.Resources>
         <cnv:OverlayVisibilityConverter x:Key="OverlayVisibilityConverter"/>
         <cnv:OverlayOpacityConverter x:Key="OverlayOpacityConverter"/>
     </Window.Resources>
     <Grid>
-        <Border BorderBrush="DarkGray" BorderThickness="1">
+        <Border BorderBrush="{StaticResource Areopag.Line}" BorderThickness="1">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="auto"/>
@@ -29,7 +31,7 @@
                     <TextBlock Margin="0 0 30 0" Text="Видеоинструкция    =>" VerticalAlignment="Center" FontSize="24" PreviewMouseLeftButtonUp="TextBlock_PreviewMouseLeftButtonUp"/>
                     <Image Source="pack://application:,,,/Resources/qrcode.png" Width="150"/>
                 </StackPanel>
-                <Button Grid.Row="2" Margin="10 10" Content="OK" Style="{StaticResource GeneralButton}"
+                <Button Grid.Row="2" Margin="10 10" Content="OK" Style="{StaticResource Areopag.PrimaryButton}"
                         CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:AboutWindow}}">
                     <Button.Command>
                         <cmd:CloseDialogCommand DialogResult="True"/>

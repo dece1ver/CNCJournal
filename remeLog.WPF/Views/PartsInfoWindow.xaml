@@ -1,0 +1,2167 @@
+<Window x:Class="remeLog.Views.PartsInfoWindow" chrome:WindowChromeTheme.Enabled="True" x:Name="partsInfoWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:chrome="clr-namespace:libeLog.Infrastructure;assembly=libeLog"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:local="clr-namespace:remeLog.Views" 
+        xmlns:controls="clr-namespace:remeLog.Views.Controls"
+        xmlns:inf="clr-namespace:remeLog.Infrastructure" 
+        xmlns:cnv="clr-namespace:remeLog.Infrastructure.Converters"
+        xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
+        xmlns:cnt="clr-namespace:remeLog.Views.Controls"
+        xmlns:vm="clr-namespace:remeLog.ViewModels"
+        xmlns:md="clr-namespace:remeLog.Models;assembly=remeLog.Core"
+        mc:Ignorable="d" 
+        d:DataContext="{d:DesignInstance Type=vm:PartsInfoWindowViewModel}"
+        Title="{Binding PartsInfo.Machine}" Height="800" Width="1700" 
+        WindowStartupLocation="CenterOwner" 
+        WindowState="Maximized" 
+        PreviewKeyDown="PartsInfoWindow_PreviewKeyDown"
+        Background="{DynamicResource Areopag.Bg0}">
+    <Window.InputBindings>
+        <KeyBinding Modifiers="Ctrl" Key="S" Command="{Binding UpdatePartsCommand}"/>
+    </Window.InputBindings>
+    <Window.Resources>
+        <ContextMenu x:Key="GenericCellFilterContextMenu"/>
+        <Style TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
+        </Style>
+        <!-- Цвета/каретка/disabled — из базового Areopag.TextBox; здесь только кнопка очистки -->
+        <Style TargetType="TextBox" x:Key="ClearableTextBox" BasedOn="{StaticResource Areopag.TextBox}">            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Grid>
+                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="0">
+                                <Grid>
+                                    <ScrollViewer x:Name="PART_ContentHost" Focusable="false" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
+                                    <Button x:Name="ClearButton" HorizontalAlignment="Right" Background="Transparent" BorderThickness="0"
+                                            VerticalAlignment="Center" Width="20" Height="20" Margin="0 0 0 0"
+                                            Command="{Binding ClearContentCommand}" CommandParameter="{Binding RelativeSource={RelativeSource AncestorType={x:Type TextBox}}}">
+                                        <Button.Content>
+                                            <StaticResource ResourceKey="CleanData"/>
+                                        </Button.Content>
+                                    </Button>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="Text" Value=""/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="ClearButton" Property="Visibility" Value="Collapsed"/>
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Подсказка пустых полей и «кнопка-комбобокс» фильтра — общие
+             стили в ImplicitStyles (Areopag.FieldHint / Areopag.MachineFilterToggle).
+             Редактор комментариев с орфографией — тоже там:
+             Areopag.TableLargeTextBox.SpellChecked. -->
+
+        <ControlTemplate x:Key="ValidationTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="!" FontSize="24" Foreground="{DynamicResource Areopag.Alert}" Margin="0 -8 -8 0" MouseLeftButtonUp="ValidationTextBlock_MouseLeftButtonUp"/>
+                <AdornedElementPlaceholder Grid.Column="1"/>
+            </Grid>
+        </ControlTemplate>
+        <ControlTemplate x:Key="ValidationEditingTemplate">
+            <Border BorderBrush="{DynamicResource Areopag.Alert}" BorderThickness="1">
+                <AdornedElementPlaceholder/>
+            </Border>
+        </ControlTemplate>
+        
+        <!--#region Столбцы -->
+        <DataGridTextColumn x:Key="MachineColumn" inf:ColumnId.Id="Machine" Header="Станок" Binding="{Binding Machine}"
+                            Width="85" IsReadOnly="True">
+            <DataGridTextColumn.Visibility>
+                <MultiBinding Converter="{StaticResource AllVisibleMultiConverter}">
+                    <Binding Path="DataContext.MachineVisibility" Source="{x:Reference partsInfoWindow}" Converter="{StaticResource InvertedVisibilityConverter}"/>
+                    <Binding Path="DataContext.VisibleColumnIds" Source="{x:Reference partsInfoWindow}" Converter="{StaticResource ColumnVisibilityConverter}" ConverterParameter="Machine"/>
+                </MultiBinding>
+            </DataGridTextColumn.Visibility>
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="ShiftDateColumn" inf:ColumnId.Id="ShiftDate" Header="Дата" Binding="{Binding ShiftDate, StringFormat=dd.MM.yy, Converter={StaticResource ShortDateConverter}}" Width="50"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=ShiftDate}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTemplateColumn x:Key="ShiftColumn" inf:ColumnId.Id="Shift" Header="Смена" Width="35"
+                                Visibility="{Binding DataContext.VisibleColumnIds,
+                                Source={x:Reference partsInfoWindow},
+                                Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=Shift}">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding Shift}" Style="{StaticResource TableTextBlock}"/>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+            <DataGridTemplateColumn.CellEditingTemplate>
+                <DataTemplate>
+                    <ComboBox ItemsSource="{x:Static inf:AppSettings.ShiftTypes}" 
+              SelectedItem="{Binding Shift}" Style="{StaticResource TableComboBox}"/>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellEditingTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTextColumn x:Key="OperatorColumn" inf:ColumnId.Id="Operator" Header="Оператор" Binding="{Binding Operator}" Width="95"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=Operator}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="PartNameColumn" inf:ColumnId.Id="PartName" Header="Деталь" Binding="{Binding PartName}" Width="130"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=PartName}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}">
+                    <Setter Property="TextDecorations" Value="None"/>
+                    <Setter Property="ToolTip" Value="Не серийная"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSerial}" Value="True">
+                            <Setter Property="TextDecorations" Value="Underline"/>
+                            <Setter Property="ToolTip" Value="Серийная"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="OrderColumn" inf:ColumnId.Id="Order" Header="М/Л" Binding="{Binding Order}" Width="100"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=Order}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="TotalCountColumn" inf:ColumnId.Id="TotalCount" Header="Всего по М/Л" Binding="{Binding TotalCount, Converter={StaticResource ExpressionToIntConverter}}" Width="30"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=TotalCount}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="FinishedCountColumn" inf:ColumnId.Id="FinishedCount" Header="Выполнено" Binding="{Binding FinishedCount, Converter={StaticResource ExpressionToDoubleConverter}}" Width="30"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=FinishedCount}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="DefectiveCountColumn" inf:ColumnId.Id="DefectiveCount" Header="Брак" Binding="{Binding DefectiveCount, Converter={StaticResource ExpressionToIntConverter}}" Width="30"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                                        Source={x:Reference partsInfoWindow},
+                                        Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=DefectiveCount}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="SetupColumn" inf:ColumnId.Id="Setup" Header="Установка" Binding="{Binding Setup}" Width="20"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=Setup}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="StartSetupTimeColumn" inf:ColumnId.Id="StartSetupTime" Header="Начало наладки" Binding="{Binding StartSetupTime, StringFormat=HH:mm}" Width="40"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=StartSetupTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="StartMachiningTimeColumn" inf:ColumnId.Id="StartMachiningTime" Header="Начало изготовления" Binding="{Binding StartMachiningTime, StringFormat=HH:mm}" Width="40"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=StartMachiningTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="EndMachiningTimeColumn" inf:ColumnId.Id="EndMachiningTime" Header="Конец изготовления" Binding="{Binding EndMachiningTime, StringFormat=HH:mm}" Width="40"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=EndMachiningTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="SetupTimePlanColumn" inf:ColumnId.Id="SetupTimePlan" Header="Норматив наладки" Binding="{Binding SetupTimePlan, Converter={StaticResource ExpressionToDoubleConverter}}" Width="35"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=SetupTimePlan}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="SetupTimeFactColumn" inf:ColumnId.Id="SetupTimeFact" Header="Фактическая наладка" Binding="{Binding SetupTimeFact}"
+                    Width="35" IsReadOnly="True"
+                    Visibility="{Binding DataContext.VisibleColumnIds,
+                    Source={x:Reference partsInfoWindow},
+                    Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=SetupTimeFact}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="SingleProductionTimePlanColumn" inf:ColumnId.Id="SingleProductionTimePlan" Header="Норматив штучный" Binding="{Binding SingleProductionTimePlan,
+            Converter={StaticResource ExpressionToDoubleConverter}, StringFormat=0.#}" Width="35"
+            Visibility="{Binding DataContext.VisibleColumnIds,
+            Source={x:Reference partsInfoWindow},
+            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=SingleProductionTimePlan}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="MachiningTimeColumn" inf:ColumnId.Id="MachiningTime" Header="Машинное время" Binding="{Binding MachiningTime, StringFormat='hh\\:mm\\:ss'}" Width="50"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=MachiningTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="PartReplacementTimeColumn" inf:ColumnId.Id="PartReplacementTime" Header="Время замены" Binding="{Binding PartReplacementTime, StringFormat=0.#}"
+            Width="35" IsReadOnly="True"
+            Visibility="{Binding DataContext.VisibleColumnIds,
+            Source={x:Reference partsInfoWindow},
+            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=PartReplacementTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="SingleProductionTimeColumn" inf:ColumnId.Id="SingleProductionTime" Header="Штучное фактическое" Binding="{Binding SingleProductionTime, StringFormat=0.#, Mode=OneWay}"
+                    Width="35" IsReadOnly="True"
+                    Visibility="{Binding DataContext.VisibleColumnIds,
+                    Source={x:Reference partsInfoWindow},
+                    Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=SingleProductionTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="ProductionTimeFactColumn" inf:ColumnId.Id="ProductionTimeFact" Header="Фактическое изготовление" Binding="{Binding ProductionTimeFact, StringFormat=0.#}" 
+                    Width="35" IsReadOnly="True" 
+                    Visibility="{Binding DataContext.VisibleColumnIds,
+                    Source={x:Reference partsInfoWindow},
+                    Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=ProductionTimeFact}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="PlanForBatchColumn" inf:ColumnId.Id="PlanForBatch" Header="Норматив на партию" Binding="{Binding PlanForBatch, StringFormat=0.#}"
+                            Width="35" IsReadOnly="True"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter},
+                            ConverterParameter=PlanForBatch}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="OperatorCommentColumn" inf:ColumnId.Id="OperatorComment" Header="Комментарий оператора" Binding="{Binding OperatorComment}" Width="230" FontFamily="Calibri"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=OperatorComment}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableLargeTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="ProblemsColumn" inf:ColumnId.Id="Problems" Header="Проблемы" Binding="{Binding Problems, Mode=OneWay}" Width="150" FontFamily="Calibri" Visibility="Collapsed">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableLargeTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableLargeTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+
+        <DataGridTextColumn x:Key="SetupDowntimesColumn" inf:ColumnId.Id="SetupDowntimes" Header="Простои в наладке" Binding="{Binding SetupDowntimes, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter},
+                            ConverterParameter=SetupDowntimes}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="MachiningDowntimesColumn" inf:ColumnId.Id="MachiningDowntimes" Header="Простои в изготовлении" Binding="{Binding MachiningDowntimes, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter},
+                            ConverterParameter=MachiningDowntimes}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="PartialSetupTimeColumn" inf:ColumnId.Id="PartialSetupTime" Header="Частичная наладка" Binding="{Binding PartialSetupTime, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=PartialSetupTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="CreateNcProgramTimeColumn" inf:ColumnId.Id="CreateNcProgramTime" Header="Написание УП" Binding="{Binding CreateNcProgramTime, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter},
+                            ConverterParameter=CreateNcProgramTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="MaintenanceTimeColumn" inf:ColumnId.Id="MaintenanceTime" Header="Обслуживание" Binding="{Binding MaintenanceTime, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter},
+                            ConverterParameter=MaintenanceTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="ToolSearchingTimeColumn" inf:ColumnId.Id="ToolSearchingTime" Header="Поиск инструмента" Binding="{Binding ToolSearchingTime, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter},
+                            ConverterParameter=ToolSearchingTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="ToolChangingTimeColumn" inf:ColumnId.Id="ToolChangingTime" Header="Замена инструмента" Binding="{Binding ToolChangingTime, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+                    Visibility="{Binding DataContext.VisibleColumnIds,
+                    Source={x:Reference partsInfoWindow},
+                    Converter={StaticResource ColumnVisibilityConverter},
+                    ConverterParameter=ToolChangingTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="MentoringTimeColumn" inf:ColumnId.Id="MentoringTime" Header="Обучение" Binding="{Binding MentoringTime, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+                    Visibility="{Binding DataContext.VisibleColumnIds,
+                    Source={x:Reference partsInfoWindow},
+                    Converter={StaticResource ColumnVisibilityConverter},
+                    ConverterParameter=MentoringTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="ContactingDepartmentsTimeColumn" inf:ColumnId.Id="ContactingDepartmentsTime" Header="Другие службы" Binding="{Binding ContactingDepartmentsTime, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+                    Visibility="{Binding DataContext.VisibleColumnIds,
+                    Source={x:Reference partsInfoWindow},
+                    Converter={StaticResource ColumnVisibilityConverter},
+                    ConverterParameter=ContactingDepartmentsTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="FixtureMakingTimeColumn" inf:ColumnId.Id="FixtureMakingTime" Header="Изготовление оснастки" Binding="{Binding FixtureMakingTime, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+                    Visibility="{Binding DataContext.VisibleColumnIds,
+                    Source={x:Reference partsInfoWindow},
+                    Converter={StaticResource ColumnVisibilityConverter},
+                    ConverterParameter=FixtureMakingTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="HardwareFailureTimeColumn" inf:ColumnId.Id="HardwareFailureTime" Header="Отказ оборудования" Binding="{Binding HardwareFailureTime, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+                    Visibility="{Binding DataContext.VisibleColumnIds,
+                    Source={x:Reference partsInfoWindow},
+                    Converter={StaticResource ColumnVisibilityConverter},
+                    ConverterParameter=HardwareFailureTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="SpecialDowntimeTimeColumn" inf:ColumnId.Id="SpecialDowntimeTime" Header="Специальный" Binding="{Binding SpecialDowntimeTime, Converter={StaticResource ExpressionToDoubleConverter}}" Width="33"
+            Visibility="{Binding DataContext.VisibleColumnIds,
+            Source={x:Reference partsInfoWindow},
+            Converter={StaticResource ColumnVisibilityConverter},
+            ConverterParameter=SpecialDowntimeTime}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="SpecifiedDowntimesRatioColumn" inf:ColumnId.Id="SpecifiedDowntimesRatio" Header="Отмеченные простои" Binding="{Binding SpecifiedDowntimesRatio, UpdateSourceTrigger=PropertyChanged, StringFormat=0%}" 
+                            Width="33" IsReadOnly="True"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter},
+                            ConverterParameter=SpecifiedDowntimesRatio}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTemplateColumn x:Key="SpecifiedDowntimesCommentColumn" inf:ColumnId.Id="SpecifiedDowntimesComment" Header="Комментарий к простоям" Width="120"
+                                Visibility="{Binding DataContext.VisibleColumnIds,
+                                Source={x:Reference partsInfoWindow},
+                                Converter={StaticResource ColumnVisibilityConverter},
+                                ConverterParameter=SpecifiedDowntimesComment}">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding SpecifiedDowntimesComment, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" 
+               Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}">
+                    </TextBlock>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+            <DataGridTemplateColumn.CellEditingTemplate>
+                <DataTemplate>
+                    <TextBox Text="{Binding SpecifiedDowntimesComment, UpdateSourceTrigger=PropertyChanged}" 
+                             Style="{StaticResource Areopag.TableLargeTextBox.SpellChecked}">
+                    </TextBox>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellEditingTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTextColumn x:Key="SetupRatioTitleColumn" inf:ColumnId.Id="SetupRatioTitle" Header="Наладка" Binding="{Binding SetupRatioTitle, Mode=OneWay}" Width="38" IsReadOnly="True"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=SetupRatioTitle}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTemplateColumn x:Key="MasterSetupCommentColumn" inf:ColumnId.Id="MasterSetupComment" Header="Отклонения в наладке" Width="110"
+                                Visibility="{Binding DataContext.VisibleColumnIds,
+                                Source={x:Reference partsInfoWindow},
+                                Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=MasterSetupComment}">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <!-- Показывается эффективная причина (переопределение СГТ, иначе отметка
+                         мастера). Маркер слева и тултип с парой «мастер → СГТ» видны всем
+                         ролям без фиче-флага: для мастера это единственный канал обратной
+                         связи о его ошибках (регламент, п. 7.4). -->
+                    <DockPanel>
+                        <Border DockPanel.Dock="Left" Width="3" Background="{DynamicResource Areopag.Warn}" Margin="0 0 3 0"
+                                Visibility="{Binding HasSetupReasonOverride, Converter={StaticResource VisibilityConverter}}"
+                                ToolTip="{Binding SetupOverrideTooltip}"/>
+                        <TextBlock Text="{Binding EffectiveSetupReason, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
+                           ToolTip="{Binding SetupOverrideTooltip}"
+                           Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}"/>
+                    </DockPanel>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+            <DataGridTemplateColumn.CellEditingTemplate>
+                <DataTemplate>
+                    <Grid>
+                        <ComboBox ItemsSource="{Binding DataContext.SetupReasons, Source={x:Reference partsInfoWindow}}" 
+                                  SelectedItem="{Binding MasterSetupComment, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" 
+                                  Style="{StaticResource TableComboBox}" VerticalAlignment="Stretch"/>
+                    </Grid>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellEditingTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTemplateColumn x:Key="MasterSetupDetailColumn" inf:ColumnId.Id="MasterSetupDetail" Header="Комментарий мастера (наладка)" Width="125"
+                                Visibility="{Binding DataContext.VisibleColumnIds,
+                                Source={x:Reference partsInfoWindow},
+                                Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=MasterSetupDetail}">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <!-- Показывается эффективная детализация: при переопределении причины
+                         комментарий мастера обычно поясняет уже не ту причину, поэтому его
+                         заменяет обоснование СГТ (см. MasterSetupCommentColumn). -->
+                    <DockPanel>
+                        <Border DockPanel.Dock="Left" Width="3" Background="{DynamicResource Areopag.Warn}" Margin="0 0 3 0"
+                                Visibility="{Binding HasSetupReasonOverride, Converter={StaticResource VisibilityConverter}}"
+                                ToolTip="{Binding SetupOverrideTooltip}"/>
+                        <TextBlock Text="{Binding EffectiveSetupDetail, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
+                           ToolTip="{Binding SetupOverrideTooltip}"
+                           Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}"/>
+                    </DockPanel>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+            <DataGridTemplateColumn.CellEditingTemplate>
+                <DataTemplate>
+                    <TextBox Text="{Binding MasterSetupDetail, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellEditingTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTextColumn x:Key="ProductionRatioTitleColumn" inf:ColumnId.Id="ProductionRatioTitle" Header="Изготовление" Binding="{Binding ProductionRatioTitle}" Width="36" IsReadOnly="True"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=ProductionRatioTitle}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTemplateColumn x:Key="MasterMachiningCommentColumn" inf:ColumnId.Id="MasterMachiningComment" Header="Отклонения в изготовлении" Width="110"
+                                Visibility="{Binding DataContext.VisibleColumnIds,
+                                Source={x:Reference partsInfoWindow},
+                                Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=MasterMachiningComment}">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <!-- См. комментарий у MasterSetupCommentColumn. -->
+                    <DockPanel>
+                        <Border DockPanel.Dock="Left" Width="3" Background="{DynamicResource Areopag.Warn}" Margin="0 0 3 0"
+                                Visibility="{Binding HasMachiningReasonOverride, Converter={StaticResource VisibilityConverter}}"
+                                ToolTip="{Binding MachiningOverrideTooltip}"/>
+                        <TextBlock Text="{Binding EffectiveMachiningReason, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
+                           ToolTip="{Binding MachiningOverrideTooltip}"
+                           Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}"/>
+                    </DockPanel>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+            <DataGridTemplateColumn.CellEditingTemplate>
+                <DataTemplate>
+                    <Grid>
+                        <ComboBox ItemsSource="{Binding DataContext.MachiningReasons, Source={x:Reference partsInfoWindow}}" 
+                                  SelectedItem="{Binding MasterMachiningComment, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" 
+                                  Style="{StaticResource TableComboBox}" 
+                                  VerticalAlignment="Stretch">
+                        </ComboBox>
+                    </Grid>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellEditingTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTemplateColumn x:Key="MasterMachiningDetailColumn" inf:ColumnId.Id="MasterMachiningDetail" Header="Комментарий мастера (изготовление)" Width="125"
+                                Visibility="{Binding DataContext.VisibleColumnIds,
+                                Source={x:Reference partsInfoWindow},
+                                Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=MasterMachiningDetail}">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <!-- См. комментарий у MasterSetupDetailColumn. -->
+                    <DockPanel>
+                        <Border DockPanel.Dock="Left" Width="3" Background="{DynamicResource Areopag.Warn}" Margin="0 0 3 0"
+                                Visibility="{Binding HasMachiningReasonOverride, Converter={StaticResource VisibilityConverter}}"
+                                ToolTip="{Binding MachiningOverrideTooltip}"/>
+                        <TextBlock Text="{Binding EffectiveMachiningDetail, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
+                           ToolTip="{Binding MachiningOverrideTooltip}"
+                           Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}"/>
+                    </DockPanel>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+            <DataGridTemplateColumn.CellEditingTemplate>
+                <DataTemplate>
+                    <TextBox Text="{Binding MasterMachiningDetail, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellEditingTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTemplateColumn x:Key="MasterCommentColumn" inf:ColumnId.Id="MasterComment" Header="Комментарий мастера" Width="125"
+                                Visibility="{Binding DataContext.VisibleColumnIds,
+                                Source={x:Reference partsInfoWindow},
+                                Converter={StaticResource ColumnVisibilityConverter}, ConverterParameter=MasterComment}">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding MasterComment, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True, NotifyOnValidationError=True}"
+                       Style="{StaticResource TableTextBlock}" Validation.ErrorTemplate="{StaticResource ValidationTemplate}">
+                    </TextBlock>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+            <DataGridTemplateColumn.CellEditingTemplate>
+                <DataTemplate>
+                    <TextBox Text="{Binding MasterComment, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource Areopag.TableLargeTextBox.SpellChecked}">
+                    </TextBox>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellEditingTemplate>
+        </DataGridTemplateColumn>
+
+        <!-- Фоновая ИИ-проверка комментариев мастера (фича AiMasterCheck): совещательный
+             статус строки, tooltip с текстом замечания. Видна только при включённой фиче. -->
+        <DataGridTemplateColumn x:Key="AiCheckColumn" inf:ColumnId.Id="AiCheck" Header="ИИ" Width="24" IsReadOnly="True">
+            <DataGridTemplateColumn.Visibility>
+                <MultiBinding Converter="{StaticResource AllVisibleMultiConverter}">
+                    <Binding Path="DataContext.HasFeatureAiMasterCheck" Source="{x:Reference partsInfoWindow}" Converter="{StaticResource VisibilityConverter}"/>
+                    <Binding Path="DataContext.VisibleColumnIds" Source="{x:Reference partsInfoWindow}" Converter="{StaticResource ColumnVisibilityConverter}" ConverterParameter="AiCheck"/>
+                </MultiBinding>
+            </DataGridTemplateColumn.Visibility>
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <!-- Tooltip на растянутом Grid с Background=Transparent: без фона hit-test
+                         работает только на пикселях символа — в узкие «✓»/«!» курсором не попасть. -->
+                    <Grid Background="Transparent">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding AiCheckStatus}" Value="Ok">
+                                        <Setter Property="ToolTip" Value="ИИ: комментарии релевантны"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding AiCheckStatus}" Value="Remark">
+                                        <Setter Property="ToolTip" Value="{Binding AiCheckRemark}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding AiCheckStatus}" Value="Error">
+                                        <Setter Property="ToolTip" Value="{Binding AiCheckRemark}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}">
+                                    <Setter Property="Text" Value=""/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding AiCheckStatus}" Value="Ok">
+                                            <Setter Property="Text" Value="✓"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Ok}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding AiCheckStatus}" Value="Remark">
+                                            <Setter Property="Text" Value="!"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Warn}"/>
+                                            <Setter Property="FontWeight" Value="Bold"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding AiCheckStatus}" Value="Error">
+                                            <Setter Property="Text" Value="?"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Text3}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <Viewbox x:Name="AiCheckSpinner" Width="12" Height="12"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                                 Visibility="Collapsed" ToolTip="ИИ проверяет комментарии…">
+                            <Canvas Width="80" Height="80" Background="Transparent">
+                                <Canvas.RenderTransform>
+                                    <RotateTransform x:Name="AiCheckSpinnerRotate" CenterX="40" CenterY="40"/>
+                                </Canvas.RenderTransform>
+                                <Path Stroke="{DynamicResource Areopag.Text3}" StrokeThickness="8"
+                                      Data="M 40,10 A 30,30 0 0 1 70,40"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                <Path Stroke="{DynamicResource Areopag.Text3}" StrokeThickness="8"
+                                      Data="M 40,70 A 30,30 0 0 1 10,40"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            </Canvas>
+                        </Viewbox>
+                    </Grid>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding AiCheckStatus}" Value="Pending">
+                            <Setter TargetName="AiCheckSpinner" Property="Visibility" Value="Visible"/>
+                            <DataTrigger.EnterActions>
+                                <BeginStoryboard x:Name="AiCheckSpinnerStoryboard">
+                                    <Storyboard RepeatBehavior="Forever">
+                                        <DoubleAnimation Storyboard.TargetName="AiCheckSpinnerRotate"
+                                                         Storyboard.TargetProperty="Angle"
+                                                         From="0" To="360"
+                                                         Duration="0:0:1"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </DataTrigger.EnterActions>
+                            <DataTrigger.ExitActions>
+                                <StopStoryboard BeginStoryboardName="AiCheckSpinnerStoryboard"/>
+                            </DataTrigger.ExitActions>
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTemplateColumn x:Key="FixedSetupTimePlanColumn" inf:ColumnId.Id="FixedSetupTimePlan" Header="(И) Норматив наладки" Width="36"
+                                Visibility="{Binding DataContext.VisibleColumnIds,
+                                Source={x:Reference partsInfoWindow},
+                                Converter={StaticResource ColumnVisibilityConverter},
+                                ConverterParameter=FixedSetupTimePlan}">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding FixedSetupTimePlan, StringFormat=0.##, Converter={StaticResource ExpressionToDoubleConverter}}"
+                               Style="{StaticResource TableTextBlock}"
+                               IsEnabled="{Binding IsEditEnabled}"/>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+            <DataGridTemplateColumn.CellEditingTemplate>
+                <DataTemplate>
+                    <TextBox Text="{Binding FixedSetupTimePlan, Converter={StaticResource ExpressionToDoubleConverter}}"
+                             Style="{StaticResource TableTextBox}"
+                             IsEnabled="{Binding IsEditEnabled}">
+                        <TextBox.IsReadOnly>
+                            <MultiBinding Converter="{StaticResource BoolOrMultiConverter}">
+                                <Binding Path="IsEditEnabled" Converter="{StaticResource InvertedBoolConverter}"/>
+                                <Binding Path="DataContext.HasFeatureAdvancedEdit" Source="{x:Reference partsInfoWindow}" Converter="{StaticResource InvertedBoolConverter}"/>
+                            </MultiBinding>
+                        </TextBox.IsReadOnly>
+                    </TextBox>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellEditingTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTemplateColumn x:Key="FixedProductionTimePlanColumn" inf:ColumnId.Id="FixedProductionTimePlan" Header="(И) Норматив изготовления" Width="36"
+                                Visibility="{Binding DataContext.VisibleColumnIds,
+                                Source={x:Reference partsInfoWindow},
+                                Converter={StaticResource ColumnVisibilityConverter},
+                                ConverterParameter=FixedProductionTimePlan}">
+            <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding FixedProductionTimePlan, StringFormat=0.##, Converter={StaticResource ExpressionToDoubleConverter}}"
+                               Style="{StaticResource TableTextBlock}"
+                               IsEnabled="{Binding IsEditEnabled, Converter={StaticResource InvertedBoolConverter}}"/>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+            <DataGridTemplateColumn.CellEditingTemplate>
+                <DataTemplate>
+                    <TextBox Text="{Binding FixedProductionTimePlan, Converter={StaticResource ExpressionToDoubleConverter}}"
+                             Style="{StaticResource TableTextBox}"
+                             IsEnabled="{Binding IsEditEnabled}">
+                        <TextBox.IsReadOnly>
+                            <MultiBinding Converter="{StaticResource BoolOrMultiConverter}">
+                                <Binding Path="IsEditEnabled" Converter="{StaticResource InvertedBoolConverter}"/>
+                                <Binding Path="DataContext.HasFeatureAdvancedEdit" Source="{x:Reference partsInfoWindow}" Converter="{StaticResource InvertedBoolConverter}"/>
+                            </MultiBinding>
+                        </TextBox.IsReadOnly>
+                    </TextBox>
+                </DataTemplate>
+            </DataGridTemplateColumn.CellEditingTemplate>
+        </DataGridTemplateColumn>
+
+        <DataGridTextColumn x:Key="EngineerCommentColumn" inf:ColumnId.Id="EngineerComment" Header="Комментарий техотдела" Binding="{Binding EngineerComment}" Width="125"
+                            Visibility="{Binding DataContext.VisibleColumnIds,
+                            Source={x:Reference partsInfoWindow},
+                            Converter={StaticResource ColumnVisibilityConverter},
+                            ConverterParameter=EngineerComment}"
+                            IsReadOnly="{Binding DataContext.HasFeatureAdvancedEdit, Source={x:Reference partsInfoWindow}, Converter={StaticResource InvertedBoolConverter}}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="EngineerConclusionColumn" inf:ColumnId.Id="EngineerConclusion" Header="Заключение техотдела" Binding="{Binding EngineerConclusion}" Width="125"
+                    Visibility="{Binding DataContext.VisibleColumnIds,
+                    Source={x:Reference partsInfoWindow},
+                    Converter={StaticResource ColumnVisibilityConverter},
+                    ConverterParameter=EngineerConclusion}"
+                    IsReadOnly="{Binding DataContext.HasFeatureAdvancedEdit, Source={x:Reference partsInfoWindow}, Converter={StaticResource InvertedBoolConverter}}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+        
+        <DataGridTextColumn x:Key="ExcludedOperationsTimeColumn" inf:ColumnId.Id="ExcludedOperationsTime" Header="Исключённое время" Binding="{Binding ExcludedOperationsTime, 
+                    UpdateSourceTrigger=Default, StringFormat=0.##, 
+                    Converter={StaticResource ExpressionToDoubleConverter}}" Width="36"
+                    Visibility="{Binding DataContext.VisibleColumnIds,
+                    Source={x:Reference partsInfoWindow},
+                    Converter={StaticResource ColumnVisibilityConverter},
+                    ConverterParameter=ExcludedOperationsTime}"
+                    IsReadOnly="{Binding DataContext.HasFeatureAdvancedEdit, Source={x:Reference partsInfoWindow}, Converter={StaticResource InvertedBoolConverter}}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource TableTextBox}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridTextColumn x:Key="IncreaseReasonColumn" inf:ColumnId.Id="IncreaseReason" Header="Причина увеличения" Binding="{Binding IncreaseReason}" Width="125"
+                    Visibility="{Binding DataContext.VisibleColumnIds,
+                    Source={x:Reference partsInfoWindow},
+                    Converter={StaticResource ColumnVisibilityConverter},
+                    ConverterParameter=IncreaseReason}">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextBlock}"/>
+            </DataGridTextColumn.ElementStyle>
+            <DataGridTextColumn.EditingElementStyle>
+                <Style TargetType="TextBox" BasedOn="{StaticResource Areopag.TableLargeTextBox.SpellChecked}"/>
+            </DataGridTextColumn.EditingElementStyle>
+        </DataGridTextColumn>
+
+        <DataGridCheckBoxColumn x:Key="ExcludeFromReportsColumn" inf:ColumnId.Id="ExcludeFromReports" Header="Исключить" Binding="{Binding ExcludeFromReports, UpdateSourceTrigger=PropertyChanged}" Width="33"
+                                Visibility="{Binding DataContext.VisibleColumnIds,
+                                Source={x:Reference partsInfoWindow},
+                                Converter={StaticResource ColumnVisibilityConverter},
+                                ConverterParameter=ExcludeFromReports}"
+                                IsReadOnly="{Binding DataContext.HasFeatureAdvancedEdit, Source={x:Reference partsInfoWindow}, Converter={StaticResource InvertedBoolConverter}}">
+            <DataGridCheckBoxColumn.ElementStyle>
+                <Style TargetType="CheckBox" BasedOn="{StaticResource TableCheckBox}">
+                    <Setter Property="IsEnabled" Value="{Binding DataContext.HasFeatureAdvancedEdit, Source={x:Reference partsInfoWindow}}"/>
+                </Style>
+            </DataGridCheckBoxColumn.ElementStyle>
+            <DataGridCheckBoxColumn.EditingElementStyle>
+                <Style TargetType="CheckBox" BasedOn="{StaticResource TableCheckBox}">
+                    <Setter Property="IsEnabled" Value="{Binding DataContext.HasFeatureAdvancedEdit, Source={x:Reference partsInfoWindow}}"/>
+                </Style>
+            </DataGridCheckBoxColumn.EditingElementStyle>
+        </DataGridCheckBoxColumn>
+        <!--#endregion-->
+
+        <!--#region Контекстные меню -->
+        <ContextMenu x:Key="MasterCommentCellContextMenu">
+            <MenuItem Header="Другая операция">
+                <MenuItem Header="Заложена универсальная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена токарная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена токарно-фрезерная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена фрезерная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена вертикально-фрезерная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена горизонтально-фрезерная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена сверлильная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена долбежная операция" Click="OnVariantClick"/>
+                <MenuItem Header="Заложена электроэрозионная операция" Click="OnVariantClick"/>
+            </MenuItem>
+            <MenuItem Header="Другой станок">
+                <MenuItem Header="Деталь с Goodway GS-1500" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Hyundai L230A" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Hyundai WIA SKT21 №104" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Hyundai WIA SKT21 №105" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Hyundai XH6300" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Mazak Integrex i200" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Mazak Nexus 5000" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Mazak QTS200ML" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Mazak QTS350" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Quaser MV134" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HB1316" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HTC420 №1" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HTC420 №2" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HTC550MY" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek HTC650M" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek VMC40C" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Rontek VMC90C" Click="OnVariantClick"/>
+                <MenuItem Header="Деталь с Victor A110" Click="OnVariantClick"/>
+            </MenuItem>
+            <Separator/>
+            <MenuItem Header="Очистить" Click="OnClearVariantClick" Icon="{StaticResource CleanData}"/>
+        </ContextMenu>
+
+        <ContextMenu x:Key="EngeneerCommentCellContextMenu"/>
+
+        <ContextMenu x:Key="EditingTextBoxContextMenu">
+            <MenuItem Header="Копировать" Command="ApplicationCommands.Copy" />
+            <MenuItem Header="Вырезать" Command="ApplicationCommands.Cut" />
+            <MenuItem Header="Вставить" Command="ApplicationCommands.Paste" />
+            <MenuItem Header="Выделить все" Command="ApplicationCommands.SelectAll" />
+            <Separator/>
+            <MenuItem Header="Вставка спецсимволов">
+                <MenuItem Header="Градус (°)" Tag="°" Click="OnInsertValueClick"/>
+                <MenuItem Header="Плюс-минус (±)" Tag="±" Click="OnInsertValueClick"/>
+                <MenuItem Header="Диаметр (Ø)" Tag="Ø" Click="OnInsertValueClick"/>
+                <MenuItem Header="Микрон (µ)" Tag="µ" Click="OnInsertValueClick"/>
+            </MenuItem>
+        </ContextMenu>
+
+        <ContextMenu x:Key="SerialPartFixedNormativesContextMenu">
+            <MenuItem Header="Изменить норматив" Command="{Binding DataContext.ChangeSerialPartNormativesCommand, Source={x:Reference partsInfoWindow}}" />
+            <MenuItem Header="Разблокировать" Command="{Binding DataContext.UnlockSerialPartNormativesCommand, Source={x:Reference partsInfoWindow}}" />
+            <MenuItem Header="Очистить" Tag="0" Click="OnSetValueClick"/>
+        </ContextMenu>
+
+        <ContextMenu x:Key="TimeContextMenu">
+            <MenuItem Header="07:00" Click="OnInsertValueClick"/>
+            <MenuItem Header="08:00" Click="OnInsertValueClick"/>
+            <MenuItem Header="19:00" Click="OnInsertValueClick"/>
+            <MenuItem Header="20:00" Click="OnInsertValueClick"/>
+        </ContextMenu>
+
+        <ContextMenu x:Key="MultiFilterValueContextMenu">
+            <MenuItem Header="Добавить к фильтру" Click="OnAddMultiFilterValueClick"/>
+        </ContextMenu>
+        <!--#endregion-->
+    </Window.Resources>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="9*"/>
+            <ColumnDefinition Width="11*"/>
+        </Grid.ColumnDefinitions>
+        <DockPanel Grid.ColumnSpan="2">
+            <StatusBar DockPanel.Dock="Bottom">
+                <StatusBarItem HorizontalContentAlignment="Stretch">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0"
+                       Text="{Binding Status}"
+                       FontSize="16"
+                       Margin="0,-1"
+                       VerticalAlignment="Center"
+                       d:Text="Статус"/>
+
+                        <ProgressBar Grid.Column="1"
+                         Width="174"
+                         Margin="5,0,0,0"
+                         IsIndeterminate="True"
+                         Visibility="{Binding BackgroundWorking, Converter={StaticResource VisibilityConverter}}"/>
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,0,0"
+                                    Visibility="{Binding HasFeatureAi, Converter={StaticResource VisibilityConverter}}">
+                            <TextBlock Text="🖥️" FontSize="14" ToolTip="Это вы"/>
+                            <TextBlock FontSize="12" Margin="1,0"
+                                       ToolTip="{Binding HealthTooltip, TargetNullValue=''}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="⥇"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource Areopag.Alert}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsServerAvailable}" Value="True">
+                                                <Setter Property="Text" Value="⇄"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Ok}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="⚙️" FontSize="14" ToolTip="Это сервер с ИИ">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource Areopag.Alert}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsServerAvailable}" Value="True">
+                                                <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock FontSize="12" Margin="1,0"
+                                       ToolTip="{Binding HealthTooltip, TargetNullValue=''}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="⥇"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource Areopag.Alert}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsOllamaAvailable}" Value="True">
+                                                <Setter Property="Text" Value="⇄"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Ok}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <!-- Живой глаз-Дозор вместо эмодзи: состояние ИИ -->
+                            <controls:DozorEye Width="20" Height="20" VerticalAlignment="Center"
+                                               ToolTip="{Binding DozorTooltip}" Margin="0"
+                                               IsBusy="{Binding AiInProgress}"
+                                               IsAgent="{Binding AiThinkingEnabled}"
+                                               IsAvailable="{Binding IsOllamaAvailable}"
+                                               HasResult="{Binding HasAiResult}"
+                                               HasError="{Binding AiResult.HasError, FallbackValue=False}"
+                                               RequiresReview="{Binding AiResult.RequiresReview, FallbackValue=False}"/>
+                        </StackPanel>
+                    </Grid>
+                </StatusBarItem>
+            </StatusBar>
+            <ProgressBar DockPanel.Dock="Bottom" IsIndeterminate="True"
+                 Visibility="{Binding InProgress, Converter={StaticResource VisibilityConverter}, ConverterParameter=h}" Height="2" />
+            <Expander DockPanel.Dock="Bottom"
+                      Header="Размышления ИИ"
+                      IsExpanded="{Binding IsThoughtPanelOpen}"
+                      Visibility="{Binding IsThoughtPanelVisible, Converter={StaticResource VisibilityConverter}}"
+                      Background="{DynamicResource Areopag.Bg1}"
+                      BorderBrush="{DynamicResource Areopag.LineSoft}"
+                      Padding="4">
+                <ScrollViewer x:Name="ThoughtScrollViewer" MaxHeight="120" VerticalScrollBarVisibility="Auto">
+                    <TextBlock Text="{Binding ThinkingThoughts}"
+                               FontSize="11" FontFamily="{StaticResource Areopag.FontMono}"
+                               Padding="4" TextWrapping="Wrap"
+                               SizeChanged="ThoughtTextBlock_SizeChanged">
+                        <TextBlock.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Копировать" Click="CopyToClipboard_Click"/>
+                            </ContextMenu>
+                        </TextBlock.ContextMenu>
+                    </TextBlock>
+                </ScrollViewer>
+            </Expander>
+            <DockPanel DockPanel.Dock="Bottom">
+                <!--<Button DockPanel.Dock="Right" Content="!" IsEnabled="False" Visibility="{Binding HasErrors, Converter={StaticResource VisibilityConverter}, UpdateSourceTrigger=PropertyChanged, Mode=OneWay}"
+                    Foreground="{DynamicResource Areopag.Alert}" FontWeight="Bold" Background="Transparent" BorderThickness="0">
+                    <Button.Resources>
+                        <Style TargetType="Border">
+                            <Setter Property="CornerRadius" Value="0"/>
+                        </Style>
+                    </Button.Resources>
+                </Button>-->
+                <Button DockPanel.Dock="Right" Margin="1 10 4 1" Width="120"
+                        IsEnabled="{Binding CanOpenDailyReportButton, UpdateSourceTrigger=PropertyChanged, Mode=OneWay}"
+                        Command="{Binding OpenDailyReportWindowCommand}" CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:PartsInfoWindow}}"
+                        Style="{StaticResource Areopag.PrimaryButton}" FontFamily="{DynamicResource Areopag.FontMono}">
+                    <Button.Content>
+                        <TextBlock Text="Сформировать отчет за смену" TextWrapping="Wrap" TextAlignment="Center"/>
+                    </Button.Content>
+                    <Button.Resources>
+                        <Style TargetType="Border">
+                            <Setter Property="CornerRadius" Value="0"/>
+                        </Style>
+                    </Button.Resources>
+                </Button>
+                <Button DockPanel.Dock="Right" Content="Записать" Margin="0 10 0 1" Width="120" Command="{Binding UpdatePartsCommand}"
+                        Style="{StaticResource Areopag.PrimaryButton}" FontFamily="{DynamicResource Areopag.FontMono}">
+                    <Button.Resources>
+                        <Style TargetType="Border">
+                            <Setter Property="CornerRadius" Value="0"/>
+                        </Style>
+                    </Button.Resources>
+                </Button>
+
+                <StackPanel Orientation="Horizontal">
+                    <GroupBox Header="{Binding Parts.Count}" HeaderStringFormat="Итог по выборке (элементов: {0})" d:Header="0"
+                              Style="{StaticResource GroupBoxStyle}" Margin="2 1 0 1" Padding="4" BorderBrush="{DynamicResource Areopag.Line}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="60"/>
+                                <ColumnDefinition Width="140"/>
+                                <ColumnDefinition Width="60"/>
+                                <ColumnDefinition Width="145"/>
+                                <ColumnDefinition Width="40"/>
+
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Наладка общая:"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SetupTimeRatio, StringFormat=0%}" d:Text="100%"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Наладка средняя:"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AverageSetupRatio, StringFormat=0%}" d:Text="100%" FontWeight="SemiBold"/>
+
+                            <TextBlock Grid.Row="0" Grid.Column="2" Text="Изготовление общее:"/>
+                            <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding ProductionTimeRatio, StringFormat=0%}" d:Text="100%" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Text="Изготовление среднее:"/>
+                            <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding AverageProductionRatio, StringFormat=0%}" d:Text="100%"/>
+
+                            <TextBlock Grid.Row="0" Grid.Column="4" Text="Отмеченные простои:"/>
+                            <TextBlock Grid.Row="0" Grid.Column="5" Text="{Binding SpecifiedDowntimesRatio, StringFormat=0%}" d:Text="8%"/>
+                            <TextBlock Grid.Row="1" Grid.Column="4" Text="Неотмеченные простои:"/>
+                            <TextBlock Grid.Row="1" Grid.Column="5" Text="{Binding UnspecifiedDowntimesRatio, StringFormat=0%}" d:Text="3%"/>
+
+                        </Grid>
+                    </GroupBox>
+                    <GroupBox Header="Инструменты"
+                              Style="{StaticResource GroupBoxStyle}" Margin="2 1 0 1" Padding="4" BorderBrush="{DynamicResource Areopag.Line}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="80"/>
+                                <ColumnDefinition Width="80"/>
+                                <ColumnDefinition Width="*"/>
+
+
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/>
+                                <RowDefinition Height="1"/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Grid.Column="0" Margin="1 0 2 0">
+                                <TextBox x:Name="StartDateForCalcBox" Height="17" BorderThickness="0" Style="{StaticResource ClearableTextBox}"
+                                         Text="{Binding StartDateForCalc, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource TimeConverter}}"/>
+                                <TextBlock Text="начало">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource Areopag.FieldHint}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Text, ElementName=StartDateForCalcBox}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                            <Grid Grid.Row="2" Grid.Column="0" Margin="1 0 2 0">
+                                <TextBox x:Name="EndDateForCalcBox" Height="17" BorderThickness="0" Style="{StaticResource ClearableTextBox}"
+                                         Text="{Binding EndDateForCalc, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource TimeConverter}}"/>
+                                <TextBlock Text="конец">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource Areopag.FieldHint}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Text, ElementName=EndDateForCalcBox}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+
+                            <TextBox Grid.Row="0" Grid.Column="1" Margin="3 0 2 0" Height="17" IsReadOnly="True" BorderThickness="0"
+                                     Text="{Binding CalculatedTimeDifference, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBox Grid.Row="2" Grid.Column="1" Margin="3 0 2 0" Height="17" IsReadOnly="True" BorderThickness="0"
+                                     Text="{Binding CalculatedTimeDifferenceMinutes, Mode=OneWay, UpdateSourceTrigger=PropertyChanged, StringFormat=F2}"/>
+
+                            <CheckBox Grid.Row="0" Grid.Column="2" Margin="2 1 0 0" Content="Вычесть перерывы" IsChecked="{Binding DescreaseTimes}"/>
+                            <TextBox Grid.Row="2" Grid.Column="2" Margin="3 0 5 0" Height="17" Width="80" HorizontalAlignment="Left" BorderThickness="0" Style="{StaticResource ClearableTextBox}"
+                                     Text="{Binding AdditionalDescreaseValue, UpdateSourceTrigger=PropertyChanged, TargetNullValue={x:Static sys:String.Empty},
+                                            Converter={StaticResource ExpressionToIntConverter}}"/>
+                        </Grid>
+                    </GroupBox>
+                    <GroupBox Header="Первичная проверка" MinWidth="520"
+                              Style="{StaticResource GroupBoxStyle}" Margin="2 1 0 1" Padding="4" BorderBrush="{DynamicResource Areopag.Line}"
+                              Visibility="{Binding CanUserReview,
+                              Converter={StaticResource VisibilityConverter}}">
+                        <Grid Margin="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="200"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- Фиксированная высота: панель не прыгает, когда в момент
+                                 размышлений ИИ чекбокс сменяется тонким прогресс-баром -->
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="17"/>
+                                <RowDefinition Height="17"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Кнопка "Проверено" — скрыта (этап 2): статус дня только через вердикт ИИ -->
+                            <Button Grid.Row="0" Grid.Column="0" Width="90"
+                                    Margin="0" Padding="0 -2" Height="17"
+                                    Visibility="Collapsed"
+                                    Command="{Binding MarkDayOkCommand}"
+                                    ToolTip="Сутки проверены, все записи однозначны">
+                                <Button.Content>
+                                    <TextBlock>
+                                        <Run Text="Всё ОК"/>
+                                    </TextBlock>
+                                </Button.Content>
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource Areopag.Button}">
+                                        <Setter Property="Background" Value="{DynamicResource Areopag.OkSoft}"/>
+                                        <Setter Property="FontFamily" Value="{DynamicResource Areopag.FontMono}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentDayReview.Decision}" Value="Ok">
+                                                <Setter Property="Background"  Value="{DynamicResource Areopag.Ok}"/>
+                                                <Setter Property="FontWeight"  Value="SemiBold"/>
+                                            </DataTrigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Opacity" Value="0.5"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                                <Button.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="0"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
+
+                            <!-- Кнопка "Эскалация" — скрыта (этап 2): статус дня только через вердикт ИИ -->
+                            <Button Grid.Row="0" Grid.Column="1" Width="90"
+                                    Margin="-1 0 0 0" Padding="0 -2"  Height="17"
+                                    Visibility="Collapsed"
+                                    Command="{Binding MarkDayEscalatedCommand}"
+                                    ToolTip="Есть неоднозначные строки — передать экспертам">
+                                <Button.Content>
+                                    <TextBlock Text="Эскалация"/>
+                                </Button.Content>
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource Areopag.Button}">
+                                        <Setter Property="Background" Value="{DynamicResource Areopag.WarnSoft}"/>
+                                        <Setter Property="FontFamily" Value="{DynamicResource Areopag.FontMono}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentDayReview.Decision}" Value="Escalated">
+                                                <Setter Property="Background"  Value="{DynamicResource Areopag.Warn}"/>
+                                                <Setter Property="FontWeight"  Value="SemiBold"/>
+                                            </DataTrigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Opacity" Value="0.5"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                                <Button.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="0"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
+
+                            <!-- Поле комментария + кнопка расширенного редактора -->
+                            <Grid Grid.Row="0" Grid.Column="2" x:Name="CommentEditorGrid" Margin="4 0 0 0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
+                                         Text="{Binding DayReviewComment, UpdateSourceTrigger=PropertyChanged}"
+                                         VerticalContentAlignment="Center"
+                                         Padding="0 0"
+                                         FontSize="12" Height="17"
+                                         ToolTip="Комментарий к решению (причина эскалации, пояснение)&#10;При эскалации рекомендуется заполнить">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox" BasedOn="{StaticResource Areopag.TextBox}">
+                                            <Setter Property="BorderThickness" Value="0"/>
+                                            <Style.Triggers>
+                                                <!-- Желтая рамка при эскалации без комментария — напоминание -->
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding DayReviewComment}" Value=""/>
+                                                        <Condition Binding="{Binding CurrentDayReview.Decision}"
+                                                                   Value="Escalated"/>
+                                                    </MultiDataTrigger.Conditions>
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource Areopag.Warn}"/>
+                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
+                                <Button Grid.Column="1" Content="✏️" Width="16" Height="17" Padding="0 -1 0 0" Margin="0 0 0 0"
+                                        FontSize="10"
+                                        Command="{Binding OpenCommentEditorCommand}"
+                                        ToolTip="Открыть редактор комментария"/>
+
+                                <!-- Всплывающий редактор комментария -->
+                                <Popup IsOpen="{Binding IsCommentEditorOpen}"
+                                       PlacementTarget="{Binding ElementName=CommentEditorGrid}"
+                                       Placement="Top" StaysOpen="False"
+                                       PopupAnimation="Slide">
+                                    <Border BorderBrush="{DynamicResource Areopag.Line}" BorderThickness="1" Background="{DynamicResource Areopag.Input}" Padding="8" CornerRadius="0">
+                                        <StackPanel>
+                                            <TextBlock Text="Редактирование комментария" FontWeight="SemiBold" FontSize="13" Margin="0 0 0 6"/>
+                                            <TextBox Text="{Binding DayReviewComment, UpdateSourceTrigger=PropertyChanged}"
+                                                     AcceptsReturn="True" TextWrapping="Wrap"
+                                                     MinWidth="350" MinHeight="180" FontSize="12"
+                                                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                                     Margin="0 0 0 6"/>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                <Button Content="Отмена" Width="70" Margin="0 0 6 0"
+                                                        Command="{Binding CancelCommentEditorCommand}"/>
+                                                <Button Content="Применить" Width="70" IsDefault="True"
+                                                        Command="{Binding CloseCommentEditorCommand}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+
+                            <!-- Статус + счётчик помеченных строк (переехал со скрытой кнопки эскалации) -->
+                            <StackPanel Grid.Row="0" Grid.Column="3" Orientation="Horizontal"
+                                        VerticalAlignment="Center" Margin="8 0 0 0">
+                                <TextBlock Text="{Binding DayReviewStatusText}"
+                                           VerticalAlignment="Center"
+                                           FontSize="11">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{DynamicResource Areopag.Text3}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsDayReviewed}" Value="True">
+                                                    <Setter Property="Foreground"
+                                        Value="{Binding DayReviewStatusColor}"/>
+                                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <Border Background="{DynamicResource Areopag.Alert}" CornerRadius="0"
+                                        Margin="6 0 0 0" Height="13" MinWidth="12"
+                                        ToolTip="Помечено проблемных строк"
+                                        Visibility="{Binding HasFlaggedParts, Converter={StaticResource VisibilityConverter}}">
+                                    <TextBlock Text="{Binding FlaggedPartsCount}" d:Text="1" Foreground="{DynamicResource Areopag.OnAccent}" FontSize="8" FontFamily="{StaticResource Areopag.FontMono}" FontWeight="Bold" TextAlignment="Center"/>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Вызов AI — на месте скрытых ручных кнопок, на обе строки -->
+                            <DockPanel Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Grid.ColumnSpan="2"
+                                       Visibility="{Binding HasFeatureAi, Converter={StaticResource VisibilityConverter}}">
+                                <Button Margin="0"
+                                        Content="Призвать ИИ к ответу"
+                                        Padding="12 2"
+                                        VerticalAlignment="Stretch"
+                                        Command="{Binding AnalyzeDayCommand}"
+                                        ToolTip="Запустить ИИ-анализ суток">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource Areopag.PrimaryButton}">
+                                            <Setter Property="FontFamily" Value="{DynamicResource Areopag.FontMono}"/>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </DockPanel>
+
+                            <!-- Результат AI -->
+                            <StackPanel x:Name="AiResultPanel" Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="3" 
+                                        Margin="4 -1 0 0" Orientation="Horizontal">
+                                <Grid Width="196">
+                                    <CheckBox Content="Агент" DockPanel.Dock="Left"
+                                              IsChecked="{Binding AiThinkingEnabled}"
+                                              Visibility="{Binding AiInProgress, Converter={StaticResource InvertedVisibilityConverter}}"
+                                              ToolTip="Агентский режим (вкл) / обычный thinking-режим (выкл)"
+                                              VerticalAlignment="Center"
+                                              Margin="-1 0 0 0"/>
+                                    <ProgressBar BorderThickness="0" Height="2" IsIndeterminate="True" Visibility="{Binding AiInProgress, Converter={StaticResource VisibilityConverter}}"/>
+                                </Grid>
+                                <TextBlock Text="{Binding AiResultText}"
+                                           d:Text="Подумал"
+                                           VerticalAlignment="Center"
+                                           Margin="9 0 0 0"
+                                           FontSize="11"
+                                           FontWeight="SemiBold" ToolTip="Дважды кликните по этому тексту, чтобы посмотреть объяснение."
+                                           Visibility="{Binding HasAiResult, Converter={StaticResource VisibilityConverter}}">
+                                    <i:Interaction.Triggers>
+                                        <i:EventTrigger EventName="MouseLeftButtonUp">
+                                            <i:InvokeCommandAction Command="{Binding ShowAiExplanationCommand}"/>
+                                        </i:EventTrigger>
+                                    </i:Interaction.Triggers>
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{Binding AiResultColor}"/>
+                                        </Style>
+                                    </TextBlock.Style>
+                                    <TextBlock.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Копировать" Click="CopyAiResult_Click"/>
+                                        </ContextMenu>
+                                    </TextBlock.ContextMenu>
+                                </TextBlock>
+                                <!-- Бейдж авто-вердикта совпадения ИИ и аналитика -->
+                                <Border Margin="6 0 0 0" Padding="4 1"
+                                        Background="{Binding AiVerdictColor}"
+                                        Visibility="{Binding HasAiVerdict, Converter={StaticResource VisibilityConverter}}"
+                                        ToolTip="Автоматический вердикт: совпало ли решение ИИ с решением аналитика"
+                                        CornerRadius="0">
+                                    <TextBlock Text="{Binding AiVerdictText}"
+                                               FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Areopag.OnAccent}"/>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Всплывающий результат ИИ-анализа -->
+                            <Popup IsOpen="{Binding IsAiExplanationPopupOpen}"
+                                   PlacementTarget="{Binding ElementName=AiResultPanel}"
+                                   Placement="Top" StaysOpen="False"
+                                   PopupAnimation="Slide">
+                                <Border BorderBrush="{DynamicResource Areopag.Line}" BorderThickness="1" Background="{DynamicResource Areopag.Input}" Padding="8" CornerRadius="0" MaxWidth="550">
+                                    <StackPanel>
+                                        <TextBlock Text="Результат анализа ИИ" FontWeight="SemiBold" FontSize="13" Margin="0 0 0 6"/>
+                                        <TextBox Text="{Binding AiResultFormatted, Mode=OneWay}"
+                                                 IsReadOnly="True" TextWrapping="Wrap"
+                                                 MinWidth="350" MaxHeight="300" FontSize="12"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 Margin="0 0 0 6"/>
+                                        <TextBlock Text="Коррекция на ИИ (оставьте примечание, если ИИ ошибся)"
+                                                   FontSize="11" Foreground="{DynamicResource Areopag.Text3}" Margin="0 0 0 2"/>
+                                        <TextBox Text="{Binding AiFeedbackText, UpdateSourceTrigger=PropertyChanged}"
+                                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                                 MinWidth="350" MinHeight="50" MaxHeight="120" FontSize="12"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 ToolTip="Комментарий аналитика наpastый ИИ-анализ.&#10;Сохраняется вместе с решением (Всё ОК / Эскалация) и&#10;прокидывается в ИИ-промпт для будущих анализов."
+                                                 Margin="0 0 0 6"/>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <Button Content="Копировать" Width="90" Margin="0 0 6 0" Click="CopyAiResultFromPopup_Click"/>
+                                            <Button Content="Закрыть" Width="70" Command="{Binding CloseAiExplanationPopupCommand}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </GroupBox>
+
+                </StackPanel>
+            </DockPanel>
+
+            <DockPanel DockPanel.Dock="Top" >
+                <GroupBox Header="Фильтры" Style="{StaticResource GroupBoxStyle}" Margin="0" BorderBrush="{DynamicResource Areopag.Line}">
+                    <Grid Margin="0 -2 0 0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="60"/>
+                            <ColumnDefinition Width="120"/>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="75"/>
+                            <ColumnDefinition Width="340"/>
+                            <ColumnDefinition Width="auto"/>
+                            <ColumnDefinition Width="auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="auto"/>
+                            <ColumnDefinition Width="auto"/>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="60"/>
+                            <ColumnDefinition Width="60"/>
+                            <ColumnDefinition Width="60"/>
+                            <ColumnDefinition Width="20"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="22"/>
+                            <RowDefinition Height="1"/>
+                            <RowDefinition Height="22"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Оператор"/>
+                        <DockPanel Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2">
+                            <Button DockPanel.Dock="Right" Width="22" Margin="0 0 0 0"
+                                    Command="{Binding OpenMultiValueEditorCommand}" 
+                                    CommandParameter="Operator"
+                                    ToolTip="Выбрать несколько операторов">
+                                <Button.Content>
+                                    <TextBlock Text="…" FontSize="14" FontFamily="{StaticResource Areopag.FontUI}"/>
+                                </Button.Content>
+                            </Button>
+                            <TextBox Text="{Binding OperatorFilter, UpdateSourceTrigger=PropertyChanged, Delay=500}" Style="{StaticResource ClearableTextBox}"
+                                     BorderThickness="0 0 0 0" Margin="0 0 0 0"/>
+                            
+                        </DockPanel>
+                        
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Смена"/>
+                        <ComboBox Grid.Row="2" Grid.Column="1" Text="Оператор" BorderThickness="0 0 0 0" 
+                                  ItemsSource="{Binding ShiftFilterItems}" DisplayMemberPath="Name" SelectedItem="{Binding ShiftFilter}"/>
+
+                        <DockPanel Grid.Row="2" Grid.Column="2" ToolTip="Количество лично выполненных деталей">
+                            <TextBlock Text="Шт." Margin="10 0 5 0"/>
+                            <TextBox Text="{Binding FinishedCountFilter, UpdateSourceTrigger=PropertyChanged, Delay=500, ValidatesOnDataErrors=True, NotifyOnValidationError=True}" 
+                                     Style="{StaticResource ClearableTextBox}" BorderThickness="0 0 0 0"/>
+                        </DockPanel>
+
+                        <TextBlock Grid.Row="0" Grid.Column="3" Text="Деталь" Margin="25 0 0 0"/>
+                        <DockPanel Grid.Row="0" Grid.Column="4">
+                            <Button DockPanel.Dock="Right" Width="22" Margin="0 0 0 0"
+                                    Command="{Binding SearchInWindchillCommand}" 
+                                    CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:PartsInfoWindow}}">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource Areopag.Button}">
+                                        <Setter Property="Content" Value="{StaticResource LookupListItemIcon.Themed}"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                        <Setter Property="VerticalContentAlignment" Value="Center"/>
+                                        <Setter Property="FontFamily" Value="{DynamicResource Areopag.FontMono}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding WncSearchInProgress}" Value="True">
+                                                <Setter Property="Content">
+                                                    <Setter.Value>
+                                                        <Grid Width="16" Height="16"
+                                                              ClipToBounds="False">
+                                                            <Viewbox Width="12" Height="12"
+                                                                     
+                                                                 HorizontalAlignment="Center"
+                                                                 VerticalAlignment="Center">
+                                                                <Label Content="{StaticResource SyncIcon}" Margin="-2"
+                                                                       RenderTransformOrigin="0.5 0.5"
+                                                                       Padding="0">
+                                                                    <Label.RenderTransform>
+                                                                        <RotateTransform CenterX="0" CenterY="0"/>
+                                                                    </Label.RenderTransform>
+                                                                    <Label.Style>
+                                                                        <Style TargetType="Label">
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding WncSearchInProgress}" Value="True">
+                                                                                    <DataTrigger.EnterActions>
+                                                                                        <BeginStoryboard>
+                                                                                            <Storyboard RepeatBehavior="Forever">
+                                                                                                <DoubleAnimation
+                                                                                                    Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                                                                    From="0" To="360" Duration="0:0:1"/>
+                                                                                            </Storyboard>
+                                                                                        </BeginStoryboard>
+                                                                                    </DataTrigger.EnterActions>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Label.Style>
+                                                                </Label>
+                                                            </Viewbox>
+                                                        </Grid>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <TextBox Text="{Binding PartNameFilter, UpdateSourceTrigger=PropertyChanged, Delay=500}" Style="{StaticResource ClearableTextBox}" BorderThickness="0 0 0 0"/>
+                        </DockPanel>
+                        <TextBlock Grid.Row="2" Grid.Column="3" Text="М/Л" Margin="25 0 0 0"/>
+                        <Grid Grid.Row="2" Grid.Column="4" >
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="35"/>
+                                <ColumnDefinition Width="60"/>
+                                <ColumnDefinition Width="35"/>
+                                <ColumnDefinition Width="40"/>
+                                <ColumnDefinition Width="22"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <DockPanel Grid.Column="0" Grid.Row="0" Grid.RowSpan="2">
+                                <Button DockPanel.Dock="Right" Width="22" Margin="0 0 0 0"
+                                        Command="{Binding OpenMultiValueEditorCommand}" 
+                                        CommandParameter="Order"
+                                        ToolTip="Выбрать несколько М/Л">
+                                    <Button.Content>
+                                        <TextBlock Text="…" FontSize="14" FontFamily="{StaticResource Areopag.FontUI}"/>
+                                    </Button.Content>
+                                </Button>
+                                <TextBox Text="{Binding OrderFilter, UpdateSourceTrigger=PropertyChanged, Delay=500}" 
+                                         Style="{StaticResource ClearableTextBox}" BorderThickness="0 0 0 0"/>
+                            </DockPanel>
+                            <TextBlock Grid.Column="1" Grid.Row="0" Grid.RowSpan="2" Text="Шт." Margin="0 0 5 0" HorizontalAlignment="Right" ToolTip="Количество деталей по М/Л"/>
+                            <TextBox Grid.Column="2" Grid.Row="0" Grid.RowSpan="2" Text="{Binding TotalCountFilter, UpdateSourceTrigger=PropertyChanged, Delay=500, TargetNullValue={x:Static sys:String.Empty}}"
+                                     Style="{StaticResource ClearableTextBox}" ToolTip="Количество деталей по М/Л" BorderThickness="0 0 0 0"/>
+                            <TextBlock Grid.Column="3" Grid.Row="0" Grid.RowSpan="2" Text="Уст." Margin="0 0 5 0" HorizontalAlignment="Right"/>
+                            <TextBox Grid.Column="4" Grid.Row="0" Grid.RowSpan="2" Text="{Binding SetupFilter, UpdateSourceTrigger=PropertyChanged, Delay=300, TargetNullValue={x:Static sys:String.Empty}}"
+                                     Style="{StaticResource ClearableTextBox}" BorderThickness="0 0 0 0"/>
+                            <controls:IncDecControl Grid.Row="0" Grid.Column="5" Grid.RowSpan="2" Value="{Binding SetupFilter, Delay=500, Mode=TwoWay}" Width="22" Margin="0 0 0 0"/>
+                        </Grid>
+
+                        <ComboBox Grid.Row="0" Grid.Column="5" Margin="25 0 0 0" VerticalAlignment="Center" Width="120"
+                                  ToolTip="Фильтр по серийности деталей" FontFamily="{StaticResource Areopag.FontMono}"
+                                  ItemsSource="{Binding SerialPartsFilterItems}" DisplayMemberPath="Name"
+                                  SelectedItem="{Binding SerialPartsFilter}"/>
+
+                        <!-- Фильтр по станкам — общий контрол (см. Views/Controls/MachineFilterSelector.xaml) -->
+                        <controls:MachineFilterSelector Grid.Column="6" Grid.Row="0"
+                                                        Margin="20 0 0 0"
+                                                        ItemsSource="{Binding MachineFilters}"
+                                                        Summary="{Binding MachineFilterSummary}"
+                                                        ShowAllCommand="{Binding ShowAllMachinesCommand}"
+                                                        HideAllCommand="{Binding HideAllMachinesCommand}"
+                                                        InvertCommand="{Binding InvertMachinesCommand}"/>
+
+                        <Button Grid.Column="6" Grid.Row="2" Width="180" Margin="20 0 0 0" Padding="6 0 0 0" Command="{Binding DeleteFilterCommand}" 
+                                Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Left">
+                            <Button.Content>
+                                <StackPanel Orientation="Horizontal" Margin="0 2 0 0">
+                                    <StaticResource ResourceKey="DeleteFilter.Themed"/>
+                                    <TextBlock Text="Очистить фильтры" Margin="5 0"/>
+                                </StackPanel>
+                            </Button.Content>
+                        </Button>
+
+                        <TextBlock Grid.Row="0" Grid.Column="8" Text="От" FontSize="12" FontFamily="{StaticResource Areopag.FontUI}"
+                                   VerticalAlignment="Center" HorizontalAlignment="Right" TextAlignment="Right" Margin="0 0 5 0"/>
+                        <StackPanel Grid.Row="0" Grid.Column="9" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <DatePicker SelectedDate="{Binding FromDate}" Width="110" BorderThickness="0 0 0 0"
+                                        Style="{StaticResource DatePickerOutlineStyle}"
+                                        CalendarStyle="{StaticResource Areopag.CalendarStyle}"/>
+                            <controls:IncDecControl Value="{Binding FromDate, Mode=TwoWay}" Width="23" Margin="0 0 4 0" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="2" Grid.Column="8" Text="До" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Right" TextAlignment="Right" Margin="0 0 5 0"/>
+                        <StackPanel Grid.Row="2" Grid.Column="9" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <DatePicker SelectedDate="{Binding ToDate}" Width="110" BorderThickness="0 0 0 0"
+                                        Style="{StaticResource DatePickerOutlineStyle}"
+                                        CalendarStyle="{StaticResource Areopag.CalendarStyle}"/>
+                            <controls:IncDecControl Value="{Binding ToDate, Mode=TwoWay}" Width="23" Margin="0 0 4 0" BorderBrush="Transparent"/>
+                        </StackPanel>
+
+                        <ToggleButton x:Name="PickDateToggle" Grid.Row="0" Grid.RowSpan="3" Grid.Column="10" Content="📅"
+                                      Margin="0" Padding="-2" FontSize="16"
+                                      ToolTip="Выбрать дату — установится в оба календаря (От и До)">
+                            <ToggleButton.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="0"/>
+                                </Style>
+                            </ToggleButton.Resources>
+                        </ToggleButton>
+                        <Popup PlacementTarget="{Binding ElementName=PickDateToggle}" Placement="Bottom" StaysOpen="False"
+                               AllowsTransparency="True"
+                               IsOpen="{Binding IsChecked, ElementName=PickDateToggle, Mode=TwoWay}">
+                            <Calendar SelectedDatesChanged="SpecificDateCalendar_SelectedDatesChanged"
+                                      Style="{StaticResource Areopag.CalendarStyle}"/>
+                        </Popup>
+                        <Button Grid.Row="0" Grid.Column="11" Content="+ сутки"
+                                Margin="1 0 0 0"
+                                Command="{Binding IncreaseDateCommand}"/>
+                        <Button Grid.Row="2" Grid.Column="11" Content="- сутки"
+                                Margin="1 0 0 0"
+                                Command="{Binding DecreaseDateCommand}"/>
+                        <Button Grid.Row="0" Grid.Column="12" Content="вчера"
+                                Margin="1 0 0 0"
+                                Command="{Binding SetYesterdayDateCommand}"/>
+                        <Button Grid.Row="2" Grid.Column="12" Content="неделя"
+                                Margin="1 0 0 0"
+                                Command="{Binding SetWeekDateCommand}"/>
+                        <Button Grid.Row="0" Grid.Column="13" Content="месяц"
+                                Margin="1 0 0 0"
+                                Command="{Binding SetMonthDateCommand}"
+                                Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
+                            <Button.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Icon="❄️" Header="Январь" Command="{Binding SetSpecificMonthCommand}" CommandParameter="1"/>
+                                    <MenuItem Icon="🌨️" Header="Февраль" Command="{Binding SetSpecificMonthCommand}" CommandParameter="2"/>
+                                    <MenuItem Icon="🌱" Header="Март" Command="{Binding SetSpecificMonthCommand}" CommandParameter="3"/>
+                                    <MenuItem Icon="🌧️" Header="Апрель" Command="{Binding SetSpecificMonthCommand}" CommandParameter="4"/>
+                                    <MenuItem Icon="🌸" Header="Май" Command="{Binding SetSpecificMonthCommand}" CommandParameter="5"/>
+                                    <MenuItem Icon="☀️" Header="Июнь" Command="{Binding SetSpecificMonthCommand}" CommandParameter="6"/>
+                                    <MenuItem Icon="🌞" Header="Июль" Command="{Binding SetSpecificMonthCommand}" CommandParameter="7"/>
+                                    <MenuItem Icon="🌻" Header="Август" Command="{Binding SetSpecificMonthCommand}" CommandParameter="8"/>
+                                    <MenuItem Icon="🍂" Header="Сентябрь" Command="{Binding SetSpecificMonthCommand}" CommandParameter="9"/>
+                                    <MenuItem Icon="🍁" Header="Октябрь" Command="{Binding SetSpecificMonthCommand}" CommandParameter="10"/>
+                                    <MenuItem Icon="🌂" Header="Ноябрь" Command="{Binding SetSpecificMonthCommand}" CommandParameter="11"/>
+                                    <MenuItem Icon="🎄" Header="Декабрь" Command="{Binding SetSpecificMonthCommand}" CommandParameter="12"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                        <Button Grid.Row="2" Grid.Column="13" Content="год"
+                                Margin="1 0 0 0"
+                                Command="{Binding SetYearDateCommand}"
+                                Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
+                            <Button.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}"
+                                             ItemsSource="{Binding AvailableYears}">
+                                    <ContextMenu.ItemContainerStyle>
+                                        <Style TargetType="MenuItem" BasedOn="{StaticResource Areopag.MenuItemStyle}">
+                                            <Setter Property="Header" Value="{Binding}"/>
+                                            <Setter Property="Command"
+                        Value="{Binding DataContext.SetSpecificYearCommand,
+                                RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                            <Setter Property="CommandParameter" Value="{Binding}"/>
+                                        </Style>
+                                    </ContextMenu.ItemContainerStyle>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                        <Button Grid.Row="0" Grid.Column="14" Grid.RowSpan="3" Content="*"
+                                Margin="1 0 0 0" Padding="0 2 0 0"
+                                Command="{Binding SetAllDateCommand}">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="0"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+                    </Grid>
+                </GroupBox>
+
+            </DockPanel>
+            <Menu DockPanel.Dock="Top" Focusable="False">
+                <Menu.Resources>
+                    <!-- BasedOn обязателен: без него стиль перекроет общий
+                         Areopag.MenuItemStyle и пункты упадут в системный
+                         шаблон (белая выпадашка + чёрный текст + синий hover). -->
+                    <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource Areopag.MenuItemStyle}">
+                        <Setter Property="BorderThickness" Value="0"/>
+                    </Style>
+                </Menu.Resources>
+                <MenuItem Command="{Binding RefreshPartsCommand}" ToolTip="Обновить из БД">
+                    <MenuItem.Header>
+                        <StaticResource ResourceKey="SyncIcon"/>
+                    </MenuItem.Header>
+                </MenuItem>
+                <MenuItem Command="{Binding DeletePartCommand}" 
+                          CommandParameter="{Binding SelectedPart}" 
+                          ToolTip="Удалить выбранную деталь">
+                    <MenuItem.Header>
+                        <StaticResource ResourceKey="DeleteCell.Themed"/>
+                    </MenuItem.Header>
+                </MenuItem>
+                <!-- Слепка деталей встык в рамках смены (зазоры до 180 мин), день и ночь отдельно -->
+                <MenuItem Command="{Binding SnapPartsCommand}"
+                          ToolTip="Слепить детали встык в рамках смены">
+                    <MenuItem.Header>
+                        <StaticResource ResourceKey="SnapParts.Themed"/>
+                    </MenuItem.Header>
+                </MenuItem>
+                <MenuItem Header="|" Margin="0" Padding="0 -4 0 0" IsEnabled="False"/>
+                <MenuItem Command="{Binding SearchInWinnumCommand}" 
+                          CommandParameter="{Binding SelectedPart}" 
+                          ToolTip="Посмотреть в Winnum">
+                    <MenuItem.Header>
+                        <TextBlock Text="Ⓦ" FontSize="20" Margin="0 -7 0 -4" TextAlignment="Center" Width="21"/>
+                    </MenuItem.Header>
+                </MenuItem>
+                <MenuItem Command="{Binding FillProcessComplianceAuditCommand}" 
+                          CommandParameter="{Binding SelectedPart}" 
+                          ToolTip="Заполнить КТД">
+                    <MenuItem.Header>
+                        <TextBlock Text="КТД" Margin="0 -4 0 -4" TextAlignment="Center" Width="21"/>
+                    </MenuItem.Header>
+                </MenuItem>
+                <MenuItem Header="|" Margin="0" Padding="0 -4 0 0" IsEnabled="False"/>
+                <MenuItem Header="Станки">
+                    <MenuItem Command="{Binding ShowAllMachinesCommand}" HorizontalAlignment="Stretch" Header="Выбрать все"/>
+                    <MenuItem Command="{Binding HideAllMachinesCommand}" HorizontalAlignment="Stretch" Header="Снять все"/>
+                    <MenuItem Command="{Binding InvertMachinesCommand}" HorizontalAlignment="Stretch" Header="Инвертировать"/>
+                    <MenuItem Command="{Binding SetLatheMachinesCommand}" HorizontalAlignment="Stretch" Header="Выбрать токарные"/>
+                    <MenuItem Command="{Binding SetMillMachinesCommand}" HorizontalAlignment="Stretch" Header="Выбрать фрезерные"/>
+                    <MenuItem Command="{Binding SetVerMillMachinesCommand}" HorizontalAlignment="Stretch" Header="Выбрать вертикально-фрезерные"/>
+                    <MenuItem Command="{Binding SetHorMillMachinesCommand}" HorizontalAlignment="Stretch" Header="Выбрать горизонтально-фрезерные"/>
+                </MenuItem>
+                <MenuItem x:Name="viewMenu" Header="Вид">
+                    <MenuItem Command="{Binding ChangeCompactViewCommand}" Icon="{StaticResource ConfirmIconFlex}"
+                              Visibility="{Binding CompactView, Converter={StaticResource VisibilityConverter}}"
+                              ToolTip="Новый режим вкл/выкл" HorizontalAlignment="Stretch">
+                        <MenuItem.Header>
+                            <TextBlock Text="Новый" FontWeight="DemiBold"/>
+                        </MenuItem.Header>
+                    </MenuItem>
+                    <MenuItem Command="{Binding ChangeCompactViewCommand}" Icon="{StaticResource CloseIconFlex}" 
+                              Visibility="{Binding CompactView, Converter={StaticResource InvertedVisibilityConverter}}"
+                              ToolTip="Старый режим вкл/выкл" HorizontalAlignment="Stretch">
+                        <MenuItem.Header>
+                            <TextBlock Text="Старый"/>
+                        </MenuItem.Header>
+                    </MenuItem>
+
+                    <MenuItem Command="{Binding ChangeShowUncheckedCommand}" Icon="{StaticResource ConfirmIconFlex}"
+                              Visibility="{Binding ViewUnchecked, Converter={StaticResource VisibilityConverter}}"
+                              ToolTip="Ожидаемые" HorizontalAlignment="Stretch">
+                        <MenuItem.Header>
+                            <TextBlock Text="Ожидаемые" FontWeight="DemiBold"/>
+                        </MenuItem.Header>
+                    </MenuItem>
+                    <MenuItem Command="{Binding ChangeShowUncheckedCommand}" Icon="{StaticResource CloseIconFlex}" 
+                              Visibility="{Binding ViewUnchecked, Converter={StaticResource InvertedVisibilityConverter}}"
+                              ToolTip="Ожидаемые" HorizontalAlignment="Stretch">
+                        <MenuItem.Header>
+                            <TextBlock Text="Ожидаемые"/>
+                        </MenuItem.Header>
+                    </MenuItem>
+                    <MenuItem Command="{Binding ShowArchiveTableCommand}" Icon="{StaticResource DataTableIcon}"
+                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:PartsInfoWindow}}"
+                              ToolTip="Таблица для архива" HorizontalAlignment="Stretch">
+                        <MenuItem.Header>
+                            <TextBlock Text="Таблица для архива"/>
+                        </MenuItem.Header>
+                    </MenuItem>
+                    <MenuItem Header="Мастер" Padding="0"
+                              Command="{Binding ChangeRoleCommand}"
+                              CommandParameter="Master">
+                        <MenuItem.Style>
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource Areopag.MenuItemStyle}">
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding ViewMode}" Value="Master"/>
+                                            <Condition Binding="{Binding IsRoleSelected}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="IsChecked" Value="True"/>
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </MenuItem.Style>
+                    </MenuItem>
+
+                    <MenuItem Header="Технолог" Padding="0"
+                              Command="{Binding ChangeRoleCommand}"
+                              CommandParameter="Engineer">
+                        <MenuItem.Style>
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource Areopag.MenuItemStyle}">
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding ViewMode}" Value="Engineer"/>
+                                            <Condition Binding="{Binding IsRoleSelected}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="IsChecked" Value="True"/>
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </MenuItem.Style>
+                    </MenuItem>
+
+                    <MenuItem Header="Показать всё" Padding="0"
+                              Command="{Binding ChangeRoleCommand}"
+                              CommandParameter="Viewer">
+                        <MenuItem.Style>
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource Areopag.MenuItemStyle}">
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding ViewMode}" Value="Viewer"/>
+                                            <Condition Binding="{Binding IsRoleSelected}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="IsChecked" Value="True"/>
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </MenuItem.Style>
+                    </MenuItem>
+
+                    <Separator x:Name="columnProfilesSeparator" Visibility="{Binding HasColumnProfiles, Converter={StaticResource VisibilityConverter}}"/>
+                    <!-- Пункты пользовательских профилей столбцов вставляются здесь в code-behind
+                         (PartsInfoWindow.xaml.cs, RebuildColumnProfileMenu) — ItemsControl нельзя
+                         использовать напрямую как дочерний элемент MenuItem.Items: он не MenuItem/
+                         Separator, поэтому WPF оборачивает его в собственный пустой пункт меню. -->
+
+                    <Separator/>
+                    <MenuItem Header="Управление профилями..." Padding="0"
+                              Command="{Binding ManageColumnProfilesCommand}"
+                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:PartsInfoWindow}}"/>
+                </MenuItem>
+                <MenuItem Header="|" Margin="0" Padding="0 -4 0 0" IsEnabled="False"/>
+                <MenuItem Header="Расчет">
+                    <MenuItem Header="От исправленного" Padding="0"
+                              Command="{Binding ChangeCalcFixedCommand}"
+                              ToolTip="Расчет от исправленного вкл/выкл" HorizontalAlignment="Stretch">
+                        <MenuItem.Style>
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource Areopag.MenuItemStyle}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CalcFixed}" Value="True">
+                                        <Setter Property="IsChecked" Value="True"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </MenuItem.Style>
+                    </MenuItem>
+                </MenuItem>
+                <MenuItem Header="Экспорт" IsEnabled="{Binding InProgress, Converter={StaticResource InvertedBoolConverter}}">
+                    <MenuItem Header="Отчёты" Icon="{StaticResource OrderedListIcon}">
+                        <MenuItem Header="Выработка операторов"
+                                  Command="{Binding OperatorReportToExcelCommand}" Icon="{StaticResource OperatorsIcon}"
+                                  CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:PartsInfoWindow}}" 
+                                  ToolTip="Экспорт отчёта по выработке по операторов" HorizontalAlignment="Stretch"/>
+                        <MenuItem Header="Эффективность работы оборудования (новый)"
+                                  Command="{Binding ExportNewReportForPeriodToExcelCommand}" Icon="{StaticResource ComparePerformanceIcon}"
+                                  ToolTip="Экспорт отчёта за период где признаком серийности является соответствие списку" HorizontalAlignment="Stretch"/>
+                        <MenuItem Header="Эффективность работы оборудования (старый)" Icon="{StaticResource ComparePerformanceIcon}"
+                                  Command="{Binding ExportReportForPeriodToExcelCommand}"
+                                  ToolTip="Экспорт отчёта за период где признаком серийности является количество запусков и количество в партии" HorizontalAlignment="Stretch"/>
+                        <MenuItem Header="Сравнение периодов" Icon="{StaticResource ComparePerformanceIcon}"
+                                  Command="{Binding ExportPeriodsComparisonCommand}"
+                                  ToolTip="Экспорт отчёта по двум периодам: лист на каждый период и сравнительная сводка" HorizontalAlignment="Stretch"/>
+                        <MenuItem Header="Изменение нормативов" ToolTip="Экспорт отчёта по изменению нормативов" Icon="{StaticResource ColumnComponent}"
+                                  Command="{Binding NormsAndWorkloadAnalysisCommand }"/>
+                        <MenuItem Header="Детали-станки" Icon="{StaticResource ExportDataIcon}"
+                                  Command="{Binding ExportPartsReportToExcelCommand}" 
+                                  ToolTip="Какие детали сколько раз запускались и на каком оборудовании" HorizontalAlignment="Stretch"/>
+                        <MenuItem Header="Длительные наладки" Icon="{StaticResource CalendarIcon}"
+                                  Command="{Binding ExportLongSetupsCommand}"
+                                  ToolTip="Длительные наладки" HorizontalAlignment="Stretch"/>
+                        <MenuItem Header="Поиски инструмента" Command="{Binding ExportToolSearchCasesToExcelCommand}"
+                                  Icon="{StaticResource FindPartIcon}"
+                                  ToolTip="Экспорт отчёта по поискам" HorizontalAlignment="Stretch"/>
+                        <MenuItem Command="{Binding ExportShiftsInfoReportCommand}" Icon="{StaticResource CalendarIcon}"
+                                  ToolTip="Отчёт по сменам: нормативы, факт, простои и проверка СГТ по каждой смене" HorizontalAlignment="Stretch">
+                            <MenuItem.Header>
+                                <TextBlock Text="Отчет по сменам"/>
+                            </MenuItem.Header>
+                        </MenuItem>
+                    </MenuItem>
+
+                    <MenuItem Header="Сравнить факт/СЗН" Command="{Binding CheckAssignmentWithFactCommand}" Icon="{StaticResource DataTableIcon}"/>
+
+
+
+                    <MenuItem Header="История запусков детали"
+                              Command="{Binding ExportHistoryToExcelCommand}" Icon="{StaticResource ShowFullHistoryIcon}"
+                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:PartsInfoWindow}}" 
+                              ToolTip="Экспорт история запусков детали" HorizontalAlignment="Stretch"/>
+
+                    <MenuItem Command="{Binding ExportToExcelCommand}" Icon="{StaticResource ExcelWorksheetIcon}"
+                              ToolTip="Экспорт текущей выборки" HorizontalAlignment="Stretch">
+                        <MenuItem.Header>
+                            <TextBlock Text="Текущая выборка"/>
+                        </MenuItem.Header>
+                    </MenuItem>
+
+                    <MenuItem Header="Разное">
+
+                        <MenuItem Header="Записи без объяснения мастера" Icon="{StaticResource ColumnComponent}"
+                                  Command="{Binding ExportValidationErrorsCommand}"
+                                  ToolTip="Записи за период, не прошедшие валидацию мастера (пустая причина/комментарий там, где они обязательны) — то, что сейчас блокирует закрытие суточного отчёта" HorizontalAlignment="Stretch"/>
+
+                        <MenuItem Header="Некорректные заполнения" Icon="{StaticResource ColumnComponent}"
+                                  Command="{Binding ExportIncorrectFillsCommand}"
+                                  ToolTip="Записи, где СГТ переопределил причину мастера — контекст записи, указанная мастером причина и переопределённая причина" HorizontalAlignment="Stretch"/>
+
+                        <MenuItem Command="{Binding ExportVerevkinReportCommand}" Icon="{StaticResource ComparePerformanceIcon}"
+                                  ToolTip="Для отчёта Верёвкина" HorizontalAlignment="Stretch">
+                            <MenuItem.Header>
+                                <TextBlock Text="Отчет Верёвкина"/>
+                            </MenuItem.Header>
+                        </MenuItem>
+
+                        <MenuItem Header="Операторы-смены" Command="{Binding OperatorsShiftsReportToExcelCommand}"
+                                  CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:PartsInfoWindow}}" 
+                                  ToolTip="Операторы-смены" HorizontalAlignment="Stretch">
+                        </MenuItem>
+
+                    </MenuItem>
+                </MenuItem>
+            </Menu>
+            <!-- Панель чип-фильтров -->
+            <Border DockPanel.Dock="Top"
+                    BorderBrush="{DynamicResource Areopag.LineSoft}" BorderThickness="0 0 0 1"
+                    Background="{DynamicResource Areopag.Bg1}"
+                    Padding="4 3"
+                    Visibility="{Binding HasChipFilters,
+                     Converter={StaticResource VisibilityConverter},
+                     FallbackValue=Collapsed}">
+                <DockPanel>
+
+                    <!-- Кнопка сброса всех чипов -->
+                    <Button DockPanel.Dock="Right"
+                            Content="Очистить фильтры"
+                            Command="{Binding ClearChipFiltersCommand}"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Margin="4 0 0 0"
+                            FontSize="11"
+                            Foreground="{DynamicResource Areopag.Text3}"
+                            VerticalAlignment="Center"/>
+
+                    <!-- Список чипов -->
+                    <ItemsControl ItemsSource="{Binding ChipFilters}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type md:FilterChip}">
+                            <Border Background="{DynamicResource Areopag.AccentSoft}"
+                                    BorderBrush="{DynamicResource Areopag.Line}"
+                                    BorderThickness="1"
+                                    CornerRadius="0"
+                                    Margin="2 1"
+                                    Padding="5 2"
+                                    MouseLeftButtonDown="Chip_MouseLeftButtonDown">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Label}"
+                                                   FontSize="12"
+                                                   VerticalAlignment="Center"/>
+                                        <Button Content="×"
+                                                FontSize="13"
+                                                FontWeight="Bold"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Padding="3 0 0 0"
+                                                Margin="4 0 0 0"
+                                                VerticalAlignment="Center"
+                                                Foreground="{DynamicResource Areopag.Text2}"
+                                                Command="{Binding DataContext.RemoveChipFilterCommand,
+                                                RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                </DockPanel>
+            </Border>
+            <Grid>
+                <DataGrid x:Name="partsGrid" ItemsSource="{Binding Parts, UpdateSourceTrigger=PropertyChanged}" AutoGenerateColumns="False"
+                          VerticalGridLinesBrush="{DynamicResource Areopag.LineSoft}" HorizontalGridLinesBrush="{DynamicResource Areopag.LineSoft}"
+                          ColumnWidth="SizeToCells" CanUserSortColumns="False" 
+                          VerticalScrollBarVisibility="Visible" 
+                          SelectionUnit="CellOrRowHeader" CanUserReorderColumns="False" 
+                          SelectionMode="Extended" EnableColumnVirtualization="True" 
+                          EnableRowVirtualization="True"
+                          VirtualizingPanel.IsVirtualizing="True" 
+                          VirtualizingPanel.VirtualizationMode="Recycling"
+                          Margin="0 -1 0 0" BorderThickness="0" SelectedItem="{Binding SelectedPart, UpdateSourceTrigger=PropertyChanged}"
+                          PreviewMouseDown="DataGrid_PreviewMouseDown" SelectedCellsChanged="DataGrid_SelectedCellsChanged" PreviewKeyDown="DataGrid_PreviewKeyDown"
+                          BeginningEdit="DataGrid_BeginningEdit"
+                          Visibility="{Binding CompactView, Converter={StaticResource InvertedVisibilityConverter}, UpdateSourceTrigger=PropertyChanged}">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow" BasedOn="{StaticResource Areopag.DataGridRow}">
+                            <Style.Triggers>
+                                <!-- Фон не трогаем: AccentSoft сливается с зеброй,
+                                     а AlertSoft один в один как у проблемных.
+                                     Только цвет текста (в CellStyle ниже) — он от
+                                     фона не зависит и ни с чем не путается. -->
+                                <DataTrigger Binding="{Binding IsFlagged}" Value="True">
+                                    <Setter Property="ToolTip" Value="Отмечена как проблемная"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.CellStyle>
+                        <Style TargetType="DataGridCell" BasedOn="{StaticResource Areopag.DataGridCell}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsFlagged}" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource Areopag.AlertSoft}"/>
+                                </DataTrigger>
+                                <!-- Цвет текста: триггеры окна перекрывают Foreground
+                                     базового стиля ячейки (иначе цвет строки сюда
+                                     не доходит). Изменённые — Modified (Accent
+                                     слишком тёмный, сливается с обычным текстом).
+                                     Красный — последним, побеждает синий. -->
+                                <DataTrigger Binding="{Binding NeedUpdate, UpdateSourceTrigger=PropertyChanged}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource Areopag.Modified}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsEditing, RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}}}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource Areopag.Alert}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.CellStyle>
+                    <DataGrid.Resources>
+                        <!-- Фон/рамка/шрифт/шаблон с грипперами — из глобального Areopag.DataGridColumnHeader;
+                             здесь только вертикальные заголовки и кегль -->
+                        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource Areopag.DataGridColumnHeader}">
+                            <Setter Property="FontSize" Value="12"/>
+                            <Setter Property="Padding" Value="0 2"/>
+                            <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
+                            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+                            <Setter Property="ContentTemplate" >
+                                <Setter.Value>
+                                    <DataTemplate>
+                                        <TextBlock TextWrapping="Wrap" Text="{Binding}"
+                                                   SnapsToDevicePixels="True"
+                                                   Width="90"
+                                                   VerticalAlignment="Center" TextAlignment="Center"
+                                                   HorizontalAlignment="Center">
+                                            <TextBlock.LayoutTransform>
+                                                <RotateTransform Angle="270" />
+                                            </TextBlock.LayoutTransform>
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </DataGrid.Resources>
+
+                    <!-- Колонки добавляются в code-behind (PartsInfoWindow.xaml.cs, конструктор)
+                         по PartColumnMeta.ColumnOrder — единственному источнику истины
+                         для порядка колонок. -->
+                </DataGrid>
+                <cnt:LoadingOverlay IsBusy="{Binding InProgress}"/>
+            </Grid>
+        </DockPanel>
+        <Grid Grid.Column="0" Background="Black" d:Background="Transparent" d:Visibility="Collapsed"
+              Visibility="{Binding Overlay.State, Converter={StaticResource OverlayVisibilityConverter}}"
+              Opacity="{Binding Overlay.State, Converter={StaticResource OverlayOpacityConverter}}" Grid.ColumnSpan="2"/>
+    </Grid>
+</Window>

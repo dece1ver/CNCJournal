@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using libeLog.Infrastructure;
+using Newtonsoft.Json;
 using QCTasks.Models;
 using System.Collections.Generic;
 using System.IO;
@@ -95,7 +96,7 @@ public sealed class AppSettings
     /// <summary>Атомарное сохранение через tmp-файл.</summary>
     public void Save()
     {
-        Directory.CreateDirectory(BasePath);
+        Logs.EnsureWritableDirectory(BasePath);
         var json = JsonConvert.SerializeObject(this, _jsonSettings);
         var tmpPath = ConfigFilePath + ".tmp";
         File.WriteAllText(tmpPath, json);
@@ -106,7 +107,7 @@ public sealed class AppSettings
     private static AppSettings CreateDefault()
     {
         var cfg = new AppSettings();
-        Directory.CreateDirectory(BasePath);
+        Logs.EnsureWritableDirectory(BasePath);
         File.WriteAllText(ConfigFilePath,
             JsonConvert.SerializeObject(cfg, _jsonSettings));
         return cfg;

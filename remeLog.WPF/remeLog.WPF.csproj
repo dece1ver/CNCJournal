@@ -1,0 +1,70 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <AssemblyName>remeLog</AssemblyName>
+    <RootNamespace>remeLog</RootNamespace>
+    <UseWPF>true</UseWPF>
+	<UseWinUI>false</UseWinUI>
+    <ApplicationIcon>Resources\remeLog.ico</ApplicationIcon>
+    <UseWindowsForms>True</UseWindowsForms>
+	<Title>Электронный журнал (Отчёты)</Title>
+	<Description />
+	<AssemblyTitle>Электронный журнал (Отчёты)</AssemblyTitle>
+	<Version>1.1.4</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="fwlib0DN64.dll" />
+    <None Remove="Fwlib64.dll" />
+    <None Remove="fwlibe64.dll" />
+    <None Remove="fwlibNCG64.dll" />
+    <None Remove="Resources\eLogSplashScreen.png" />
+    <None Remove="Resources\remeLogSplashScreen.png" />
+    <None Remove="Views\Settings.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Resources\remeLog.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="fwlib0DN64.dll" />
+    <EmbeddedResource Include="Fwlib64.dll">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="fwlibe64.dll" />
+    <EmbeddedResource Include="fwlibNCG64.dll" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Properties\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.102.3" />
+    <PackageReference Include="Dapper" Version="2.1.79" />
+    <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.0-rc5.4" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.2" />
+
+    <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.142" />
+    <PackageReference Include="NCalcSync" Version="6.3.1" />
+    <PackageReference Include="System.IO.Packaging" Version="6.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\libeLog\libeLog.csproj" />
+    <ProjectReference Include="..\remeLog.Core\remeLog.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\Settings.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <SplashScreen Include="Resources\remeLogSplashScreen.png" />
+  </ItemGroup>
+
+</Project>

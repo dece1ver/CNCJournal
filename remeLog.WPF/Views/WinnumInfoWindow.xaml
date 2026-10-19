@@ -1,0 +1,78 @@
+﻿<Window x:Class="remeLog.Views.WinnumInfoWindow" chrome:WindowChromeTheme.Enabled="True"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:chrome="clr-namespace:libeLog.Infrastructure;assembly=libeLog"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:vm="clr-namespace:remeLog.ViewModels"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF"
+        mc:Ignorable="d" FontFamily="{StaticResource Areopag.FontMono}"
+        Title="Данные из Winnum" Height="720" Width="1368"
+        Background="{DynamicResource Areopag.Bg0}"
+        d:DataContext="{d:DesignInstance Type=vm:WinnumInfoViewModel}">
+    <DockPanel>
+        
+        <TabControl>
+            <TabItem Header="Общее">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="{Binding GeneralInfo}"/>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+                        <TextBlock Margin="4 0">
+                            <Hyperlink NavigateUri="{Binding NcArchiveProgramFolder}" 
+                                       Command="{Binding OpenArchiveNcProgramFolderCommand}">
+                                Архив УП
+                            </Hyperlink>
+                        </TextBlock>
+                        <TextBlock Margin="4 0">
+                            <Hyperlink NavigateUri="{Binding NcIntermediateProgramFolder}" 
+                                       Command="{Binding OpenIntermediateNcProgramFolderCommand}">
+                                Промежуточная
+                            </Hyperlink>
+                        </TextBlock>
+                        <TextBlock Margin="4 0">
+                            <Hyperlink NavigateUri="{Binding NcWinnumProgramFolder}" 
+                                       Command="{Binding OpenWinnumNcProgramFolderCommand}">
+                                УП из Winnum
+                            </Hyperlink>
+                        </TextBlock>
+                    </StackPanel>
+                    <lvc:CartesianChart Series="{Binding Intervals}" 
+                                        ZoomMode="X" 
+                                        FindingStrategy="CompareOnlyX"
+                                        SnapsToDevicePixels="True"
+                                        TooltipTextSize="8"
+                                        XAxes="{Binding XAxes}"
+                                        YAxes="{Binding YAxes}"
+                                        >
+                        
+                    </lvc:CartesianChart>
+                </DockPanel>
+            </TabItem>
+            <TabItem Header="Сводная таблица">
+                <DataGrid ItemsSource="{Binding TimelineData}"
+                          AutoGenerateColumns="True"
+                          ColumnWidth="Auto"
+                          CanUserAddRows="False"
+                          CanUserDeleteRows="False"
+                          IsReadOnly="True"
+                          EnableRowVirtualization="True"
+                          VirtualizingPanel.IsVirtualizing="True"/>
+            </TabItem>
+            <TabItem Header="Тэги с приритетом">
+                <DataGrid ItemsSource="{Binding PriorityTagDurations}" AutoGenerateColumns="False"
+                          CanUserAddRows="False" CanUserDeleteRows="False">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Тэг" Binding="{Binding Tag}"/>
+                        <DataGridTextColumn Header="Программа" Binding="{Binding Program}"/>
+                        <DataGridTextColumn Header="С" Binding="{Binding Start, StringFormat='HH:mm:ss'}"/>
+                        <DataGridTextColumn Header="По" Binding="{Binding End, StringFormat='HH:mm:ss'}"/>
+                        <DataGridTextColumn Header="Длительность" Binding="{Binding Duration, Converter={StaticResource HoursToTimeStringConverter}}"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+            <TabItem Header="Подробнее" Visibility="{Binding WinnumPageUrl, Converter={StaticResource NullToVisibilityConverter}}">
+                <Grid x:Name="BrowserContainer" />
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

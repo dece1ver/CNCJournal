@@ -1,0 +1,226 @@
+@page "/parts"
+@rendermode InteractiveServer
+@using remeLog.Core.Services
+@using remeLog.Infrastructure
+@using remeLog.Infrastructure.Types
+@using remeLog.Models
+
+<PageTitle>Детали · remeLog</PageTitle>
+
+<div class="page-head">
+    <h1>Детали</h1>
+    <span class="meta">@FromDate.ToString("dd.MM.yyyy") — @ToDate.ToString("dd.MM.yyyy")</span>
+</div>
+
+<div class="filters">
+    <div class="filter-field">
+        <label class="field-label" for="pick">📅 Выбрать день</label>
+        <input id="pick" type="date" title="Установится и «С», и «По»" @onchange="OnPickSpecificDateAsync" />
+    </div>
+    <div class="filter-field">
+        <label class="field-label" for="from">С</label>
+        <input id="from" type="date" @bind="FromDate" @bind:after="LoadAsync" />
+    </div>
+    <div class="filter-field">
+        <label class="field-label" for="to">По</label>
+        <input id="to" type="date" @bind="ToDate" @bind:after="LoadAsync" />
+    </div>
+    <div class="filter-field">
+        <span class="field-label">Сутки</span>
+        <div class="day-nav">
+            <button type="button" class="day-nav-btn" disabled="@_loading" @onclick="() => ShiftDaysAsync(-1)" title="Минус сутки">−</button>
+            <button type="button" class="day-nav-btn" disabled="@_loading" @onclick="() => ShiftDaysAsync(1)" title="Плюс сутки">+</button>
+        </div>
+    </div>
+    <div class="filter-field">
+        <label class="field-label" for="partName">Деталь</label>
+        <input id="partName" type="text" @bind="PartNameFilter" @bind:event="oninput" />
+    </div>
+    <div class="filter-field">
+        <label class="field-label" for="order">М/Л</label>
+        <input id="order" type="text" @bind="OrderFilter" @bind:event="oninput" />
+    </div>
+    <div class="filter-field">
+        <label class="field-label" for="operatorFilter">Оператор</label>
+        <input id="operatorFilter" type="text" @bind="OperatorFilter" @bind:event="oninput" />
+    </div>
+    <fieldset class="filter-field">
+        <legend class="field-label">Станки</legend>
+        <div class="machine-list">
+            @foreach (var machine in _allMachines)
+            {
+                <label class="machine-item">
+                    <input type="checkbox" checked="@_selectedMachines.Contains(machine)"
+                           @onchange="@(e => ToggleMachine(machine, (bool)e.Value!))" />
+                    @machine
+                </label>
+            }
+        </div>
+    </fieldset>
+    <button @onclick="LoadAsync" disabled="@_loading">Показать</button>
+</div>
+
+@if (_loading)
+{
+    <p class="state-line">Загрузка…</p>
+}
+else if (_error is not null)
+{
+    <p class="state-line state-error">@_error</p>
+}
+else if (_parts is not null)
+{
+    @if (_parts.Count == 0)
+    {
+        <p class="state-line">Ничего не найдено по заданным условиям.</p>
+    }
+    else
+    {
+        <p class="table-caption">@_parts.Count дет.</p>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Станок</th>
+                        <th>Дата</th>
+                        <th>Смена</th>
+                        <th>Оператор</th>
+                        <th>Деталь</th>
+                        <th>М/Л</th>
+                        <th class="num">Уст.</th>
+                        <th class="num">Выполнено</th>
+                        <th class="num">Всего</th>
+                        <th class="num">Начало наладки</th>
+                        <th class="num">Начало изгот.</th>
+                        <th class="num">Наладка, норм.</th>
+                        <th class="num">Наладка, факт.</th>
+                        <th class="num">Простои, наладка</th>
+                        <th class="num">Простои, изгот.</th>
+                        <th class="num">Наладка, %</th>
+                        <th class="num">Изготовление, %</th>
+                        <th>Причина, наладка</th>
+                        <th>Причина, изгот.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var part in _parts)
+                    {
+                        <tr>
+                            <td>@part.Machine</td>
+                            <td>@part.ShiftDate.ToString("dd.MM.yyyy")</td>
+                            <td>@part.Shift</td>
+                            <td>@part.Operator</td>
+                            <td>@part.PartName</td>
+                            <td>@part.Order</td>
+                            <td class="num">@part.Setup</td>
+                            <td class="num">@part.FinishedCount</td>
+                            <td class="num">@part.TotalCount</td>
+                            <td class="num">@FormatTime(part.StartSetupTime)</td>
+                            <td class="num">@FormatTime(part.StartMachiningTime)</td>
+                            <td class="num">@part.SetupTimePlan.ToString("0")</td>
+                            <td class="num">@part.SetupTimeFact.ToString("0")</td>
+                            <td class="num">@part.SetupDowntimes.ToString("0")</td>
+                            <td class="num">@part.MachiningDowntimes.ToString("0")</td>
+                            <td class="num">@part.SetupRatioTitle</td>
+                            <td class="num">@part.ProductionRatioTitle</td>
+                            <td>@part.EffectiveSetupReason</td>
+                            <td>@part.EffectiveMachiningReason</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery] public string? Machine { get; set; }
+    [SupplyParameterFromQuery] public string? From { get; set; }
+    [SupplyParameterFromQuery] public string? To { get; set; }
+
+    private DateTime FromDate = DateTime.Today.AddDays(-1);
+    private DateTime ToDate = DateTime.Today.AddDays(-1);
+    private string PartNameFilter = "";
+    private string OrderFilter = "";
+    private string OperatorFilter = "";
+    private List<string> _allMachines = new();
+    private HashSet<string> _selectedMachines = new();
+    private bool _loading;
+    private string? _error;
+    private List<Part>? _parts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (DateTime.TryParse(From, out var from)) FromDate = from;
+        if (DateTime.TryParse(To, out var to)) ToDate = to;
+
+        var machinesResult = Database.ReadMachines();
+        _allMachines = machinesResult.Value ?? new List<string>();
+
+        _selectedMachines = !string.IsNullOrWhiteSpace(Machine)
+            ? new HashSet<string> { Machine }
+            : _allMachines.ToHashSet();
+
+        await LoadAsync();
+    }
+
+    private static string FormatTime(DateTime value) => value == DateTime.MinValue ? "—" : value.ToString("HH:mm");
+
+    private void ToggleMachine(string machine, bool isSelected)
+    {
+        if (isSelected) _selectedMachines.Add(machine);
+        else _selectedMachines.Remove(machine);
+    }
+
+    private async Task ShiftDaysAsync(int days)
+    {
+        FromDate = FromDate.AddDays(days);
+        ToDate = ToDate.AddDays(days);
+        await LoadAsync();
+    }
+
+    private async Task OnPickSpecificDateAsync(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var picked))
+        {
+            FromDate = picked;
+            ToDate = picked;
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            if (_selectedMachines.Count == 0)
+            {
+                _parts = new List<Part>();
+                return;
+            }
+
+            var criteria = new PartsFilterCriteria(
+                FromDate, ToDate, new Shift(ShiftType.All),
+                OperatorFilter, PartNameFilter, OrderFilter,
+                "", "",
+                null, null, null,
+                PartsFilterType.All, Array.Empty<string>(),
+                _selectedMachines.ToList(),
+                Array.Empty<FilterChip>());
+
+            var conditions = PartsFilterService.BuildConditions(criteria);
+            _parts = await Database.ReadPartsWithConditions(conditions, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Ошибка: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

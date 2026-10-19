@@ -9,11 +9,13 @@
         xmlns:cntr="clr-namespace:eLog.Views.Controls" 
         mc:Ignorable="d" DataContext="{Binding RelativeSource={RelativeSource Self}}"
         FontSize="16" WindowStartupLocation="CenterOwner"
+        FontFamily="{StaticResource Areopag.FontUI}"
+        Background="{StaticResource Areopag.Bg0}"
         Title="Диалог" Height="300" Width="400">
     <DockPanel>
         <StackPanel DockPanel.Dock="Top" Visibility="{Binding ShowOptionalBlock, Converter={StaticResource VisibilityConverter}}" Margin="10">
             <TextBlock Text="{Binding OptionalLabel}" Margin="0" d:Text="Опциональный текст:"/>
-            <ComboBox ItemsSource="{Binding Options}"
+            <ComboBox ItemsSource="{Binding Options}" Style="{StaticResource ComboBoxStyle}"
                       SelectedItem="{Binding SelectedOption, Mode=TwoWay}"
                       Margin="0 5" />
         </StackPanel>
@@ -25,7 +27,7 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="auto"/>
             </Grid.ColumnDefinitions>
-            <Button Grid.Column="0" Height="40" Width="100" Content="{StaticResource CloseIcon}" Margin="10"
+            <Button Grid.Column="0" Height="40" Width="100" Content="{StaticResource CloseIcon}" Margin="10" Style="{StaticResource GeneralButton}"
                     IsCancel="True" CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=l:UserInputDialogWindow}}">
                 <Button.Command>
                     <cmd:CloseDialogCommand DialogResult="False"/>
@@ -34,7 +36,7 @@
 
             <cntr:TabTipButton Grid.Column="1" Margin="10" Width="50"/>
 
-            <Button Grid.Column="2" Height="40" Width="100" Content="{StaticResource ConfirmIcon}" Margin="10"
+            <Button Grid.Column="2" Height="40" Width="100" Content="{StaticResource ConfirmIconWhite}" Margin="10" Style="{StaticResource Areopag.PrimaryButton}"
                     IsDefault="True" IsEnabled="{Binding CanConfirm, UpdateSourceTrigger=PropertyChanged}" 
                     CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=l:UserInputDialogWindow}}">
                 <Button.Command>

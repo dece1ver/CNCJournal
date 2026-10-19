@@ -1,0 +1,388 @@
+@page "/"
+@rendermode InteractiveServer
+@using remeLog.Core
+@using remeLog.Core.Services
+@using remeLog.Models
+@implements IAsyncDisposable
+
+<PageTitle>Сводка по сменам · remeLog</PageTitle>
+
+<div class="page-head">
+    <h1>Сводка по сменам</h1>
+    <span class="meta">@FromDate.ToString("dd.MM.yyyy") — @ToDate.ToString("dd.MM.yyyy")</span>
+</div>
+
+@if (_activityMachines.Count > 0)
+{
+    <div class="dashboard-head">
+        <h2>Сейчас в работе</h2>
+        <span class="meta">обновляется автоматически</span>
+    </div>
+    <div class="table-wrap activity-table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Станок</th>
+                    <th>Статус</th>
+                    <th>Деталь</th>
+                    <th class="num">Установ</th>
+                    <th>Заказ</th>
+                    <th>Начало фазы</th>
+                    <th>Оператор</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var machine in _activityMachines)
+                {
+                    var activity = _activity.GetValueOrDefault(machine);
+                    <tr title="@UpdatedTooltip(activity)">
+                        <td>@machine</td>
+                        <td><span class="stamp @StatusStampClass(activity)">@StatusText(activity)</span></td>
+                        @if (activity is not null && !activity.IsStale && activity.Status != MachineActivity.IdleStatus)
+                        {
+                            <td>@activity.PartName</td>
+                            <td class="num">@activity.Setup</td>
+                            <td>@activity.Order</td>
+                            <td>@(activity.PhaseStartLocal?.ToString("dd.MM HH:mm:ss") ?? "-")</td>
+                            <td>@activity.Operator</td>
+                        }
+                        else
+                        {
+                            <td colspan="5">—</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<div class="filters">
+    <div class="filter-field">
+        <label class="field-label" for="pick">📅 Выбрать день</label>
+        <input id="pick" type="date" title="Установится и «С», и «По»" @onchange="OnPickSpecificDateAsync" />
+    </div>
+    <div class="filter-field">
+        <label class="field-label" for="from">С</label>
+        <input id="from" type="date" @bind="FromDate" @bind:after="LoadAsync" />
+    </div>
+    <div class="filter-field">
+        <label class="field-label" for="to">По</label>
+        <input id="to" type="date" @bind="ToDate" @bind:after="LoadAsync" />
+    </div>
+    <div class="filter-field">
+        <span class="field-label">Сутки</span>
+        <div class="day-nav">
+            <button type="button" class="day-nav-btn" disabled="@_loading" @onclick="() => ShiftDaysAsync(-1)" title="Минус сутки">−</button>
+            <button type="button" class="day-nav-btn" disabled="@_loading" @onclick="() => ShiftDaysAsync(1)" title="Плюс сутки">+</button>
+        </div>
+    </div>
+    <div class="filter-field">
+        <span class="field-label">Строки</span>
+        <button type="button" @onclick="ToggleShowOnlyWorked" disabled="@_loading"
+                title="Показывать только станки, работавшие за период, или все">
+            @(_showOnlyWorked ? "Только работавшие" : "Все станки")
+        </button>
+    </div>
+    <button @onclick="LoadAsync" disabled="@_loading">Обновить</button>
+</div>
+
+@if (_loading)
+{
+    <p class="state-line">Загрузка…</p>
+}
+else if (_error is not null)
+{
+    <p class="state-line state-error">@_error</p>
+}
+else
+{
+    @if (FromDate == ToDate && _workStatus is not null)
+    {
+        <div class="dashboard-head">
+            <h2>Кто работал @FromDate.ToString("dd.MM.yyyy")</h2>
+            <span class="meta">простаивали: @_idleCount из @_workStatus.Count</span>
+        </div>
+        <div class="work-grid">
+            @foreach (var w in _sortedWorkStatus)
+            {
+                <div class="work-tile @TileClass(w)">
+                    <span class="work-tile-machine">@w.Machine</span>
+                    <div class="work-tile-shifts">
+                        <span class="shift-chip @(w.WorkedDay ? "on" : "")">День</span>
+                        <span class="shift-chip @(w.WorkedNight ? "on" : "")">Ночь</span>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_rows is not null)
+    {
+        var visibleRows = _showOnlyWorked
+            ? _rows.Where(r => _workedMachines.Contains(r.Machine)).ToList()
+            : _rows;
+        @if (visibleRows.Count == 0)
+        {
+            <p class="state-line">Нет станков.</p>
+        }
+        else
+        {
+            @if (FromDate != ToDate)
+            {
+                <p class="table-caption">
+                    @FormatSummary("МЦ", _periodReportsCount, _periodTotalSlots)
+                    &nbsp;·&nbsp;
+                    @FormatSummary("ТО", _periodCheckedCount, _periodTotalSlots)
+                </p>
+            }
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Станок</th>
+                            <th class="@(FromDate != ToDate ? "num" : "")">Проверено МЦ</th>
+                            <th class="@(FromDate != ToDate ? "num" : "")">Проверено ТО</th>
+                            @if (FromDate != ToDate)
+                            {
+                                <th class="num">Смен за период</th>
+                            }
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in visibleRows)
+                        {
+                            <tr>
+                                <td>@row.Machine</td>
+                                @if (FromDate == ToDate)
+                                {
+                                    <td><span class="stamp @StampClass(row.State)">@StateText(row.State)</span></td>
+                                    <td><span class="stamp @(row.IsChecked ? "stamp-ok" : "stamp-alert")">@(row.IsChecked ? "Да" : "Нет")</span></td>
+                                }
+                                else
+                                {
+                                    <td class="num">@FormatMachineRatio(row.Machine, checkedOnly: false)</td>
+                                    <td class="num">@FormatMachineRatio(row.Machine, checkedOnly: true)</td>
+                                    <td class="num">@_shiftsByMachine.GetValueOrDefault(row.Machine, 0)</td>
+                                }
+                                <td>
+                                    <a class="row-link"
+                                       href="@($"/parts?machine={Uri.EscapeDataString(row.Machine)}&from={FromDate:yyyy-MM-dd}&to={ToDate:yyyy-MM-dd}")">
+                                        детали →
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+}
+
+@code {
+    private DateTime FromDate = DateTime.Today.AddDays(-1);
+    private DateTime ToDate = DateTime.Today.AddDays(-1);
+    private bool _loading;
+    private string? _error;
+    private List<MainDashboardService.MachineReportState>? _rows;
+    private Dictionary<string, int> _shiftsByMachine = new();
+    private List<MainDashboardService.MachineWorkStatus>? _workStatus;
+    private List<MainDashboardService.MachineWorkStatus> _sortedWorkStatus = new();
+    private int _idleCount;
+    private int _periodReportsCount;
+    private int _periodCheckedCount;
+    private int _periodTotalSlots;
+    private int _periodWorkDays;
+    private Dictionary<string, (int Reports, int Checked)> _periodByMachine = new();
+    private HashSet<string> _workedMachines = new();
+    private bool _showOnlyWorked = true;
+
+    private void ToggleShowOnlyWorked() => _showOnlyWorked = !_showOnlyWorked;
+
+    // "Сейчас в работе" — независимая от FromDate/ToDate живая панель (heartbeat из eLog).
+    private List<string> _activityMachines = new();
+    private Dictionary<string, MachineActivity?> _activity = new();
+    private PeriodicTimer? _activityTimer;
+    private CancellationTokenSource? _activityCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        await RefreshActivityAsync();
+        _ = RunActivityLoopAsync();
+    }
+
+    private async Task RefreshActivityAsync()
+    {
+        try
+        {
+            if (_activityMachines.Count == 0)
+            {
+                var reference = await MainDashboardService.LoadReferenceDataAsync(CancellationToken.None);
+                _activityMachines = reference.Machines.Value ?? new List<string>();
+            }
+            _activity = await MainDashboardService.LoadMachineActivityAsync(_activityMachines, CancellationToken.None);
+        }
+        catch
+        {
+            // Живая панель вспомогательная — молчим, чтобы не ронять остальную страницу.
+        }
+    }
+
+    private async Task RunActivityLoopAsync()
+    {
+        _activityCts = new CancellationTokenSource();
+        _activityTimer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+        try
+        {
+            while (await _activityTimer.WaitForNextTickAsync(_activityCts.Token))
+            {
+                await RefreshActivityAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private static string StatusStampClass(MachineActivity? activity) =>
+        activity is null || activity.IsStale ? "stamp-muted" : activity.Status switch
+        {
+            MachineActivity.MachiningStatus => "stamp-ok",
+            MachineActivity.SetupStatus => "stamp-warn",
+            _ => "stamp-alert",
+        };
+
+    private static string StatusText(MachineActivity? activity) =>
+        activity is null || activity.IsStale ? "Нет данных" : activity.Status;
+
+    private static string UpdatedTooltip(MachineActivity? activity) =>
+        activity is null ? "" : $"Обновлено: {activity.UpdatedLocal:dd.MM.yyyy HH:mm:ss}";
+
+    public async ValueTask DisposeAsync()
+    {
+        _activityCts?.Cancel();
+        _activityTimer?.Dispose();
+        _activityCts?.Dispose();
+        await Task.CompletedTask;
+    }
+
+    private async Task ShiftDaysAsync(int days)
+    {
+        FromDate = FromDate.AddDays(days);
+        ToDate = ToDate.AddDays(days);
+        await LoadAsync();
+    }
+
+    private async Task OnPickSpecificDateAsync(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var picked))
+        {
+            FromDate = picked;
+            ToDate = picked;
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            var reference = await MainDashboardService.LoadReferenceDataAsync(CancellationToken.None);
+            if (!reference.Machines.IsOk)
+            {
+                _error = "Не удалось получить список станков.";
+                return;
+            }
+
+            var machines = reference.Machines.Value ?? new List<string>();
+            var overview = await MainDashboardService.LoadShiftOverviewAsync(machines, FromDate, ToDate, CancellationToken.None);
+            _rows = overview.ReportStates;
+            _shiftsByMachine = overview.TotalShifts
+                .GroupBy(s => s.Machine)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            if (FromDate == ToDate)
+            {
+                _workStatus = await MainDashboardService.LoadMachineWorkStatusAsync(machines, FromDate, CancellationToken.None);
+                _sortedWorkStatus = _workStatus
+                    .OrderBy(w => w.WorkedDay || w.WorkedNight ? (w.WorkedDay && w.WorkedNight ? 2 : 1) : 0)
+                    .ThenBy(w => w.Machine)
+                    .ToList();
+                _idleCount = _workStatus.Count(w => !w.WorkedDay && !w.WorkedNight);
+                _workedMachines = _workStatus
+                    .Where(w => w.WorkedDay || w.WorkedNight)
+                    .Select(w => w.Machine)
+                    .ToHashSet(StringComparer.Ordinal);
+            }
+            else
+            {
+                _workStatus = null;
+                // Та же формула, что ReportsSummaryForPeriod/CheckedSummaryForPeriod в MainWindowViewModel,
+                // здесь же — вдобавок постаночно (WPF считает эти цифры только по всем станкам сразу).
+                _periodWorkDays = DomainSettings.GetWorkDaysBetween(FromDate, ToDate);
+                _periodTotalSlots = machines.Count * _periodWorkDays;
+                _periodReportsCount = overview.TotalShifts.Count / 2;
+                _periodCheckedCount = overview.TotalShifts.Count(s => s.IsChecked) / 2;
+
+                var shiftsByMachine = overview.TotalShifts.GroupBy(s => s.Machine).ToDictionary(g => g.Key, g => g.ToList());
+                _periodByMachine = machines.ToDictionary(m => m, m =>
+                {
+                    var shifts = shiftsByMachine.GetValueOrDefault(m) ?? new List<ShiftInfo>();
+                    return (shifts.Count / 2, shifts.Count(s => s.IsChecked) / 2);
+                });
+
+                _workedMachines = await MainDashboardService.LoadWorkedMachinesAsync(machines, FromDate, ToDate, CancellationToken.None);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Ошибка: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string FormatSummary(string label, int count, int total)
+    {
+        var percent = total > 0 && count > 0 ? $" ({(double)count / total:0.#%})" : "";
+        return $"{label}: {count:00}/{total:00}{percent}";
+    }
+
+    private string FormatMachineRatio(string machine, bool checkedOnly)
+    {
+        var (reports, @checked) = _periodByMachine.GetValueOrDefault(machine, (0, 0));
+        var count = checkedOnly ? @checked : reports;
+        return $"{count:00}/{_periodWorkDays:00}";
+    }
+
+    private static string TileClass(MainDashboardService.MachineWorkStatus w) =>
+        (w.WorkedDay, w.WorkedNight) switch
+        {
+            (false, false) => "idle",
+            (true, true) => "",
+            _ => "partial",
+        };
+
+    private static string StampClass(CombinedParts.ReportState state) => state switch
+    {
+        CombinedParts.ReportState.Exist => "stamp-ok",
+        CombinedParts.ReportState.Partial => "stamp-warn",
+        _ => "stamp-alert",
+    };
+
+    private static string StateText(CombinedParts.ReportState state) => state switch
+    {
+        CombinedParts.ReportState.Exist => "Да",
+        CombinedParts.ReportState.Partial => "Частично",
+        _ => "Нет",
+    };
+}

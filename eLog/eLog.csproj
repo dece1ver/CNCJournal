@@ -2,9 +2,11 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net6.0-windows</TargetFramework>
+    <!-- 10.0.19041.0 нужен ради WinRT-тостов в AppPresenceService (как в remeLog.WPF). -->
+    <TargetFramework>net6.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
+    <UseWinUI>false</UseWinUI>
     <Authors>dece1ver</Authors>
     <Description>Электронный журнал</Description>
     <Copyright>dece1ver © 2024</Copyright>
@@ -13,8 +15,8 @@
     <ApplicationIcon>Resources\eLog.ico</ApplicationIcon>
     <Version>$(VersionPrefix)</Version>
 	  <Deterministic>false</Deterministic>
-	  <AssemblyVersion>1.1.13</AssemblyVersion>
-	  <FileVersion>1.1.13</FileVersion>
+	  <AssemblyVersion>1.1.14</AssemblyVersion>
+	  <FileVersion>1.1.14</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,8 +32,9 @@
     
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.102.3" />
+    <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.3" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.7" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="WindowsAPICodePack" Version="8.0.6" />
   </ItemGroup>

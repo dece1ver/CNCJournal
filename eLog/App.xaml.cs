@@ -1,4 +1,5 @@
 ﻿using eLog.Infrastructure;
+using eLog.Infrastructure.Services;
 using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
 using System.Globalization;
@@ -11,6 +12,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using eLog.Infrastructure.Extensions;
 using libeLog.Extensions;
+using libeLog.Views;
 
 namespace eLog
 {
@@ -21,6 +23,7 @@ namespace eLog
     {
         private readonly string _uniqueEventName;
         private EventWaitHandle? _eventWaitHandle;
+        private AppPresenceService? _presenceService;
 
         public App()
         {
@@ -36,7 +39,7 @@ namespace eLog
             catch (Exception ex)
             {
                 Util.WriteLog(ex, "Критическая ошибка при запуске приложения");
-                MessageBox.Show($"Ошибка при запуске приложения: {ex.Message}",
+                MessageBoxWindow.Show($"Ошибка при запуске приложения: {ex.Message}",
                     "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 Shutdown(1);
             }
@@ -166,7 +169,35 @@ namespace eLog
             Util.WriteLog("Настройка культуры приложения");
             ConfigureCulture();
 
+            StartPresenceService();
+
             Util.WriteLog("Инициализация завершена");
+        }
+
+        /// <summary>
+        /// Поднимает heartbeat и приём команд из окна экземпляров remeLog.
+        /// Строка подключения уже прочитана в <see cref="InitializeApplication"/>; если её нет,
+        /// сервис просто не стартует — это не повод валить запуск журнала.
+        /// </summary>
+        private void StartPresenceService()
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(AppSettings.Instance.ConnectionString))
+                {
+                    Util.WriteLog("AppPresenceService не запущен: строка подключения не настроена");
+                    return;
+                }
+
+                Util.WriteLog("Запуск AppPresenceService");
+                _presenceService = new AppPresenceService(AppSettings.Instance.ConnectionString);
+                _presenceService.Start();
+                Util.WriteLog("AppPresenceService успешно запущен");
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "Ошибка запуска AppPresenceService");
+            }
         }
 
         private void StartWindowActivationWatcher()
@@ -266,6 +297,14 @@ namespace eLog
 
         protected override void OnExit(ExitEventArgs e)
         {
+            try
+            {
+                _presenceService?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Util.WriteLog(ex, "Ошибка остановки AppPresenceService");
+            }
             _eventWaitHandle?.Close();
             base.OnExit(e);
         }

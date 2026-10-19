@@ -11,6 +11,7 @@ using libeLog.Infrastructure;
 using libeLog.Infrastructure.Enums;
 using libeLog.Interfaces;
 using libeLog.Models;
+using libeLog.Views;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -21,12 +22,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using static eLog.Infrastructure.Extensions.Util;
 using Application = System.Windows.Application;
-using Database = eLog.Infrastructure.Extensions.Database;
+using Database = eLog.Infrastructure.Database;
 using Machine = eLog.Models.Machine;
-using MessageBox = System.Windows.MessageBox;
-using Text = eLog.Infrastructure.Extensions.Text;
+using Text = eLog.Infrastructure.Text;
 
 namespace eLog.ViewModels
 {
@@ -36,8 +37,13 @@ namespace eLog.ViewModels
         bool _needSave = false;
         SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
         private CancellationTokenSource _cts = new();
+        private readonly Dispatcher _uiDispatcher;
         public MainWindowViewModel()
         {
+            _uiDispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            // Предупреждение о запасном логе — разовой строкой в статусбар, без модалки.
+            Logs.FallbackWarningChanged += OnLogFallbackWarning;
+            ShowLogFallbackWarning();
             CloseApplicationCommand = new LambdaCommand(OnCloseApplicationCommandExecuted, CanCloseApplicationCommandExecute);
 
             StartShiftCommand = new LambdaCommand(OnStartShiftCommandExecuted, CanStartShiftCommandExecute);
@@ -60,6 +66,8 @@ namespace eLog.ViewModels
             LoadProductionTasksCommand = new LambdaCommand(OnLoadProductionTasksCommandExecuted, CanLoadProductionTasksCommandExecute);
             LoadAssignedPartsCommand = new LambdaCommand(OnLoadAssignedPartsCommandExecuted, CanLoadAssignedPartsCommandExecute);
             SendMessageCommand = new LambdaCommand(OnSendMessageCommandExecuted, CanSendMessageCommandExecute);
+            OpenAiChatCommand = new LambdaCommand(OnOpenAiChatCommandExecuted, CanOpenAiChatCommandExecute);
+            OpenReferenceCommand = new LambdaCommand(OnOpenReferenceCommandExecuted, CanOpenReferenceCommandExecute);
             ShowAboutCommand = new LambdaCommand(OnShowAboutCommandExecuted, CanShowAboutCommandExecute);
             TestCommand = new LambdaCommand(OnTestCommandExecuted, CanTestCommandExecute);
 
@@ -76,6 +84,9 @@ namespace eLog.ViewModels
 
             var serialPartsWatcher = new Thread(SerialPartsWatcher) { IsBackground = true };
             serialPartsWatcher.Start();
+
+            var machineActivityThread = new Thread(() => _ = WriteMachineActivityHeartbeat()) { IsBackground = true };
+            machineActivityThread.Start();
 
             Task.Run(UpdateToolTypes);
             Task.Run(UpdateOrderQualifiers);
@@ -203,6 +214,34 @@ namespace eLog.ViewModels
             set => Set(ref _Status, value);
         }
 
+        private string? _LogWarningTooltip;
+        /// <summary> Путь запасного лога для тултипа строки статуса </summary>
+        public string? LogWarningTooltip
+        {
+            get => _LogWarningTooltip;
+            set => Set(ref _LogWarningTooltip, value);
+        }
+
+        /// <summary>
+        /// Разово показывает переход на запасной лог в статусбаре.
+        /// Событие прилетает из фонового потока — маршалим на UI.
+        /// </summary>
+        private void OnLogFallbackWarning()
+        {
+            var dispatcher = _uiDispatcher;
+            if (dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished) return;
+            try { dispatcher.BeginInvoke(ShowLogFallbackWarning); }
+            catch (InvalidOperationException) { }
+        }
+
+        private void ShowLogFallbackWarning()
+        {
+            var warning = Logs.FallbackWarning;
+            if (string.IsNullOrEmpty(warning)) return;
+            Status = warning;
+            LogWarningTooltip = $"Общая папка журнала недоступна. Временный файл: {Logs.FallbackPath}";
+        }
+
         private double _Progress = 1;
         /// <summary> Значение прогрессбара </summary>
         public double Progress
@@ -261,6 +300,12 @@ namespace eLog.ViewModels
         private object lockObject = new();
         private bool askedForUpdate;
 
+        /// <summary>Результат последней записи детали в БД — от него зависит пауза между попытками.</summary>
+        private DbResult _lastDbResult = DbResult.Ok;
+
+        /// <summary>Текущий шаг backoff синхронизации при недоступной БД.</summary>
+        private int _syncBackoffStep;
+
         public bool ShiftStarted
         {
             get => _ShiftStarted;
@@ -293,7 +338,7 @@ namespace eLog.ViewModels
             if (AppSettings.Instance.EnableWriteShiftHandover)
             {
                 DateTime dateTime = DateTime.Today;
-                if (DateTime.Now.Hour < 8 && AppSettings.Instance.CurrentShift == "Ночь") dateTime.AddDays(-1);
+                if (DateTime.Now.Hour < 8 && AppSettings.Instance.CurrentShift == Text.NightShift) dateTime.AddDays(-1);
                 ShiftHandoverWindow shiftHandoverWindow = new($"Приём смены {dateTime:dd.MM.yy}") { Owner = App.Current.MainWindow };
                 if (shiftHandoverWindow.ShowDialog() == false) return;
                 Task.Run(async () =>
@@ -333,7 +378,7 @@ namespace eLog.ViewModels
             if (AppSettings.Instance.EnableWriteShiftHandover)
             {
                 DateTime dateTime = DateTime.Today;
-                if (DateTime.Now.Hour < 8 && AppSettings.Instance.CurrentShift == "Ночь") dateTime.AddDays(-1);
+                if (DateTime.Now.Hour < 8 && AppSettings.Instance.CurrentShift == Text.NightShift) dateTime.AddDays(-1);
                 ShiftHandoverWindow shiftHandoverWindow = new($"Сдача смены {dateTime:dd.MM.yy}") { Owner = App.Current.MainWindow };
                 if (shiftHandoverWindow.ShowDialog() == false) return;
                 Task.Run(async () =>
@@ -405,7 +450,7 @@ namespace eLog.ViewModels
                     }
                     else
                     {
-                        MessageBox.Show("В списке нет заданий под данный станок.", "Задания на производство");
+                        MessageBoxWindow.Show("В списке нет заданий под данный станок.", "Задания на производство");
                     }
                 }
 
@@ -488,12 +533,12 @@ namespace eLog.ViewModels
             {
                 if (!Parts.Any())
                 {
-                    MessageBox.Show("Без детали не положено", "Нет", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBoxWindow.Show("Без детали не положено", "Нет", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
                 else if (Parts[0].IsFinished != Part.State.InProgress)
                 {
-                    MessageBox.Show("Без детали не положено", "Нет", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBoxWindow.Show("Без детали не положено", "Нет", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
                 string message;
@@ -553,6 +598,32 @@ namespace eLog.ViewModels
         private bool CanSendMessageCommandExecute(object p) => !string.IsNullOrWhiteSpace(AppSettings.Instance.PathToRecievers);
 
         public bool _CanSendMessageCommandExecute => SendMessageCommand.CanExecute(null);
+        #endregion
+
+        #region OpenReference
+        public ICommand OpenReferenceCommand { get; }
+        private void OnOpenReferenceCommandExecuted(object p)
+        {
+            using (Overlay = new())
+            {
+                var referenceWindow = new ReferenceWindow { Owner = Application.Current.MainWindow };
+                referenceWindow.ShowDialog();
+            }
+        }
+        private bool CanOpenReferenceCommandExecute(object p) => true;
+        #endregion
+
+        #region OpenAiChat
+        public ICommand OpenAiChatCommand { get; }
+        private void OnOpenAiChatCommandExecuted(object p)
+        {
+            using (Overlay = new())
+            {
+                var chatWindow = new AiChatWindow { Owner = Application.Current.MainWindow };
+                chatWindow.ShowDialog();
+            }
+        }
+        private bool CanOpenAiChatCommandExecute(object p) => true;
         #endregion
 
         #region EditOperators
@@ -718,7 +789,7 @@ namespace eLog.ViewModels
                 {
                     if (type is DownTime.Types.CreateNcProgram && (Part)p is { SetupIsFinished: true })
                     {
-                        MessageBox.Show($"{Text.DownTimes.CreateNcProgram} может быть только в наладке.", "Молодой человек, это не для вас простой.", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        MessageBoxWindow.Show($"{Text.DownTimes.CreateNcProgram} может быть только в наладке.", "Молодой человек, это не для вас простой.", MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
                     var part = (Part)p;
@@ -752,15 +823,16 @@ namespace eLog.ViewModels
                 var index = Parts.IndexOf((Part)p);
 
                 if (part.LastDownTime is { InProgress: true }
-                    && MessageBox.Show($"Завершить простой {part.LastDownTimeName}?",
+                    && MessageBoxWindow.Show($"Завершить простой {part.LastDownTimeName}?",
                         "Подтверждение",
                         MessageBoxButton.OKCancel,
-                        MessageBoxImage.Question)
+                        MessageBoxImage.Question,
+                        MessageBoxDefaultButton.Ok)
                     == MessageBoxResult.OK)
                 {
                     if (part.LastDownTime.Type == DownTime.Types.ToolSearching)
                     {
-                        switch (MessageBox.Show("Нашёл что искал?", "Нашёл?", MessageBoxButton.YesNo, MessageBoxImage.Question))
+                        switch (MessageBoxWindow.Show("Нашёл что искал?", "Нашёл?", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.Yes))
                         {
                             case MessageBoxResult.Yes:
                                 part.LastDownTime.IsSuccess = true;
@@ -952,10 +1024,20 @@ namespace eLog.ViewModels
         #endregion
 
 
+        /// <summary>
+        /// Интервалы опроса списка серийных деталей при недоступном сервере.
+        /// </summary>
+        private static readonly TimeSpan[] SerialPartsBackoff =
+        {
+            TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(5)
+        };
+
         private void SerialPartsWatcher()
         {
+            var backoffStep = 0;
             while (true) 
             {
+                var failed = false;
                 try
                 {
                     HashSet<string> serialParts = libeLog.Infrastructure.Database.GetSerialPartsAsync(AppSettings.Instance.ConnectionString)
@@ -973,15 +1055,23 @@ namespace eLog.ViewModels
                     {
                         App.Current.Dispatcher.Invoke(() => part.IsSerial = serialParts.Contains(part.FullName.NormalizedPartNameWithoutComments()));
                     }
+                    Util.ConnectionOk();
 
                 }
                 catch (Exception ex)
                 {
                     Util.WriteLog(ex);
+                    failed = true;
                 }
                 finally
                 {
-                    Thread.Sleep(60000);
+                    // Списки деталей нужны постоянно, но при отвале сети опрашивать БД каждую минуту
+                    // незачем: часть вернётся в журнале позже.
+                    if (!failed) backoffStep = 0;
+                    else backoffStep++;
+                    Thread.Sleep(failed
+                        ? (int)SerialPartsBackoff[Math.Min(backoffStep, SerialPartsBackoff.Length - 1)].TotalMilliseconds
+                        : 60000);
                 }
             }
         }
@@ -1062,12 +1152,16 @@ namespace eLog.ViewModels
                             var edt = dt.EndTime == DateTime.MinValue ? DateTime.Now : dt.EndTime;
                             tempDowntimes.Add(new DownTime(Parts[0], dt) { EndTimeText = edt.ToString(Constants.DateTimeFormat) });
                         }
+                        // Формула зеркалит remeLog SetupTimeFact: стена − перерывы (GetBreaksBetween)
+                        // − простои наладки. Простой «частичная наладка» в этот момент существовать
+                        // не может (он создаётся только при закрытии наладки как частичной),
+                        // поэтому фильтр по Relation Setup покрывает всё.
                         var totalDowntime = tempDowntimes
-                        .Where(dt => dt.Type is not DownTime.Types.PartialSetup)
+                        .Where(dt => dt.Relation is DownTime.Relations.Setup)
                         .Aggregate(TimeSpan.Zero, (sum, dt) => sum.Add(dt.Time));
 
                         var setupTimeWithoutDowntime = DateTime.Now - Parts[0].StartSetupTime - totalDowntime;
-                        var breaks = TimeSpan.FromMinutes(DateTimes.GetPartialBreakBetween(Parts[0].StartSetupTime, DateTime.Now));
+                        var breaks = DateTimes.GetBreaksBetween(Parts[0].StartSetupTime, DateTime.Now);
                         var factSetupTime = setupTimeWithoutDowntime - breaks;
                         if (factSetupTime > TimeSpan.FromMinutes(limit))
                         {
@@ -1087,8 +1181,8 @@ namespace eLog.ViewModels
                     Thread.Sleep(30000);
                     if (!string.IsNullOrWhiteSpace(AppSettings.Instance.UpdatePath) && !askedForUpdate && App.CheckForUpdate(AppSettings.Instance.UpdatePath, false))
                     {
-                        if (MessageBox.Show("Доступно обновление.\n\nДобавлена поддержка новых видов маршрутных листов.\n\nПерезапустите программу.\nА в идеале перезагрузить компьютер и подождать 15 минут.\n\n" +
-                            "Можно нажать \"Да\", тогда всё закроется и попытается перезагрузиться само.", "Обновление", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                        if (MessageBoxWindow.Show("Доступно обновление.\n\nДобавлена поддержка новых видов маршрутных листов.\n\nПерезапустите программу.\nА в идеале перезагрузить компьютер и подождать 15 минут.\n\n" +
+                            "Можно нажать \"Да\", тогда всё закроется и попытается перезагрузиться само.", "Обновление", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.No) == MessageBoxResult.Yes)
                         {
                             Process.Start(new ProcessStartInfo
                             {
@@ -1208,7 +1302,7 @@ namespace eLog.ViewModels
                 }
                 catch (Exception e)
                 {
-                    MessageBox.Show(e.ToString());
+                    MessageBoxWindow.Show(e.ToString());
                     Status = e.Message;
                     WriteLog(e, "Ошибка синхронизации");
                 }
@@ -1216,19 +1310,42 @@ namespace eLog.ViewModels
                 {
                     ProgressBarVisibility = Visibility.Hidden;
                 }
-                await Task.Delay(10000);
+                await Task.Delay(GetSyncDelay());
             }
         }
+
+        /// <summary>
+        /// Пауза перед следующим проходом синхронизации. Пока БД недоступна, повторяем реже:
+        /// детали всё равно досохранятся, но долбить сервер и писать в лог каждые 10 секунд незачем.
+        /// </summary>
+        private TimeSpan GetSyncDelay()
+        {
+            if (_lastDbResult != DbResult.NoConnection) return SyncDelay;
+            return SyncBackoff[Math.Min(_syncBackoffStep++, SyncBackoff.Length - 1)];
+        }
+
+        /// <summary>Пауза между проходами синхронизации в штатном режиме.</summary>
+        private static readonly TimeSpan SyncDelay = TimeSpan.FromSeconds(10);
+
+        /// <summary>Паузы между проходами синхронизации при недоступной БД.</summary>
+        private static readonly TimeSpan[] SyncBackoff =
+        {
+            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60), TimeSpan.FromMinutes(2)
+        };
+
         private async Task SyncWithDatabase(Part part, string partName)
         {
             ProgressBarVisibility = Visibility.Visible;
             Status = $"Запись в БД: [{partName}]";
-            var writeResult = part.Id == -1 ? await Database.WritePartAsync(part) : await Database.UpdatePartAsync(part);
+            var writeResult = part.Id == -1 ? await part.WritePartAsync() : await part.UpdatePartAsync();
+            _lastDbResult = writeResult;
             switch (writeResult)
             {
                 case DbResult.Ok:
                     part.IsSynced = true;
                     Status = $"Готово";
+                    _syncBackoffStep = 0;
+                    Util.ConnectionOk();
                     break;
                 case DbResult.AuthError:
                     Status = $"Ошибка авторизации в БД";
@@ -1243,6 +1360,82 @@ namespace eLog.ViewModels
             ProgressBarVisibility = Visibility.Hidden;
         }
 
+        /// <summary>
+        /// Интервал heartbeat статуса станка в штатном режиме.
+        /// </summary>
+        private static readonly TimeSpan ActivityInterval = TimeSpan.FromSeconds(12);
+
+        /// <summary>
+        /// Интервалы heartbeat при недоступном сервере: чем дольше нет связи, тем реже попытки.
+        /// </summary>
+        private static readonly TimeSpan[] ActivityBackoff =
+        {
+            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60), TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(5)
+        };
+
+        /// <summary>
+        /// Тихий heartbeat для дашборда (remeLog.Web) и окна remeLog.WPF: раз в 12 сек пишет
+        /// текущий статус станка по строке, которая ещё не закрыта (SyncParts её не трогает).
+        /// Значения статусов должны совпадать с remeLog.Core.Models.MachineActivity.
+        /// </summary>
+        private async Task WriteMachineActivityHeartbeat()
+        {
+            const string SetupStatus = "Наладка";
+            const string MachiningStatus = "Изготовление";
+            const string IdleStatus = "Простой";
+
+            var backoffStep = 0;
+            while (true)
+            {
+                var failed = false;
+                try
+                {
+                    var machine = AppSettings.Instance.Machine?.Name;
+                    if (!string.IsNullOrEmpty(machine))
+                    {
+                        var current = Parts.FirstOrDefault(p => p.IsFinished == Part.State.InProgress);
+
+                        if (current is null)
+                        {
+                            await Database.WriteMachineActivityAsync(machine, IdleStatus, "", "", "", 0, "", null);
+                        }
+                        else
+                        {
+                            // Открытый простой (незакрытый DownTime) живёт внутри наладки/изготовления —
+                            // пока он не закрыт, станок физически не работает. Показываем конкретную причину
+                            // с суффиксом фазы, в которой простой открыт: [Н] наладка, [И] изготовление.
+                            string status;
+                            if (!current.DownTimesIsClosed && current.LastDownTime is { } lastDownTime)
+                            {
+                                var phaseSuffix = lastDownTime.Relation == DownTime.Relations.Machining ? "И" : "Н";
+                                status = $"{lastDownTime.Name} [{phaseSuffix}]";
+                            }
+                            else
+                            {
+                                status = current.SetupIsFinished ? MachiningStatus : SetupStatus;
+                            }
+                            var phaseStart = current.SetupIsFinished ? current.StartMachiningTime : current.StartSetupTime;
+                            await Database.WriteMachineActivityAsync(machine, status, current.FullName, current.Order,
+                                current.Operator.FullName, current.Setup, current.Shift, phaseStart);
+                        }
+                    }
+                    Util.ConnectionOk();
+                }
+                catch (Exception ex)
+                {
+                    WriteLog(ex, "Ошибка записи статуса станка");
+                    failed = true;
+                }
+
+                // Пока сервер недоступен, статус в БД не обновляется, но и пробовать каждые 12 секунд
+                // незачем: в лог от каждой попытки падает один и тот же стектрейс на 2-3 КБ.
+                if (!failed) backoffStep = 0;
+                else backoffStep++;
+                await Task.Delay(failed ? ActivityBackoff[Math.Min(backoffStep, ActivityBackoff.Length - 1)]
+                                        : ActivityInterval);
+            }
+        }
+
         async Task SetPartsTaskInfo()
         {
             lock (lockObject)
@@ -1254,7 +1447,8 @@ namespace eLog.ViewModels
                     Status = p.Item2;
                 });
                 if (string.IsNullOrEmpty(AppSettings.Instance.GsId) || !File.Exists(AppSettings.Instance.GoogleCredentialsPath)) return;
-                foreach (var part in Parts.Where(p => p.TaskInfo == Part.PartTaskInfo.NoData || (p.TaskInfo == Part.PartTaskInfo.InList && !p.IsTaskStatusWritten)))
+                // Parts меняется из UI параллельно, поэтому обходим снимок: иначе "Collection was modified".
+                foreach (var part in Parts.Where(p => p.TaskInfo == Part.PartTaskInfo.NoData || (p.TaskInfo == Part.PartTaskInfo.InList && !p.IsTaskStatusWritten)).ToList())
                 {
                     if (Parts.Count > 0 && Parts[0].FullName == part.FullName && Parts[0].Setup == part.Setup && Parts.IndexOf(part) > 0) return;
                     if (_editPart) return;

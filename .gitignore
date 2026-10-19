@@ -33,6 +33,22 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
+# Логи ИИ-запросов и приложений, если появляются вне bin/
+request_logs/
+**/request_logs/
+logs/
+**/logs/
+
+# Каталоги сборки, созданные MSBuild внутри проектов.
+# В PowerShell строка -p:OutDir=%TEMP%\cncbuild\ не раскрывается — если кавычек нет,
+# а сборка запущена из PowerShell, внутри проектов появляется папка «%TEMP%\cncbuild».
+# Правильный вызов: dotnet build CNCJournal.sln -t:Rebuild -c Debug "-p:OutDir=$env:TEMP\cncbuild\"
+**/%TEMP%/
+**/cncbuild/
+
+# Исследовательские материалы и справки (кампании, отчёты, стенды) — локально
+research/
+
 # Visual Studio 2015/2017 cache/options directory
 .vs/
 # Uncomment if you have tasks that create the project's static files in wwwroot

@@ -1,5 +1,6 @@
 ﻿using eLog.ViewModels;
 using libeLog.Models;
+using libeLog.Views;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -65,10 +66,11 @@ namespace eLog.Views.Windows.Dialogs
         {
             if (App.Current.MainWindow.DataContext is MainWindowViewModel cxt && cxt.CanAddPart)
             {
-                if (MessageBox.Show($"Запустить изготовление {SelectedTask?.PartName} по М/Л {SelectedTask?.Order}?",
+                if (MessageBoxWindow.Show($"Запустить изготовление {SelectedTask?.PartName} по М/Л {SelectedTask?.Order}?",
                     "Запуск детали",
                     MessageBoxButton.YesNo,
-                    MessageBoxImage.Question) == MessageBoxResult.Yes)
+                    MessageBoxImage.Question,
+                    MessageBoxDefaultButton.Yes) == MessageBoxResult.Yes)
                 {
                     NeedStart = true;
                     Close();
@@ -76,7 +78,7 @@ namespace eLog.Views.Windows.Dialogs
             }
             else
             {
-                MessageBox.Show($"В данный момент нельзя запустить изготовление данной детали т.к. уже запущена другая деталь, либо не начата смена", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxWindow.Show($"В данный момент нельзя запустить изготовление данной детали т.к. уже запущена другая деталь, либо не начата смена", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

@@ -1,4 +1,5 @@
-﻿using eLog.Infrastructure.Extensions;
+﻿using eLog.Infrastructure;
+using eLog.Infrastructure.Extensions;
 using libeLog;
 using libeLog.Extensions;
 using Newtonsoft.Json;

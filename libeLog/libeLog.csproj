@@ -12,10 +12,36 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="Resources\Fonts\JetBrainsMono-Bold.ttf" />
+    <None Remove="Resources\Fonts\JetBrainsMono-Medium.ttf" />
+    <None Remove="Resources\Fonts\JetBrainsMono-Regular.ttf" />
+    <None Remove="Resources\Fonts\JetBrainsMono-SemiBold.ttf" />
+    <None Remove="Resources\Fonts\GolosText-Bold.ttf" />
+    <None Remove="Resources\Fonts\GolosText-Medium.ttf" />
+    <None Remove="Resources\Fonts\GolosText-Regular.ttf" />
+    <None Remove="Resources\Fonts\GolosText-SemiBold.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\Fonts\JetBrainsMono-Bold.ttf" />
+    <Resource Include="Resources\Fonts\JetBrainsMono-Medium.ttf" />
+    <Resource Include="Resources\Fonts\JetBrainsMono-Regular.ttf" />
+    <Resource Include="Resources\Fonts\JetBrainsMono-SemiBold.ttf" />
+    <Resource Include="Resources\Fonts\GolosText-Bold.ttf" />
+    <Resource Include="Resources\Fonts\GolosText-Medium.ttf" />
+    <Resource Include="Resources\Fonts\GolosText-Regular.ttf" />
+    <Resource Include="Resources\Fonts\GolosText-SemiBold.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.102.3" />
+    <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="Google.Apis.Sheets.v4" Version="1.68.0.3658" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.3" />
+    <PackageReference Include="NCalcSync" Version="6.3.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="System.DirectoryServices" Version="6.0.2" />
+    <PackageReference Include="System.IO.Packaging" Version="6.0.2" />
   </ItemGroup>
 
 </Project>

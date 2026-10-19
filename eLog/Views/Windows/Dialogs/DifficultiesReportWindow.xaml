@@ -7,7 +7,9 @@
         xmlns:cmd="clr-namespace:eLog.Infrastructure.Commands"
         mc:Ignorable="d" DataContext="{Binding RelativeSource={RelativeSource Self}}"
         Title="Карта производственных барьеров" Height="500" Width="700" WindowStyle="None" 
-        WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        FontFamily="{StaticResource Areopag.FontUI}"
+        Background="{StaticResource Areopag.Bg0}">
     <Window.Resources>
         <Style TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -24,13 +26,13 @@
         </Style>
     </Window.Resources>
     <Grid>
-        <Border BorderBrush="DarkGray" BorderThickness="1">
+        <Border BorderBrush="{StaticResource Areopag.Line}" BorderThickness="1">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Center">
                     <TextBlock Text="Карта производственных барьеров" 
                              TextAlignment="Center" FontSize="24"/>
-                    <Button Margin="10,0,0,0" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"
-                            Content="?" Foreground="Gray" Padding="5" VerticalAlignment="Center" Cursor="Help">
+                    <Button Margin="10,0,0,0" Style="{StaticResource GeneralButton}"
+                            Content="?" Foreground="{StaticResource Areopag.Text2}" Padding="5" VerticalAlignment="Center" Cursor="Help">
                         <Button.ToolTip>
                             <ToolTip>
                                 <TextBlock TextWrapping="Wrap" MaxWidth="300" FontSize="14">
@@ -48,14 +50,14 @@
                     </Button>
                 </StackPanel>
                 <UniformGrid DockPanel.Dock="Bottom" Columns="2">
-                    <Button Content="{StaticResource CloseIcon}" Margin="10" IsCancel="True" 
+                    <Button Content="{StaticResource CloseIcon}" Margin="10" IsCancel="True" Style="{StaticResource GeneralButton}" 
                             Padding="0 6 0 4" FontSize="14"
                             CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:DifficultiesReportWindow}}">
                         <Button.Command>
                             <cmd:CloseDialogCommand DialogResult="False"/>
                         </Button.Command>
                     </Button>
-                    <Button Content="{StaticResource ConfirmIcon}" Margin="10" IsDefault="True" 
+                    <Button Content="{StaticResource ConfirmIconWhite}" Margin="10" IsDefault="True" Style="{StaticResource Areopag.PrimaryButton}" 
                             Padding="0 6 0 4" FontSize="14"
                             CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:DifficultiesReportWindow}}">
                         <Button.Command>
@@ -76,63 +78,63 @@
                         <RowDefinition/>
                     </Grid.RowDefinitions>
 
-                    <Border Grid.Row="0" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="0" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding NonConformingWorkpiece}" DockPanel.Dock="Right"/>
                             <TextBlock Text="Отсутствие надлежащей заготовки"/>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Row="1" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="1" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding NoProgram}" DockPanel.Dock="Right"/>
                             <TextBlock Text="Отсутствие подходящей управляющей программы"/>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Row="2" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="2" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding NoDocumentation}" DockPanel.Dock="Right"/>
                             <TextBlock Text="Отсутствие подходящей конструкторско-технологической документации"/>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Row="3" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="3" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding LackOfSkills}" DockPanel.Dock="Right"/>
                             <TextBlock Text="Недостаток профессиональных навыков"/>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Row="4" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="4" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding InsufficientTools}" DockPanel.Dock="Right"/>
                             <TextBlock Text="Недостаточность обеспечения инструментом"/>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Row="5" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="5" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding InsufficientEquipment}" DockPanel.Dock="Right"/>
                             <TextBlock Text="Недостаточность обеспечения оснасткой и приспособлениями"/>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Row="6" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="6" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding NeedMasterHelp}" DockPanel.Dock="Right"/>
                             <TextBlock Text="Необходимость получения помощи мастера"/>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Row="7" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="7" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding NeedTechnicalHelp}" DockPanel.Dock="Right"/>
                             <TextBlock Text="Необходимость получения помощи от техологического отдела"/>
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Row="8" BorderBrush="LightGray" BorderThickness="0 0 0 1">
+                    <Border Grid.Row="8" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
                         <DockPanel>
                             <CheckBox IsChecked="{Binding NeedSeniorHelp}" DockPanel.Dock="Right"/>
                             <TextBlock Text="Необходимость получения помощи от оператора более высокой квалификации"/>

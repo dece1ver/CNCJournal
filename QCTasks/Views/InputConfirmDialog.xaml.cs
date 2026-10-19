@@ -1,4 +1,5 @@
 ﻿using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 
 namespace QCTasks.Views;
@@ -8,24 +9,24 @@ public partial class InputConfirmDialog : DialogBase
     private bool _disallowNoOnEmpty;
     public (bool? Confirmed, string Text) Result { get; private set; }
 
-    private InputConfirmDialog() => InitializeComponent();
+    private InputConfirmDialog()
+    {
+        InitializeComponent();
+        PreviewMouseDown += OnPreviewMouseDown;
+    }
 
-    /// <summary>
-    /// Диалог: Yes / No / Cancel + ввод строки.
-    /// </summary>
-    /// <param name="owner">Родительское окно.</param>
-    /// <param name="title">Заголовок.</param>
-    /// <param name="message">Основной текст.</param>
-    /// <param name="defaultValue">Начальное значение.</param>
-    /// <param name="yesText">Текст кнопки Yes.</param>
-    /// <param name="noText">Текст кнопки No.</param>
-    /// <param name="cancelText">Текст кнопки Cancel.</param>
-    /// <param name="detail">Дополнительный текст.</param>
-    /// <returns>
-    /// string — Yes (введённое значение)  
-    /// "" — No  
-    /// null — Cancel
-    /// </returns>
+    private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Middle)
+        {
+            e.Handled = true;
+            if (YesButton.IsEnabled)
+            {
+                YesButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            }
+        }
+    }
+
     /// <summary>
     /// Диалог: Yes / No / Cancel + ввод строки.
     /// </summary>
@@ -38,6 +39,7 @@ public partial class InputConfirmDialog : DialogBase
     /// <param name="cancelText">Текст кнопки Cancel.</param>
     /// <param name="detail">Дополнительный текст.</param>
     /// <param name="disallowNoOnEmpty">Запретить No при пустом вводе.</param>
+    /// <param name="defaultIsYes">true — дефолт кнопка «Да» (Enter/MMB), false — «Нет». По умолчанию true.</param>
     /// <returns>(bool?, string)</returns>
     public static (bool? Confirmed, string Text) Show(
         Window? owner,
@@ -48,7 +50,8 @@ public partial class InputConfirmDialog : DialogBase
         string noText = "Нет",
         string cancelText = "Отмена",
         string? detail = null,
-        bool disallowNoOnEmpty = false)
+        bool disallowNoOnEmpty = false,
+        bool defaultIsYes = true)
     {
         var dlg = new InputConfirmDialog
         {
@@ -62,6 +65,15 @@ public partial class InputConfirmDialog : DialogBase
         dlg.YesButton.Content = yesText;
         dlg.NoButton.Content = noText;
         dlg.CancelButton.Content = cancelText;
+
+        if (defaultIsYes)
+        {
+            dlg.YesButton.IsDefault = true;
+        }
+        else
+        {
+            dlg.NoButton.IsDefault = true;
+        }
 
         if (detail is not null)
         {

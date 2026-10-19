@@ -1,0 +1,62 @@
+<UserControl x:Class="remeLog.Views.Controls.MachineFilterSelector"
+             x:Name="Root"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d" d:DesignHeight="22" d:DesignWidth="200">
+    <Grid>
+        <!-- Кнопка-«комбобокс»: иконка-воронка, сводка выбранного, стрелка.
+             StaysOpen=True — попап не закрывается сам по mouse-down, иначе клик
+             по кнопке закрывал и тут же открывал его снова. Закрытие по клику
+             вне — в code-behind (см. Host_PreviewMouseDown). -->
+        <ToggleButton x:Name="Toggle" MinWidth="180" Height="22" Padding="6 0"
+                      Style="{StaticResource Areopag.MachineFilterToggle}"
+                      HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                      ToolTip="Фильтр по станкам">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Left">
+                    <StaticResource ResourceKey="Filter.Themed"/>
+                    <TextBlock Text="{Binding Summary, ElementName=Root}" Margin="5 0 0 0"
+                               FontFamily="{DynamicResource Areopag.FontMono}" VerticalAlignment="Center"/>
+                </StackPanel>
+                <!-- Цвет — общий с ComboBox/DatePicker (ComboBox.Static.Glyph) -->
+                <Path Grid.Column="1" Data="{StaticResource DropDownArrow}" Fill="{DynamicResource ComboBox.Static.Glyph}"
+                      Width="9" Height="5" Stretch="Fill" VerticalAlignment="Center"/>
+            </Grid>
+        </ToggleButton>
+
+        <Popup x:Name="Popup"
+               IsOpen="{Binding IsChecked, ElementName=Toggle, Mode=TwoWay}"
+               PlacementTarget="{Binding ElementName=Toggle}"
+               Placement="Bottom" StaysOpen="True" AllowsTransparency="True" PopupAnimation="Fade"
+               Opened="Popup_Opened" Closed="Popup_Closed">
+            <Border Background="{DynamicResource Areopag.Bg1}"
+                    BorderBrush="{DynamicResource Areopag.Line}" BorderThickness="1"
+                    Padding="2" MinWidth="180" MaxHeight="420">
+                <DockPanel>
+                    <!-- Быстрые действия (необязательны: если команда не задана — кнопка неактивна) -->
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="2 0 2 3">
+                        <Button Content="Все" Padding="6 1" Command="{Binding ShowAllCommand, ElementName=Root}"/>
+                        <Button Content="Нет" Padding="6 1" Margin="4 0 0 0" Command="{Binding HideAllCommand, ElementName=Root}"/>
+                        <Button Content="Инверт" Padding="6 1" Margin="4 0 0 0" Command="{Binding InvertCommand, ElementName=Root}"/>
+                    </StackPanel>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding ItemsSource, ElementName=Root}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox Content="{Binding Machine}" IsChecked="{Binding Filter}"
+                                              FontFamily="{DynamicResource Areopag.FontMono}" Margin="4 1"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Popup>
+    </Grid>
+</UserControl>

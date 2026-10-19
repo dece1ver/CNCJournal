@@ -1,0 +1,177 @@
+<Window x:Class="eLog.Views.Windows.Dialogs.ReferenceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:eLog.Views.Windows.Dialogs"
+        xmlns:cmd="clr-namespace:eLog.Infrastructure.Commands"
+        xmlns:vm="clr-namespace:eLog.ViewModels" FontSize="20"
+        FontFamily="{StaticResource Areopag.FontUI}"
+        Background="{StaticResource Areopag.Bg0}"
+        WindowStartupLocation="CenterOwner" WindowStyle="None"
+        mc:Ignorable="d"
+        Title="Справочники" Height="640" Width="1100">
+    <Window.DataContext>
+        <vm:ReferenceWindowViewModel/>
+    </Window.DataContext>
+    <Border BorderBrush="{StaticResource Areopag.Line}" BorderThickness="1">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Background="{StaticResource Areopag.Bg1}" BorderBrush="{StaticResource Areopag.LineSoft}" BorderThickness="0 0 1 0"
+                        Margin="0" Padding="10">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="Разделы" FontSize="18" Foreground="{StaticResource Areopag.Text2}"
+                                   HorizontalAlignment="Center" Margin="0 2 0 8"/>
+                        <ListBox ItemsSource="{Binding Sections}" SelectedIndex="{Binding SelectedSection}"
+                                 BorderThickness="0" FontSize="22" Background="Transparent"
+                                 HorizontalContentAlignment="Stretch">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Padding" Value="10"/>
+                                    <Setter Property="Margin" Value="0 4"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource Areopag.AccentSoft}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource Areopag.AccentSoft}"/>
+                                            <Setter Property="FontWeight" Value="Bold"/>
+                                            <Setter Property="Foreground" Value="{StaticResource Areopag.Accent}"/>
+                                            <Setter Property="BorderBrush" Value="{StaticResource Areopag.Accent}"/>
+                                            <Setter Property="BorderThickness" Value="1"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                        </ListBox>
+                    </DockPanel>
+                </Border>
+
+            <DockPanel Grid.Column="1">
+                <TextBlock DockPanel.Dock="Top" Text="Справочники" TextAlignment="Center" HorizontalAlignment="Right"
+                           FontWeight="SemiBold" Margin="0 2 10 2" MouseLeftButtonDown="TextBlock_MouseLeftButtonDown"/>
+                <Button DockPanel.Dock="Bottom" Margin="10" Width="120" Height="52" Style="{StaticResource Areopag.PrimaryButton}"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right" Content="{StaticResource ConfirmIconWhite}"
+                        CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=local:ReferenceWindow}}">
+                    <Button.Command>
+                        <cmd:CloseDialogCommand DialogResult="True"/>
+                    </Button.Command>
+                </Button>
+
+                <Grid Margin="6" Visibility="{Binding IsMetricSection, Converter={StaticResource VisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="1.4*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <ComboBox Grid.Column="0" Margin="0 0 2 0" Style="{StaticResource ComboBoxStyle}"
+                                  ItemsSource="{Binding ThreadKinds}" SelectedItem="{Binding SelectedThreadKind}"/>
+                        <TextBlock Grid.Column="1" Text="резьба М" VerticalAlignment="Center" Margin="4 0"/>
+                        <ComboBox Grid.Column="2" Margin="2 0" Style="{StaticResource ComboBoxStyle}"
+                                  ItemsSource="{Binding MetricDiameters}" SelectedItem="{Binding MetricDiameter}"/>
+                        <TextBlock Grid.Column="3" Text="x" VerticalAlignment="Center" Margin="4 0"/>
+                        <ComboBox Grid.Column="4" Margin="2 0" Style="{StaticResource ComboBoxStyle}"
+                                  ItemsSource="{Binding MetricPitches}" SelectedItem="{Binding MetricPitch}"/>
+                        <TextBlock Grid.Column="5" Text="-" VerticalAlignment="Center" Margin="4 0"/>
+                        <ComboBox Grid.Column="6" Margin="2 0" Style="{StaticResource ComboBoxStyle}"
+                                  ItemsSource="{Binding Grades}" SelectedItem="{Binding MetricGrade}"/>
+                        <ComboBox Grid.Column="7" Margin="2 0 0 0" Style="{StaticResource ComboBoxStyle}"
+                                  ItemsSource="{Binding MetricPositions}" SelectedItem="{Binding MetricPosition}"/>
+                    </Grid>
+
+                    <StackPanel Grid.Row="1" Margin="6">
+                        <TextBlock Text="Готовая резьба (ГОСТ 16093):" FontWeight="SemiBold" FontSize="18"/>
+                        <TextBlock Text="{Binding MetricFinishedValue}" FontSize="36" FontWeight="Bold" FontFamily="{StaticResource Areopag.FontMono}" TextWrapping="Wrap" Margin="0 4 0 2"/>
+                        <TextBlock Text="{Binding MetricFinishedDetails}" FontSize="20" Foreground="{StaticResource Areopag.Text2}" TextWrapping="Wrap" Margin="0 0 0 12"/>
+                        <TextBlock Text="Инструмент (ГОСТ 19257 / 19258):" FontWeight="SemiBold" FontSize="18"/>
+                        <TextBlock Text="{Binding MetricToolValue}" FontSize="36" FontWeight="Bold" FontFamily="{StaticResource Areopag.FontMono}" TextWrapping="Wrap" Margin="0 4 0 2"/>
+                        <TextBlock Text="{Binding MetricToolDetails}" FontSize="20" Foreground="{StaticResource Areopag.Text2}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding MetricToolNote}" FontSize="16" TextWrapping="Wrap" Foreground="{StaticResource Areopag.Text2}"/>
+                    </StackPanel>
+                </Grid>
+
+                <Grid Margin="6" Visibility="{Binding IsMeanSection, Converter={StaticResource VisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Резьба M" VerticalAlignment="Center" Margin="6"/>
+                    <Grid Grid.Row="0" Grid.Column="1" Margin="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="1.4*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="1.4*"/>
+                        </Grid.ColumnDefinitions>
+                        <ComboBox Grid.Column="0" Margin="0 0 2 0" Style="{StaticResource ComboBoxStyle}"
+                                  ItemsSource="{Binding MetricDiameters}" SelectedItem="{Binding MeanDiameter}"/>
+                        <TextBlock Grid.Column="1" Text="x" VerticalAlignment="Center" Margin="4 0"/>
+                        <ComboBox Grid.Column="2" Margin="2 0" Style="{StaticResource ComboBoxStyle}"
+                                  ItemsSource="{Binding MeanPitches}" SelectedItem="{Binding MeanPitch}"/>
+                        <TextBlock Grid.Column="3" Text="-" VerticalAlignment="Center" Margin="4 0"/>
+                        <ComboBox Grid.Column="4" Margin="2 0 0 0" Style="{StaticResource ComboBoxStyle}"
+                                  ItemsSource="{Binding MeanFields}" SelectedItem="{Binding MeanField}"/>
+                    </Grid>
+
+                    <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="6">
+                        <TextBlock Text="Средний диаметр d2:" FontWeight="SemiBold" FontSize="18"/>
+                        <TextBlock Text="{Binding MeanResult}" FontSize="36" FontWeight="Bold" FontFamily="{StaticResource Areopag.FontMono}" Margin="0 4 0 8"/>
+                        <TextBlock Text="{Binding MeanDetails}" FontSize="20" TextWrapping="Wrap" Foreground="{StaticResource Areopag.Text2}"/>
+                    </StackPanel>
+
+                    <Expander Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Margin="6"
+                              Header="Исходные данные (es/ei, мкм)" FontSize="18">
+                        <DataGrid ItemsSource="{Binding MeanSourceRows}" AutoGenerateColumns="False"
+                                  IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+                                  CanUserReorderColumns="False" CanUserResizeRows="False"
+                                  HeadersVisibility="Column" GridLinesVisibility="All"
+                                  FontSize="16" MaxHeight="220"
+                                  VerticalScrollBarVisibility="Auto">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                            <Setter Property="FontWeight" Value="Bold"/>
+                                            <Setter Property="Background" Value="{StaticResource Areopag.AccentSoft}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Шаг" Binding="{Binding Pitch}" Width="*"/>
+                                <DataGridTextColumn Header="Поле" Binding="{Binding Field}" Width="*"/>
+                                <DataGridTextColumn Header="es" Binding="{Binding Es}" Width="*"/>
+                                <DataGridTextColumn Header="ei" Binding="{Binding Ei}" Width="*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Expander>
+                </Grid>
+            </DockPanel>
+        </Grid>
+    </Border>
+</Window>

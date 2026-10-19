@@ -1,0 +1,256 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- ============================================================
+         Areopag — общие ресурсы: фокус 2px accent, без скруглений.
+         Подключать после Areopag.Palette.xaml.
+         ============================================================ -->
+
+    <Style x:Key="Areopag.FocusVisual">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="1"
+                               Stroke="{DynamicResource Areopag.Accent}"
+                               StrokeThickness="2"
+                               SnapsToDevicePixels="True"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Контент-текст кнопки должен следовать Foreground'у самой кнопки.
+         Иначе глобальный неявный стиль TextBlock (Areopag.Text) перебивает
+         белый Foreground Primary/Danger/Ok и текст становится нечитаемым.
+         Подключается в ControlTemplate.Resources кнопочных шаблонов. -->
+    <Style x:Key="Areopag.ButtonContentText" TargetType="{x:Type TextBlock}">
+        <Setter Property="Foreground"
+                Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type ButtonBase}}}"/>
+    </Style>
+
+    <!-- ============================================================
+         Плоские шаблоны кнопок БЕЗ системного хромa: дефолтный ButtonChrome
+         рисует синее свечение hover поверх любого Background — в тёмной
+         теме это выглядит ярко-синей заливкой. Все кнопочные стили ниже
+         и в remeLog используют эти шаблоны.
+         ============================================================ -->
+    <ControlTemplate x:Key="Areopag.FlatButtonTemplate" TargetType="{x:Type Button}">
+        <ControlTemplate.Resources>
+            <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource Areopag.ButtonContentText}"/>
+        </ControlTemplate.Resources>
+        <Border Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="0"
+                Padding="{TemplateBinding Padding}"
+                SnapsToDevicePixels="True">
+            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                              RecognizesAccessKey="True">
+                <ContentPresenter.Resources>
+                    <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource Areopag.ButtonContentText}"/>
+                </ContentPresenter.Resources>
+            </ContentPresenter>
+        </Border>
+    </ControlTemplate>
+    <ControlTemplate x:Key="Areopag.FlatToggleButtonTemplate" TargetType="{x:Type ToggleButton}">
+        <ControlTemplate.Resources>
+            <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource Areopag.ButtonContentText}"/>
+        </ControlTemplate.Resources>
+        <Border Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="0"
+                Padding="{TemplateBinding Padding}"
+                SnapsToDevicePixels="True">
+            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                              RecognizesAccessKey="True">
+                <ContentPresenter.Resources>
+                    <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource Areopag.ButtonContentText}"/>
+                </ContentPresenter.Resources>
+            </ContentPresenter>
+        </Border>
+    </ControlTemplate>
+
+    <!-- ============================================================
+         Кнопки по образцу QCTasks DialogStyles, radius 0.
+         Размеры (Width/Height/FontSize/Padding/Margin) НЕ заданы —
+         остаются на местах использования.
+         ============================================================ -->
+
+    <Style x:Key="Areopag.PrimaryButton" TargetType="Button">
+        <Setter Property="Background" Value="{DynamicResource Areopag.Primary}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Areopag.OnPrimary}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="FontFamily" Value="{DynamicResource Areopag.FontUI}"/>
+        <Setter Property="FontWeight" Value="Normal"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource Areopag.FocusVisual}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <ControlTemplate.Resources>
+                        <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource Areopag.ButtonContentText}"/>
+                    </ControlTemplate.Resources>
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="0"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource Areopag.ButtonContentText}"/>
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Areopag.PrimaryHover}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Areopag.Primary}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Areopag.DisabledBg}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Areopag.DisabledFg}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="Areopag.DangerButton" TargetType="Button" BasedOn="{StaticResource Areopag.PrimaryButton}">
+        <Setter Property="Background" Value="{DynamicResource Areopag.Alert}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Areopag.OnAccent}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <ControlTemplate.Resources>
+                        <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource Areopag.ButtonContentText}"/>
+                    </ControlTemplate.Resources>
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="0"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource Areopag.ButtonContentText}"/>
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Areopag.AlertHover}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Areopag.Alert}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Areopag.DisabledBg}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Areopag.DisabledFg}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="Areopag.OkButton" TargetType="Button" BasedOn="{StaticResource Areopag.PrimaryButton}">
+        <Setter Property="Background" Value="{DynamicResource Areopag.Ok}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Areopag.OnAccent}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <ControlTemplate.Resources>
+                        <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource Areopag.ButtonContentText}"/>
+                    </ControlTemplate.Resources>
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="0"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource Areopag.ButtonContentText}"/>
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Areopag.OkHover}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Areopag.Ok}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Areopag.DisabledBg}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Areopag.DisabledFg}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================
+         Areopag.Button — НЕЙТРАЛЬНАЯ база для всех обычных кнопок.
+         Цвета/рамка/шаблон/hover/disabled здесь и только здесь;
+         размеры (Width/Height/FontSize/Padding/Margin) и шрифт —
+         на местах использования или в наследниках.
+         Шрифт намеренно НЕ задан: eLog использует свои,
+         remeLog задаёт Mono своим слоем.
+         ============================================================ -->
+    <Style x:Key="Areopag.Button" TargetType="{x:Type Button}">
+        <Setter Property="Background" Value="{DynamicResource Areopag.BtnBg}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Areopag.Line}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Areopag.FocusVisual}"/>
+        <Setter Property="Template" Value="{StaticResource Areopag.FlatButtonTemplate}"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Areopag.BtnHover}"/>
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Areopag.LineSoft}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{DynamicResource Areopag.DisabledBg}"/>
+                <Setter Property="Foreground" Value="{DynamicResource Areopag.DisabledFg}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Outline-кнопка: нейтральный фон обычной кнопки + фирменная рамка Primary
+         (фон как у «Подробно», рамка цветом как у «Сформировать»). -->
+    <Style x:Key="Areopag.OutlinePrimaryButton" TargetType="{x:Type Button}" BasedOn="{StaticResource Areopag.Button}">
+        <Setter Property="BorderBrush" Value="{DynamicResource Areopag.Primary}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+
+    <!-- Нейтральный тумблер: то же + подсветка включённого состояния. -->
+    <Style x:Key="Areopag.ToggleButton" TargetType="{x:Type ToggleButton}">
+        <Setter Property="Background" Value="{DynamicResource Areopag.BtnBg}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Areopag.Line}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource Areopag.FocusVisual}"/>
+        <Setter Property="Template" Value="{StaticResource Areopag.FlatToggleButtonTemplate}"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Areopag.BtnHover}"/>
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Areopag.LineSoft}"/>
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Areopag.AccentSoft}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{DynamicResource Areopag.DisabledBg}"/>
+                <Setter Property="Foreground" Value="{DynamicResource Areopag.DisabledFg}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+</ResourceDictionary>

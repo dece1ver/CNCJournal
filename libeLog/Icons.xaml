@@ -201,8 +201,8 @@
         <Rectangle Width="16 " Height="16" Margin="-1 -1 -2 -2">
             <Rectangle.Resources>
                 <SolidColorBrush x:Key="canvas" Opacity="0" />
-                <SolidColorBrush x:Key="light-red-10" Color="#c50b17" Opacity="0.1" />
-                <SolidColorBrush x:Key="light-red" Color="#c50b17" Opacity="1" />
+                <SolidColorBrush x:Key="light-red-10" Color="#E63C2F" Opacity="0.1" />
+                <SolidColorBrush x:Key="light-red" Color="#E63C2F" Opacity="1" />
             </Rectangle.Resources>
             <Rectangle.Fill>
                 <DrawingBrush Stretch="None">
@@ -227,8 +227,8 @@
         <Rectangle Width="16" Height="16" Margin="-1 -1 -2 -2">
             <Rectangle.Resources>
                 <SolidColorBrush x:Key="canvas" Opacity="0" />
-                <SolidColorBrush x:Key="light-green-10" Color="#1f801f" Opacity="0.1" />
-                <SolidColorBrush x:Key="light-green" Color="#1f801f" Opacity="1" />
+                <SolidColorBrush x:Key="light-green-10" Color="#00AD68" Opacity="0.1" />
+                <SolidColorBrush x:Key="light-green" Color="#00AD68" Opacity="1" />
             </Rectangle.Resources>
             <Rectangle.Fill>
                 <DrawingBrush Stretch="None">
@@ -327,7 +327,8 @@
         <Rectangle Width="16 " Height="16">
             <Rectangle.Resources>
                 <SolidColorBrush x:Key="canvas" Opacity="0" />
-                <SolidColorBrush x:Key="light-defaultgrey" Color="#212121" Opacity="1" />
+                <!-- Areopag: Text2 вместо нейтрально-серого -->
+                <SolidColorBrush x:Key="light-defaultgrey" Color="#5E6784" Opacity="1" />
             </Rectangle.Resources>
             <Rectangle.Fill>
                 <DrawingBrush Stretch="None">
@@ -384,6 +385,53 @@
                             </DrawingGroup>
                             <DrawingGroup>
                                 <GeometryDrawing Brush="{DynamicResource light-defaultgrey}" Geometry="F1M6.365,12.367l-.741-.013-3.5-4L2.876,7.7,6.013,11.28,14.068,3l.729.684Z" />
+                            </DrawingGroup>
+                        </DrawingGroup>
+                    </DrawingBrush.Drawing>
+                </DrawingBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+    </Viewbox>
+
+    <!-- Areopag: белые варианты для заливных primary/ok/danger-кнопок -->
+    <Viewbox x:Key="ConfirmIconWhite" x:Shared="False" Width="30" Height="30">
+        <Rectangle Width="16" Height="16">
+            <Rectangle.Resources>
+                <SolidColorBrush x:Key="canvas" Opacity="0" />
+                <SolidColorBrush x:Key="white" Color="#FFFFFF" Opacity="1" />
+            </Rectangle.Resources>
+            <Rectangle.Fill>
+                <DrawingBrush Stretch="None">
+                    <DrawingBrush.Drawing>
+                        <DrawingGroup>
+                            <DrawingGroup>
+                                <GeometryDrawing Brush="{DynamicResource canvas}" Geometry="F1M16,16H0V0H16Z" />
+                            </DrawingGroup>
+                            <DrawingGroup>
+                                <GeometryDrawing Brush="{DynamicResource white}" Geometry="F1M6.365,12.367l-.741-.013-3.5-4L2.876,7.7,6.013,11.28,14.068,3l.729.684Z" />
+                            </DrawingGroup>
+                        </DrawingGroup>
+                    </DrawingBrush.Drawing>
+                </DrawingBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+    </Viewbox>
+
+    <Viewbox x:Key="CloseIconWhite" x:Shared="False" Width="30" Height="30">
+        <Rectangle Width="16" Height="16">
+            <Rectangle.Resources>
+                <SolidColorBrush x:Key="canvas" Opacity="0" />
+                <SolidColorBrush x:Key="white" Color="#FFFFFF" Opacity="1" />
+            </Rectangle.Resources>
+            <Rectangle.Fill>
+                <DrawingBrush Stretch="None">
+                    <DrawingBrush.Drawing>
+                        <DrawingGroup>
+                            <DrawingGroup>
+                                <GeometryDrawing Brush="{DynamicResource canvas}" Geometry="F1M16,16H0V0H16Z" />
+                            </DrawingGroup>
+                            <DrawingGroup>
+                                <GeometryDrawing Brush="{DynamicResource white}" Geometry="F1M8.207,7.5l5.147,5.146-.708.708L7.5,8.207,2.354,13.354l-.708-.708L6.793,7.5,1.646,2.354l.708-.708L7.5,6.793l5.146-5.147.708.708Z" />
                             </DrawingGroup>
                         </DrawingGroup>
                     </DrawingBrush.Drawing>
@@ -712,6 +760,34 @@
       </Rectangle>
     </Viewbox>
 
+    <!-- Тематическая копия LookupListItemIcon: цвета берутся из палитры
+         (Areopag.IconGrey/IconBlue), поэтому иконка видна и в тёмной теме.
+         Оригинал не трогаем — его использует eLog. -->
+    <Viewbox x:Key="LookupListItemIcon.Themed" Width="16 " Height="16" x:Shared="False" >
+      <Rectangle Width="16 " Height="16">
+        <Rectangle.Resources>
+          <SolidColorBrush x:Key="canvas" Opacity="0" />
+        </Rectangle.Resources>
+        <Rectangle.Fill>
+          <DrawingBrush Stretch="None">
+            <DrawingBrush.Drawing>
+              <DrawingGroup>
+                <DrawingGroup>
+                  <GeometryDrawing Brush="{DynamicResource canvas}" Geometry="F1M16,16H0V0H16Z" />
+                </DrawingGroup>
+                <DrawingGroup>
+                  <GeometryDrawing Brush="{DynamicResource Areopag.IconGrey10}" Geometry="F1M9.56,4.5a3.887,3.887,0,0,1-.25.5A3.98,3.98,0,0,1,5.85,7a3.925,3.925,0,0,1-1.52-.3L2,8.99l-.5.49V12.5h13v-8Z" />
+                  <GeometryDrawing Brush="{DynamicResource Areopag.IconGrey}" Geometry="F1M4,8V9h8V8ZM4,8V9h8V8ZM14.5,4H9.72a4.162,4.162,0,0,1-.16.5,3.887,3.887,0,0,1-.25.5H14v7H2V8.99L1,9.97V12.5l.5.5h13l.5-.5v-8ZM12,8H4V9h8Z" />
+                  <GeometryDrawing Brush="{DynamicResource Areopag.IconBlue10}" Geometry="F1M5.85,5.5A2.5,2.5,0,1,1,8.35,3,2.5,2.5,0,0,1,5.85,5.5Z" />
+                  <GeometryDrawing Brush="{DynamicResource Areopag.IconBlue}" Geometry="F1M.7,8.857,4.156,5.472a3.075,3.075,0,1,0-.714-.7L0,8.143ZM5.85,5a2,2,0,1,1,2-2A2,2,0,0,1,5.85,5Z" />
+                </DrawingGroup>
+              </DrawingGroup>
+            </DrawingBrush.Drawing>
+          </DrawingBrush>
+        </Rectangle.Fill>
+      </Rectangle>
+    </Viewbox>
+
     <Viewbox x:Key="ShowFullHistoryIcon" Width="16 " Height="16" x:Shared="False" >
       <Rectangle Width="16 " Height="16">
         <Rectangle.Resources>
@@ -826,6 +902,35 @@
         </Rectangle>
     </Viewbox>
 
+    <!-- Тематическая копия DeleteCell: серый и красный из палитры,
+         чтобы иконка удаления была видна в тёмной теме.
+         Оригинал не трогаем — его использует eLog. -->
+    <Viewbox x:Key="DeleteCell.Themed" Width="16 " Height="16" x:Shared="False" >
+        <Rectangle Width="16 " Height="16">
+            <Rectangle.Resources>
+                <SolidColorBrush x:Key="canvas" Opacity="0" />
+            </Rectangle.Resources>
+            <Rectangle.Fill>
+                <DrawingBrush Stretch="None">
+                    <DrawingBrush.Drawing>
+                        <DrawingGroup>
+                            <DrawingGroup>
+                                <GeometryDrawing Brush="{DynamicResource canvas}" Geometry="F1M16,16H0V0H16Z" />
+                            </DrawingGroup>
+                            <DrawingGroup>
+                                <GeometryDrawing Brush="{DynamicResource Areopag.IconGrey10}" Geometry="F1M14.5,2.5v3h-4v-3Zm-4,12h4v-6h-4Z" />
+                                <GeometryDrawing Brush="{DynamicResource Areopag.IconGrey10}" Geometry="F1M9.5,5.5v3h-4V6.914L6.914,5.5Z" />
+                                <GeometryDrawing Brush="{DynamicResource Areopag.IconGrey}" Geometry="F1M10,5.5v3L9.5,9h-4L5,8.5V7.414l.146-.146L6,6.414V8H9V6H6.414l.854-.854L7.414,5H9.5Z" />
+                                <GeometryDrawing Brush="{DynamicResource Areopag.IconRed}" Geometry="F1M3.707,3,5.854,5.146l-.708.708L3,3.707.854,5.854.146,5.146,2.293,3,.146.854.854.146,3,2.293,5.146.146l.708.708Z" />
+                                <GeometryDrawing Brush="{DynamicResource Areopag.IconGrey}" Geometry="F1M10.5,15h4l.5-.5v-6L14.5,8h-4l-.5.5v6ZM11,9h3v2H11Zm0,3h3v2H11Zm3.5-6,.5-.5v-3L14.5,2h-4l-.5.5v3l.5.5ZM11,3h3V5H11Z" />
+                            </DrawingGroup>
+                        </DrawingGroup>
+                    </DrawingBrush.Drawing>
+                </DrawingBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+    </Viewbox>
+
     <Viewbox x:Key="DeleteFilter" Width="16 " Height="16" x:Shared="False">
         <Rectangle Width="16 " Height="16">
             <Rectangle.Resources>
@@ -845,6 +950,63 @@
                                 <GeometryDrawing Brush="{DynamicResource light-defaultgrey-10}" Geometry="F1M15.5,3.5l-4,5v5h-3v-5L6.367,6.047l.9-.9L5.621,3.5Z" />
                                 <GeometryDrawing Brush="{DynamicResource light-defaultgrey}" Geometry="F1M15.891,3.813,12,8.675V13.5l-.5.5h-3L8,13.5V8.675L6.007,6.407,6.716,5.7l2.175,2.49L9,8.5V13h2V8.5l.109-.312L14.46,4H6.121l-1-1H15.5Z" />
                                 <GeometryDrawing Brush="{DynamicResource light-red}" Geometry="F1M3.707,3,5.854,5.146l-.708.708L3,3.707.854,5.854.146,5.146,2.293,3,.146.854.854.146,3,2.293,5.146.146l.708.708Z" />
+                            </DrawingGroup>
+                        </DrawingGroup>
+                    </DrawingBrush.Drawing>
+                </DrawingBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+    </Viewbox>
+
+    <!-- Тематические копии воронки: цвета из палитры (видны в тёмной теме).
+         Оригиналы не трогаем — их использует eLog.
+         В оригинале верхний левый угол воронки вырезан под красный крест
+         (см. DeleteFilter), поэтому здесь воронка нарисована целиком. -->
+    <Viewbox x:Key="Filter.Themed" Width="16 " Height="16" x:Shared="False">
+        <Canvas Width="16" Height="16">
+            <Path Data="M4.5,3.5 H15.5 L11.5,8.7 V14 H8.5 V8.7 Z"
+                  Fill="{DynamicResource Areopag.IconGrey10}"
+                  Stroke="{DynamicResource Areopag.IconGrey}"
+                  StrokeThickness="1"
+                  StrokeLineJoin="Miter"
+                  SnapsToDevicePixels="True"/>
+        </Canvas>
+    </Viewbox>
+
+    <!-- Магнит-присасывание (слепка деталей встык).
+         Цвета из палитры, чтобы иконка была видна в тёмной теме. -->
+    <Viewbox x:Key="SnapParts.Themed" Width="16" Height="16" x:Shared="False">
+        <Canvas Width="16" Height="16">
+            <Path Data="M4.5,12.5 L4.5,7.5 A3.5,3.5 0 0 1 11.5,7.5 L11.5,12.5"
+                  Fill="Transparent"
+                  Stroke="{DynamicResource Areopag.IconRed}"
+                  StrokeThickness="3"
+                  SnapsToDevicePixels="True"/>
+            <Path Data="M3,11 H6 V14 H3 Z"
+                  Fill="{DynamicResource Areopag.IconGrey}"
+                  SnapsToDevicePixels="True"/>
+            <Path Data="M10,11 H13 V14 H10 Z"
+                  Fill="{DynamicResource Areopag.IconGrey}"
+                  SnapsToDevicePixels="True"/>
+        </Canvas>
+    </Viewbox>
+
+    <Viewbox x:Key="DeleteFilter.Themed" Width="16 " Height="16" x:Shared="False">
+        <Rectangle Width="16 " Height="16">
+            <Rectangle.Resources>
+                <SolidColorBrush x:Key="canvas" Opacity="0" />
+            </Rectangle.Resources>
+            <Rectangle.Fill>
+                <DrawingBrush Stretch="None">
+                    <DrawingBrush.Drawing>
+                        <DrawingGroup>
+                            <DrawingGroup>
+                                <GeometryDrawing Brush="{DynamicResource canvas}" Geometry="F1M16,16H0V0H16Z" />
+                            </DrawingGroup>
+                            <DrawingGroup>
+                                <GeometryDrawing Brush="{DynamicResource Areopag.IconGrey10}" Geometry="F1M15.5,3.5l-4,5v5h-3v-5L6.367,6.047l.9-.9L5.621,3.5Z" />
+                                <GeometryDrawing Brush="{DynamicResource Areopag.IconGrey}" Geometry="F1M15.891,3.813,12,8.675V13.5l-.5.5h-3L8,13.5V8.675L6.007,6.407,6.716,5.7l2.175,2.49L9,8.5V13h2V8.5l.109-.312L14.46,4H6.121l-1-1H15.5Z" />
+                                <GeometryDrawing Brush="{DynamicResource Areopag.IconRed}" Geometry="F1M3.707,3,5.854,5.146l-.708.708L3,3.707.854,5.854.146,5.146,2.293,3,.146.854.854.146,3,2.293,5.146.146l.708.708Z" />
                             </DrawingGroup>
                         </DrawingGroup>
                     </DrawingBrush.Drawing>
@@ -971,5 +1133,22 @@
                 </DrawingBrush>
             </Rectangle.Fill>
         </Rectangle>
+    </Viewbox>
+
+    <!-- Глаз-Дозор: персонификация ИИ. Точная геометрия фирменного знака
+         (два овала, экспорт из Inkscape), зрачок по центру (cx=500 cy=278.292 r=86).
+         Раскраска из палитры (видна в обеих темах): знак IconGrey, зрачок Primary.
+         Оригиналов без .Themed нет — знак новый, eLog его не использует. -->
+    <Viewbox x:Key="DozorIcon.Themed" Width="30" Height="30" x:Shared="False">
+        <Canvas Width="1000" Height="556">
+            <Path Fill="{DynamicResource Areopag.IconGrey}"
+                  SnapsToDevicePixels="True"
+                  Data="m 549.24807,488.15923 c 95.09396,-6.07189 178.78345,-26.38096 247.98763,-60.17958 13.03356,-6.36546 42.12401,-23.02887 44.69985,-25.6047 0.54945,-0.54941 -4.38585,0.46795 -10.9671,2.2608 -64.23744,17.4992 -144.61919,29.36083 -239.34627,35.31946 -30.19033,1.89906 -152.39615,1.91826 -182.23444,0.0286 -96.24476,-6.0951 -177.35577,-18.136 -242.24517,-35.9612 -11.52819,-3.1668 -11.16127,-2.7244 6.45733,7.78584 70.01781,41.76855 163.50918,68.16047 268.27072,75.73083 24.96339,1.80392 83.53821,2.14209 107.37745,0.61992 z M 599.32998,372.1091 c 110.01798,-7.81027 195.39055,-23.64073 262.61579,-48.69632 42.08855,-15.68685 64.88261,-32.7083 62.96326,-47.01779 -4.08998,-30.49303 -111.46955,-67.84897 -242.44491,-84.34334 -145.07597,-18.27014 -317.5874,-13.16167 -444.90962,13.17481 -80.14906,16.57876 -143.84084,41.63965 -158.26981,62.27463 -6.478374,9.26477 -4.795244,17.39476 5.617665,27.13481 9.870566,9.23275 23.353045,16.75199 46.665735,26.02565 73.26584,29.14477 180.4928,47.83154 306.44863,53.40575 24.33732,1.07704 137.99221,-0.30262 161.31326,-1.9582 z M 182.45938,148.37167 c 182.1073,-45.75854 456.25606,-45.69045 636.5187,0.15808 10.30874,2.62195 19.73417,5.09395 20.9454,5.49331 8.90031,2.93457 -22.34525,-15.76439 -44.04458,-26.35854 C 637.72334,50.44887 395.98944,46.048245 227.15331,117.31119 c -21.15546,8.92936 -58.41381,28.83908 -66.61742,35.59828 -2.07739,1.71161 -2.08299,1.77629 -0.0988,1.14086 1.15689,-0.37048 11.06692,-2.92588 22.02228,-5.67866 z m 283.0852,407.39877 C 318.80344,548.98727 190.65527,511.19478 104.42626,449.27214 83.406579,434.17754 57.593088,410.23404 44.283191,393.486 7.7354645,347.49744 -6.3784218,296.33828 3.7289056,246.48723 28.798186,122.8412 191.59195,26.383872 412.52548,4.2701686 444.07593,1.1122165 473.50682,0.10080984 515.64528,0.726419 c 41.3015,0.6131776 63.3207,2.0461569 97.44863,6.3418135 C 806.75857,31.444638 955.14916,117.1955 991.20118,225.56605 c 6.22218,18.70378 8.19042,31.05452 8.24713,51.75238 0.0595,21.63137 -2.20333,35.72519 -8.79042,54.75595 -40.61978,117.3561 -207.54123,204.98858 -422.15911,221.63032 -20.75955,1.60972 -84.95478,2.89777 -102.9542,2.06574 z"/>
+            <!-- Зрачок: cx=500 cy=278.292 r=86, в покое синий как на кнопках (Primary) -->
+            <Ellipse Canvas.Left="414" Canvas.Top="192.292" Width="172" Height="172"
+                     Fill="{DynamicResource Areopag.Primary}"
+                     StrokeThickness="0"
+                     SnapsToDevicePixels="True"/>
+        </Canvas>
     </Viewbox>
 </ResourceDictionary>

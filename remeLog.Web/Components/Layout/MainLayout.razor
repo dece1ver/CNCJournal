@@ -1,0 +1,19 @@
+﻿@inherits LayoutComponentBase
+
+<header class="topbar">
+    <span class="topbar-brand">REME<span>LOG</span></span>
+    <nav class="topbar-nav">
+        <NavLink href="/" Match="NavLinkMatch.All">Сводка по сменам</NavLink>
+        <NavLink href="/parts">Детали</NavLink>
+    </nav>
+</header>
+
+<main class="content">
+    @Body
+</main>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>

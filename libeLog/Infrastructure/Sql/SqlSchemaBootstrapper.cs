@@ -1,10 +1,10 @@
 ﻿using Microsoft.Data.SqlClient;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 using static libeLog.Infrastructure.Sql.ApplicationFunctions;
 
 namespace libeLog.Infrastructure.Sql
@@ -87,7 +87,63 @@ namespace libeLog.Infrastructure.Sql
                 }
             }
 
+            if (table.DefaultRows.Count > 0)
+            {
+                await SeedDefaultRowsIfEmptyAsync(connection, table, progress, cancellationToken);
+            }
+
             progress?.Report(($"Таблица: {table.Name}", Status.Ok));
+        }
+
+        /// <summary>
+        /// Вставляет строки справочника (заданные через <see cref="TableBuilder.AddDefaultRow"/>) в таблицу,
+        /// если она пуста (seed-if-empty). Идемпотентно: заполненные деплоером таблицы не трогает —
+        /// собственные причины не перезаписываются, свобода настройки сохраняется.
+        /// </summary>
+        private static async Task SeedDefaultRowsIfEmptyAsync(
+            SqlConnection connection,
+            TableDefinition table,
+            IProgress<(string, Status?)>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            bool wasOpen = connection.State == System.Data.ConnectionState.Open;
+            if (!wasOpen)
+                await connection.OpenAsync(cancellationToken);
+
+            try
+            {
+                using (var countCommand = connection.CreateCommand())
+                {
+                    countCommand.CommandText = $"SELECT COUNT(*) FROM {SqlValidationHelper.EscapeName(table.Name)}";
+                    var count = Convert.ToInt32(await countCommand.ExecuteScalarAsync(cancellationToken));
+                    if (count > 0)
+                        return;
+                }
+
+                foreach (var row in table.DefaultRows)
+                {
+                    var columns = row.Keys.ToList();
+                    var sql = $"INSERT INTO {SqlValidationHelper.EscapeName(table.Name)} " +
+                              $"({string.Join(", ", columns.Select(SqlValidationHelper.EscapeName))}) " +
+                              $"VALUES ({string.Join(", ", columns.Select((_, i) => $"@p{i}"))})";
+
+                    using var command = connection.CreateCommand();
+                    command.CommandText = sql;
+                    for (int i = 0; i < columns.Count; i++)
+                    {
+                        var value = row[columns[i]];
+                        command.Parameters.AddWithValue($"@p{i}", value ?? DBNull.Value);
+                    }
+                    await command.ExecuteNonQueryAsync(cancellationToken);
+                }
+
+                progress?.Report(($"    | Заполнение справочника «{table.Name}» значениями по умолчанию ({table.DefaultRows.Count} строк)", Status.Ok));
+            }
+            finally
+            {
+                if (!wasOpen)
+                    connection.Close();
+            }
         }
 
         /// <summary>
@@ -164,11 +220,39 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("Reason", -1, false)
                 .AddNCharColumn("Type", 9)
                 .AddBoolColumn("RequireComment", false)
+                // Причины из комбобоксов MasterSetupComment/MasterMachiningComment — КОНТРАКТ для
+                // валидации (remeLog.Core/Models/Part.cs), хард-правил (AiService HardRule.cs) и
+                // промптов (AiService/prompts/*). Сидятся только если таблица пуста; при
+                // переименовании причины в справочнике её нужно поправить и в этих местах.
+                .AddDefaultRow(new { Reason = "", Type = (string?)null, RequireComment = false })
+                .AddDefaultRow(new { Reason = "Другое", Type = (string?)null, RequireComment = true })
+                .AddDefaultRow(new { Reason = "Отсутствие нормативов", Type = (string?)null, RequireComment = false })
+                .AddDefaultRow(new { Reason = "Некорректные нормативы", Type = (string?)null, RequireComment = false })
+                .AddDefaultRow(new { Reason = "Неопытный оператор", Type = (string?)null, RequireComment = false })
+                .AddDefaultRow(new { Reason = "Работа ученика", Type = (string?)null, RequireComment = false })
+                .AddDefaultRow(new { Reason = "Небрежное отношение к работе", Type = (string?)null, RequireComment = true })
+                .AddDefaultRow(new { Reason = "Некорректное заполнение", Type = (string?)null, RequireComment = false })
+                .AddDefaultRow(new { Reason = "Освоение", Type = "Setup", RequireComment = false })
+                .AddDefaultRow(new { Reason = "Особенности изготовления", Type = (string?)null, RequireComment = true })
+                .AddDefaultRow(new { Reason = "Штучная/длительная работа", Type = "Machining", RequireComment = false })
+                .AddDefaultRow(new { Reason = "Изготовление не по техпроцессу", Type = (string?)null, RequireComment = true })
+                .AddDefaultRow(new { Reason = "Изготовление типовой детали", Type = "Setup", RequireComment = false })
+                .AddDefaultRow(new { Reason = "Разовое изменение времени из-за проблем с инструментом/оборудованием", Type = "Machining", RequireComment = true })
+                .AddDefaultRow(new { Reason = "Несоответствующие заготовки", Type = "Machining", RequireComment = false })
+                .AddDefaultRow(new { Reason = "Доработка", Type = (string?)null, RequireComment = true })
                 .Build(),
 
             new TableBuilder("cnc_downtime_reasons")
                 .AddIdColumn()
                 .AddStringColumn("Reason", 50, false)
+                // Набор фиксирован: по этим причинам сводные отчёты считают отдельные
+                // колонки (см. DowntimeReasons).
+                .AddDefaultRow(new { Reason = DowntimeReasons.None })
+                .AddDefaultRow(new { Reason = DowntimeReasons.NoOperator })
+                .AddDefaultRow(new { Reason = DowntimeReasons.HardwareRepair })
+                .AddDefaultRow(new { Reason = DowntimeReasons.NoPower })
+                .AddDefaultRow(new { Reason = DowntimeReasons.ProcessRelatedLoss })
+                .AddDefaultRow(new { Reason = DowntimeReasons.Other })
                 .Build(),
 
             new TableBuilder("cnc_elog_config")
@@ -189,6 +273,9 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("Type", 50, false)
                 .AddIntColumn("SetupLimit", false)
                 .AddDoubleColumn("SetupCoefficient", false)
+                // Профиль промпта для ИИ-анализа: AiService подставляет
+                // prompts/system_prompt.{профиль}.txt; NULL — базовый промпт.
+                .AddStringColumn("AiPromptProfile", 50)
                 .AddIntColumn("WnId", false)
                 .AddGuidColumn("WnUuid", false, false)
                 .AddStringColumn("WnCounterSignal", 8, true)
@@ -374,6 +461,16 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("Administrators")
                 .AddSmallDateTimeColumn("Holidays")
                 .AddStringColumn("EngineerComments")
+                .AddStringColumn("AiIp")
+                .AddStringColumn("AiModel")
+                .AddIntColumn("SchemaVersion", false, 0)
+                .Build(),
+
+            new TableBuilder("cnc_remelog_feature_permissions")
+                .AddIdColumn()
+                .AddStringColumn("UserName", 255, false)
+                .AddIntColumn("EnabledFeatures", false, 0)
+                .AddCompositeUnique("UserName")
                 .Build(),
 
             new TableBuilder("cnc_serial_parts")
@@ -433,6 +530,10 @@ namespace libeLog.Infrastructure.Sql
                 .AddBoolColumn("RecieverLiquidLeaks")
                 .AddBoolColumn("RecieverToolBreakage")
                 .AddDoubleColumn("RecieverCoolantConcentration")
+                // Операторы смены строкой через «, » (может быть несколько).
+                // В КОНЦЕ таблицы: чтение cnc_shifts идёт SELECT * с позиционными
+                // индексами 0…20 — сдвигать существующие колонки нельзя.
+                .AddStringColumn("Operators", -1, nullable: true)
                 .Build(),
 
             new TableBuilder("cnc_tool_search_cases")
@@ -506,8 +607,11 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("SpecifiedDowntimesComment", -1)
                 .AddStringColumn("UnspecifiedDowntimeComment", -1)
                 .AddStringColumn("MasterComment", -1)
+                .AddStringColumn("MasterSetupDetail", -1)
+                .AddStringColumn("MasterMachiningDetail", -1)
                 .AddDoubleColumn("FixedSetupTimePlan")
                 .AddDoubleColumn("FixedProductionTimePlan")
+                .AddStringColumn("EngineerConclusion", -1)
                 .AddStringColumn("EngineerComment", -1)
                 .AddBoolColumn("ExcludeFromReports")
                 .AddStringColumn("LongSetupReasonComment", -1)
@@ -516,6 +620,26 @@ namespace libeLog.Infrastructure.Sql
                 .AddDoubleColumn("ExcludedOperationsTime")
                 .AddStringColumn("IncreaseReason", -1)
                 .AddDoubleColumn("SpecialDowntimeTime", false, 0)
+                // Переопределение причин аналитиком (СГТ 1). Поля мастера
+                // (MasterSetupComment/MasterMachiningComment) после заполнения мастером не
+                // правятся — решение аналитика живёт здесь, параллельным слоем. Эффективная
+                // причина = override ?? отметка мастера, считается в C# (Part.Effective*Reason),
+                // computed-колонки намеренно не используются: persisted computed при
+                // пересоздании уезжает в конец таблицы и сдвигает ordinal'ы (см. PartsDb.cs).
+                // IsMasterFault по умолчанию false — сам факт переопределения ещё не значит, что
+                // мастер виноват; аналитик ставит флаг, когда у мастера была возможность выбрать
+                // верно, и опционально поясняет ошибку в MasterFaultComment.
+                // By/At — общие на запись: обе категории правятся в одну сессию разбора.
+                .AddStringColumn("SetupReasonOverride", -1)
+                .AddStringColumn("SetupReasonOverrideComment", -1)
+                .AddBoolColumn("SetupReasonOverrideIsMasterFault", false, false)
+                .AddStringColumn("SetupReasonOverrideMasterFaultComment", -1)
+                .AddStringColumn("MachiningReasonOverride", -1)
+                .AddStringColumn("MachiningReasonOverrideComment", -1)
+                .AddBoolColumn("MachiningReasonOverrideIsMasterFault", false, false)
+                .AddStringColumn("MachiningReasonOverrideMasterFaultComment", -1)
+                .AddStringColumn("ReasonOverrideBy", 128)
+                .AddDateTimeColumn("ReasonOverrideAt")
                 .Build(),
 
             new TableBuilder("remeLog_app_presence")
@@ -526,10 +650,15 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("DisplayName", 128)
                 .AddStringColumn("Status", 32, false, "'Online'")
                 .AddStringColumn("AppVersion", 32)
+                .AddStringColumn("IpAddress", 45)
+                .AddIntColumn("EnabledFeatures", false, 0)
                 .AddDateTimeColumn("StartedUtc", false)
                 .AddDateTimeColumn("LastSeenUtc", false)
                 .AddIndex(new[] { "LastSeenUtc" }, name: "IX_app_presence_alive")
-                .AddIndex(new[] { "Application", "LastSeenUtc" }, name: "IX_app_presence_app_alive")
+                .AddIndex(
+                    new[] { "MachineName", "UserName", "LastSeenUtc" },
+                    name: "IX_app_presence_active_instances",
+                    include: new[] { "SessionId", "AppVersion", "StartedUtc" })
                 .Build(),
 
             new TableBuilder("remeLog_app_commands")
@@ -544,6 +673,7 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("Payload", -1)
                 .AddDateTimeColumn("CreatedUtc", false)
                 .AddDateTimeColumn("ProcessedUtc")
+                .AddStringColumn("Result", -1)
 
                 .AddIndex(
                     columns: new[] { "TargetSessionId", "CreatedUtc" },
@@ -559,7 +689,128 @@ namespace libeLog.Infrastructure.Sql
                     columns: new[] { "CreatedUtc" },
                     name: "IX_app_commands_cleanup"
                 )
-                .Build()
+                .Build(),
+
+            // Лог каждого обращения к Windchill REST API (см. remeLog.Core/Models/WindchillClient.cs).
+            // Windchill видит только один общий сервисный логин (cnc_wnc_cfg.User) для всех
+            // пользователей remeLog, поэтому "кто именно" фиксируется здесь, на стороне remeLog —
+            // по Windows-логину/машине инициатора, а не по учётке Windchill. Нужен для
+            // диагностики нагрузки/троттлинга на сервере Windchill: сопоставить время жалоб
+            // пользователей с фактическими запросами (см. Database.LogWncRequestAsync).
+            new TableBuilder("remeLog_wnc_requests")
+                .AddIdColumn()
+                .AddStringColumn("MachineName", 128, false)
+                .AddStringColumn("UserName", 128, false)
+                .AddStringColumn("RequestType", 20, false)
+                .AddStringColumn("Params", -1)
+                // Фактические HTTP-запросы к Windchill за одно действие пользователя, по строке
+                // на запрос: "[статус] длительность URL". Одно действие — не всегда один запрос
+                // (поиск с cadOnly=false опрашивает два entity set, скачивание PDF — сначала
+                // метаданные, потом файл), и по этой колонке видно реальное число обращений.
+                // URL самодостаточен: вставив его в браузер/Postman под сервисным логином из
+                // cnc_wnc_cfg, получаем ровно тот сырой ответ, который разбирал remeLog — это же
+                // можно отдать техподдержке как воспроизводимый пример. Учётных данных в URL нет
+                // (Basic-auth уходит заголовком).
+                .AddStringColumn("RequestUrls", -1)
+                .AddIntColumn("ResultCount")
+                .AddBoolColumn("Truncated")
+                .AddBoolColumn("Success", false)
+                .AddStringColumn("ErrorMessage", -1)
+                .AddIntColumn("ElapsedMs", false)
+                .AddDateTimeColumn("CreatedUtc", false)
+                .AddIndex(new[] { "CreatedUtc" }, name: "IX_wnc_requests_time")
+                .Build(),
+
+            // Живой статус станка (наладка/изготовление/простой), который тихо пишет eLog,
+            // пока строка ещё не закрыта (SyncParts синхронизирует в parts только завершённые
+            // строки). MERGE по Machine — одна строка на станок. UpdatedUtc — heartbeat: если
+            // давно не обновлялся, читающая сторона показывает "нет данных", а не "простой".
+            new TableBuilder("cnc_machine_activity")
+                .AddColumn("Machine", "NVARCHAR(50)", opt => opt.PrimaryKey().Nullable(false))
+                // Статус сюда пишется вместе с названием простоя ("Обращение в другие службы [Н]"),
+                // поэтому 20 символов не хватало: MERGE падал с усечением и heartbeat не проходил.
+                .AddStringColumn("Status", 100, false)
+                .AddStringColumn("PartName", -1)
+                .AddStringColumn("Order", 50)
+                .AddStringColumn("Operator", -1)
+                .AddByteColumn("Setup")
+                .AddNCharColumn("Shift", 4)
+                // Локальное время начала фазы (как StartSetupTime/StartMachiningTime в parts) —
+                // в отличие от UpdatedUtc, это не heartbeat, а бизнес-время для отображения.
+                .AddDateTimeColumn("PhaseStartLocal")
+                .AddDateTimeColumn("UpdatedUtc", false)
+                .Build(),
+
+            new TableBuilder("ai_day_reviews")
+                .AddIdColumn()
+                .AddStringColumn("Machine", 50, false)
+                .AddSmallDateTimeColumn("ShiftDate", false)
+                .AddCompositeUnique("Machine", "ShiftDate")
+                .AddStringColumn("ReviewedBy", 128, false)
+                .AddDateTimeColumn("ReviewedAt", false)
+                .AddStringColumn("Decision", 20, false)
+                .AddBoolColumn("IsFullyReviewed", false, false)
+                .AddStringColumn("Comment", -1)
+                .AddBoolColumn("AiRequiresReview")
+                .AddBoolColumn("AiThinkingEnabled")
+                .AddDoubleColumn("AiConfidence")
+                .AddStringColumn("AiSignals", -1)
+                .AddStringColumn("AiExplanation", -1)
+                .AddStringColumn("AiModelVersion", 50)
+                .AddStringColumn("AiPromptVersion", 50)
+                .AddDateTimeColumn("AiAnalyzedAt")
+                .AddStringColumn("AiFeedback", -1)
+                .AddComputedColumn("AiVerdict",
+                    @"CASE
+                        WHEN AiAnalyzedAt IS NULL THEN N'не анализировалось'
+                        WHEN (Decision = N'ok' AND AiRequiresReview = 0)
+                          OR (Decision = N'escalated' AND AiRequiresReview = 1) THEN N'совпадение'
+                        WHEN Decision = N'ok'        AND AiRequiresReview = 1 THEN N'ИИ лишний флаг'
+                        WHEN Decision = N'escalated' AND AiRequiresReview = 0 THEN N'ИИ пропустил'
+                        ELSE N'?'
+                    END",
+                    persisted: true)
+                .AddIndex(new[] { "ShiftDate" }, name: "IX_ai_day_reviews_date")
+                .Build(),
+
+            new TableBuilder("ai_part_flags")
+                .AddIdColumn()
+                .AddIntColumn("DayReviewId", false)
+                .AddForeignKey("DayReviewId", "ai_day_reviews", "Id",
+                               ForeignKeyAction.Cascade, ForeignKeyAction.Cascade)
+                .AddGuidColumn("PartGuid", nullable: false)
+                .AddForeignKey("PartGuid", "parts", "Guid",
+                               ForeignKeyAction.Cascade, ForeignKeyAction.Cascade)
+                .AddBoolColumn("IsCleared", false, false)
+                .AddStringColumn("Comment", -1)
+                // AI-поля на уровне строки
+                .AddBoolColumn("AiRequiresReview")
+                .AddDoubleColumn("AiConfidence")
+                .AddStringColumn("AiSuggestedReason", 255)
+                .AddStringColumn("AiSignals", -1)
+                .AddStringColumn("AiExplanation", -1)
+                .AddIndex(new[] { "DayReviewId" }, name: "IX_ai_part_flags_day")
+                .AddIndex(new[] { "PartGuid" },    name: "IX_ai_part_flags_part")
+                .Build(),
+
+            // История слепок времён кнопкой «Слепить детали»: Guid строк без FK,
+            // чтобы разбор причин переживал удаление самих деталей.
+            new TableBuilder("part_snap_log")
+                .AddIdColumn()
+                .AddStringColumn("Machine", 50, false)
+                .AddSmallDateTimeColumn("ShiftDate", false)
+                .AddStringColumn("Shift", 10, false)
+                .AddGuidColumn("PrevPartGuid", nullable: false)
+                .AddGuidColumn("NextPartGuid", nullable: false)
+                .AddStringColumn("NextPartName", 255)
+                .AddSmallDateTimeColumn("OldStartSetupTime", false)
+                .AddSmallDateTimeColumn("NewStartSetupTime", false)
+                .AddIntColumn("GapMinutes", false)
+                .AddStringColumn("SnappedBy", 128, false)
+                .AddDateTimeColumn("SnappedAt", false)
+                .AddIndex(new[] { "Machine", "ShiftDate" }, name: "IX_part_snap_log_machine_date")
+                .Build(),
+
         };
     }
 }

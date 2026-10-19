@@ -1,0 +1,567 @@
+using libeLog;
+using libeLog.Base;
+using libeLog.Views;
+using remeLog.Infrastructure;
+using remeLog.Models;
+using remeLog.Views;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Input;
+using UserEnvVar = libeLog.Infrastructure.UserEnvVar;
+
+namespace remeLog.ViewModels
+{
+    /// <summary>
+    /// Вкладка окна экземпляров: список экземпляров одного приложения (remeLog или eLog)
+    /// и команды к ним. Опросом занимается родительский <see cref="ActiveInstancesViewModel"/>,
+    /// вкладка только принимает готовые данные через <see cref="ApplyInstances"/>.
+    /// </summary>
+    public class InstancesTabViewModel : ViewModel
+    {
+        private const string UpdateNotificationMessage = "Для обновления перезапустите приложение.\nЗакрыть сейчас?";
+
+        /// <summary>Идентификатор приложения вкладки (remeLog.Core.AppNames).</summary>
+        public string Application { get; }
+
+        /// <summary>Заголовок вкладки.</summary>
+        public string Header { get; }
+
+        private readonly Dictionary<Guid, string> _pendingResults = new();
+
+        /// <summary>Команды RequestState: их результат показываем в MessageBox, а не в статусе.</summary>
+        private readonly HashSet<Guid> _stateRequests = new();
+
+        public ObservableCollection<AppPresence> Instances { get; } = new();
+
+        private AppPresence? _selectedInstance;
+        public AppPresence? SelectedInstance
+        {
+            get => _selectedInstance;
+            set => Set(ref _selectedInstance, value);
+        }
+
+        private int _pendingCommandCount;
+        public int PendingCommandCount
+        {
+            get => _pendingCommandCount;
+            set => Set(ref _pendingCommandCount, value);
+        }
+
+        private bool _inProgress = true;
+        public bool InProgress
+        {
+            get => _inProgress;
+            set => Set(ref _inProgress, value);
+        }
+
+        private bool _allSelected;
+        public bool AllSelected
+        {
+            get => _allSelected;
+            set => Set(ref _allSelected, value);
+        }
+
+        private string _lastCommandResult = string.Empty;
+        public string LastCommandResult
+        {
+            get => _lastCommandResult;
+            set => Set(ref _lastCommandResult, value);
+        }
+
+        public LambdaCommand ForceCloseCommand { get; }
+        public LambdaCommand ShowNotificationCommand { get; }
+        public LambdaCommand NotifyUpdateCommand { get; }
+        public LambdaCommand RequestStateCommand { get; }
+        public LambdaCommand SetEnvVarCommand { get; }
+        public LambdaCommand ForceCloseSelectedCommand { get; }
+        public LambdaCommand NotifySelectedCommand { get; }
+        public LambdaCommand NotifyUpdateSelectedCommand { get; }
+        public LambdaCommand SetEnvVarSelectedCommand { get; }
+        public LambdaCommand ToggleAllCommand { get; }
+        public LambdaCommand ShowPendingCommandsCommand { get; }
+
+        public InstancesTabViewModel(string application, string header)
+        {
+            Application = application;
+            Header = header;
+
+            ForceCloseCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var target = SelectedInstance;
+                        if (target is null || !target.IsOnline) return;
+
+                        var result = MessageBoxWindow.Show(
+                            $"Принудительно закрыть экземпляр {Header} на {target.MachineName}\\{target.UserName}?",
+                            "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxDefaultButton.No);
+                        if (result != MessageBoxResult.Yes) return;
+
+                        await Database.SendAppCommandAsync(
+                            target.SessionId, target.Application, target.MachineName, target.UserName,
+                            "ForceClose", null).ConfigureAwait(false);
+                        await RefreshPendingCountAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке команды ForceClose");
+                        MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                },
+                _ => SelectedInstance?.IsOnline == true);
+
+            ShowNotificationCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var target = SelectedInstance;
+                        if (target is null || !target.IsOnline) return;
+
+                        var dialog = new UserInputDialogWindow(
+                            "Уведомление", "Введите текст уведомления:");
+                        dialog.Owner = OwnerWindow();
+                        if (dialog.ShowDialog() != true) return;
+
+                        var text = dialog.UserInput;
+                        if (string.IsNullOrWhiteSpace(text)) return;
+
+                        var commandId = await Database.SendAppCommandAsync(
+                            target.SessionId, target.Application, target.MachineName, target.UserName,
+                            "ShowNotification", text).ConfigureAwait(false);
+
+                        lock (_pendingResults)
+                        {
+                            _pendingResults[commandId] = $"{target.MachineName}\\{target.UserName}";
+                        }
+                        LastCommandResult = $"Ожидание ответа от {target.MachineName}...";
+                        await RefreshPendingCountAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке команды ShowNotification");
+                        MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                },
+                _ => SelectedInstance?.IsOnline == true);
+
+            NotifyUpdateCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var target = SelectedInstance;
+                        if (target is null || !target.IsOnline) return;
+
+                        var commandId = await Database.SendAppCommandAsync(
+                            target.SessionId, target.Application, target.MachineName, target.UserName,
+                            "UpdateNotification", UpdateNotificationMessage).ConfigureAwait(false);
+
+                        lock (_pendingResults)
+                            _pendingResults[commandId] = $"{target.MachineName}\\{target.UserName}";
+
+                        LastCommandResult = $"Ожидание ответа от {target.MachineName}...";
+                        await RefreshPendingCountAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке уведомления об обновлении");
+                        MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                },
+                _ => SelectedInstance?.IsOnline == true);
+
+            RequestStateCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var target = SelectedInstance;
+                        if (target is null || !target.IsOnline) return;
+
+                        var commandId = await Database.SendAppCommandAsync(
+                            target.SessionId, target.Application, target.MachineName, target.UserName,
+                            "RequestState", null).ConfigureAwait(false);
+
+                        lock (_pendingResults)
+                        {
+                            _pendingResults[commandId] = $"{target.MachineName}\\{target.UserName}";
+                            _stateRequests.Add(commandId);
+                        }
+
+                        LastCommandResult = $"Ожидание ответа от {target.MachineName}...";
+                        await RefreshPendingCountAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке команды RequestState");
+                        MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                },
+                _ => SelectedInstance?.IsOnline == true);
+
+            // Одиночная команда: создать/обновить переменную окружения
+            // на ПК выбранного экземпляра. Имя и значение спрашиваем двумя
+            // диалогами (см. TryPromptEnvVar), в очередь уходит JSON-payload.
+            SetEnvVarCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var target = SelectedInstance;
+                        if (target is null || !target.IsOnline) return;
+
+                        if (!TryPromptEnvVar(out var name, out var value)) return;
+
+                        var commandId = await Database.SendAppCommandAsync(
+                            target.SessionId, target.Application, target.MachineName, target.UserName,
+                            UserEnvVar.CommandType, UserEnvVar.BuildPayload(name, value)).ConfigureAwait(false);
+
+                        lock (_pendingResults)
+                        {
+                            _pendingResults[commandId] = $"{target.MachineName}\\{target.UserName}";
+                        }
+                        LastCommandResult = $"Ожидание ответа от {target.MachineName}...";
+                        await RefreshPendingCountAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке команды SetUserEnvVar");
+                        MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                },
+                _ => SelectedInstance?.IsOnline == true);
+
+            ForceCloseSelectedCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var targets = OnlineSelected();
+                        if (targets.Count == 0)
+                        {
+                            MessageBoxWindow.Show("Нет выбранных онлайн-экземпляров.", "Информация",
+                                MessageBoxButton.OK, MessageBoxImage.Information);
+                            return;
+                        }
+
+                        var result = MessageBoxWindow.Show(
+                            $"Принудительно закрыть {targets.Count} выбранный(х) экземпляр(ов) {Header}?",
+                            "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxDefaultButton.No);
+                        if (result != MessageBoxResult.Yes) return;
+
+                        InProgress = true;
+                        await Database.SendAppCommandToAllAsync(
+                            targets, "ForceClose", null).ConfigureAwait(false);
+                        await RefreshPendingCountAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке команды ForceClose выбранным");
+                        MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                    finally
+                    {
+                        await App.Current.Dispatcher.InvokeAsync(() => InProgress = false);
+                    }
+                },
+                _ => Instances.Any(i => i.IsOnline && i.IsSelected));
+
+            NotifySelectedCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var targets = OnlineSelected();
+                        if (targets.Count == 0)
+                        {
+                            MessageBoxWindow.Show("Нет выбранных онлайн-экземпляров.", "Информация",
+                                MessageBoxButton.OK, MessageBoxImage.Information);
+                            return;
+                        }
+
+                        var dialog = new UserInputDialogWindow(
+                            "Уведомление", "Введите текст уведомления:");
+                        dialog.Owner = OwnerWindow();
+                        if (dialog.ShowDialog() != true) return;
+
+                        var text = dialog.UserInput;
+                        if (string.IsNullOrWhiteSpace(text)) return;
+
+                        InProgress = true;
+                        var ids = await Database.SendAppCommandToAllAsync(
+                            targets, "ShowNotification", text).ConfigureAwait(false);
+
+                        TrackPending(ids, targets);
+                        LastCommandResult = $"Ожидание ответа от {targets.Count} экземпляров...";
+                        await RefreshPendingCountAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке команды ShowNotification выбранным");
+                        MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                    finally
+                    {
+                        await App.Current.Dispatcher.InvokeAsync(() => InProgress = false);
+                    }
+                },
+                _ => Instances.Any(i => i.IsOnline && i.IsSelected));
+
+            NotifyUpdateSelectedCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var targets = OnlineSelected();
+                        if (targets.Count == 0)
+                        {
+                            MessageBoxWindow.Show("Нет выбранных онлайн-экземпляров.", "Информация",
+                                MessageBoxButton.OK, MessageBoxImage.Information);
+                            return;
+                        }
+
+                        InProgress = true;
+                        var ids = await Database.SendAppCommandToAllAsync(
+                            targets, "UpdateNotification", UpdateNotificationMessage).ConfigureAwait(false);
+
+                        TrackPending(ids, targets);
+                        LastCommandResult = $"Ожидание ответа от {targets.Count} экземпляров...";
+                        await RefreshPendingCountAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке уведомления об обновлении");
+                        MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                    finally
+                    {
+                        await App.Current.Dispatcher.InvokeAsync(() => InProgress = false);
+                    }
+                },
+                _ => Instances.Any(i => i.IsOnline && i.IsSelected));
+
+            // Массовая команда: та же переменная сразу на все отмеченные онлайн-экземпляры.
+            // Имя и значение спрашиваем один раз, очередь — одна на всех (транзакцией).
+            SetEnvVarSelectedCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    try
+                    {
+                        var targets = OnlineSelected();
+                        if (targets.Count == 0)
+                        {
+                            MessageBoxWindow.Show("Нет выбранных онлайн-экземпляров.", "Информация",
+                                MessageBoxButton.OK, MessageBoxImage.Information);
+                            return;
+                        }
+
+                        if (!TryPromptEnvVar(out var name, out var value)) return;
+
+                        // Изменение окружения заметнее уведомления, поэтому перед веером
+                        // на несколько машин просим подтвердить (на одну — шлём сразу).
+                        if (targets.Count > 1)
+                        {
+                            var confirm = MessageBoxWindow.Show(
+                                $"Установить переменную {name} на {targets.Count} экземплярах {Header}?",
+                                "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxDefaultButton.No);
+                            if (confirm != MessageBoxResult.Yes) return;
+                        }
+
+                        InProgress = true;
+                        var ids = await Database.SendAppCommandToAllAsync(
+                            targets, UserEnvVar.CommandType, UserEnvVar.BuildPayload(name, value)).ConfigureAwait(false);
+
+                        TrackPending(ids, targets);
+                        LastCommandResult = $"Ожидание ответа от {targets.Count} экземпляров...";
+                        await RefreshPendingCountAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Util.WriteLog(ex, "Ошибка при отправке команды SetUserEnvVar выбранным");
+                        MessageBoxWindow.Show($"Ошибка: {ex.Message}", "Ошибка",
+                            MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                    finally
+                    {
+                        await App.Current.Dispatcher.InvokeAsync(() => InProgress = false);
+                    }
+                },
+                _ => Instances.Any(i => i.IsOnline && i.IsSelected));
+
+            ToggleAllCommand = LambdaCommand.Create(_ =>
+            {
+                var newState = !AllSelected;
+                foreach (var instance in Instances)
+                {
+                    if (instance.IsOnline)
+                        instance.IsSelected = newState;
+                }
+                AllSelected = newState;
+            });
+
+            ShowPendingCommandsCommand = LambdaCommand.Create(
+                async _ =>
+                {
+                    await App.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        var window = new Views.PendingCommandsWindow(Application, Header)
+                        {
+                            Owner = System.Windows.Application.Current.MainWindow
+                        };
+                        window.ShowDialog();
+                    });
+                });
+        }
+
+        /// <summary>
+        /// Обновляет содержимое вкладки. Вызывается из UI-потока родительским опросом.
+        /// </summary>
+        public void ApplyInstances(IReadOnlyList<AppPresence> items, int pendingCount)
+        {
+            var selected = SelectedInstance;
+            var selectedIds = new HashSet<Guid>(
+                Instances.Where(i => i.IsSelected).Select(i => i.SessionId));
+
+            Instances.Clear();
+
+            foreach (var item in items)
+            {
+                if (selectedIds.Contains(item.SessionId))
+                    item.IsSelected = true;
+                Instances.Add(item);
+            }
+
+            if (selected is not null)
+            {
+                SelectedInstance = Instances.FirstOrDefault(
+                    i => i.SessionId == selected.SessionId);
+            }
+
+            PendingCommandCount = pendingCount;
+            AllSelected = Instances.Count > 0
+                && Instances.Where(i => i.IsOnline).All(i => i.IsSelected);
+            CommandManager.InvalidateRequerySuggested();
+        }
+
+        /// <summary>Забирает результаты выполненных команд этой вкладки.</summary>
+        public async Task PollCommandResultsAsync()
+        {
+            List<KeyValuePair<Guid, string>> pending;
+
+            lock (_pendingResults)
+            {
+                if (_pendingResults.Count == 0) return;
+                pending = _pendingResults.ToList();
+            }
+
+            var completedIds = new List<Guid>();
+            var resultMessages = new List<string>();
+            var stateAnswers = new List<(string Target, string Text)>();
+
+            foreach (var (id, target) in pending)
+            {
+                var result = await Database.GetCommandResultAsync(id).ConfigureAwait(false);
+                if (result is null) continue;
+
+                completedIds.Add(id);
+
+                bool isState;
+                lock (_pendingResults)
+                    isState = _stateRequests.Contains(id);
+
+                if (isState && result != "Cancelled")
+                    stateAnswers.Add((target, result));
+                else
+                    resultMessages.Add($"{target}: {result}");
+            }
+
+            if (completedIds.Count == 0) return;
+
+            lock (_pendingResults)
+            {
+                foreach (var id in completedIds)
+                {
+                    _pendingResults.Remove(id);
+                    _stateRequests.Remove(id);
+                }
+            }
+
+            // Ответ RequestState — в общий кастомный MessageBox, в статусе только ОК.
+            foreach (var (target, text) in stateAnswers)
+            {
+                MessageBoxWindow.Show(text, $"Состояние {target}",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            var summary = string.Join("\n", resultMessages);
+            if (stateAnswers.Count > 0 && summary.Length == 0)
+                summary = "OK";
+            else if (stateAnswers.Count > 0)
+                summary += "\nOK";
+            await App.Current.Dispatcher.InvokeAsync(() => LastCommandResult = summary);
+        }
+
+        /// <summary>
+        /// Спрашивает имя и значение одним окном с двумя полями.
+        /// Имя проверено маской <see cref="UserEnvVar"/> уже в диалоге (кнопка ОК
+        /// недоступна при ошибке), значение — произвольное (его ещё раз проверит
+        /// получатель перед применением). Возвращает false, если ввод отменили.
+        /// </summary>
+        private static bool TryPromptEnvVar(out string name, out string value)
+        {
+            name = string.Empty;
+            value = string.Empty;
+
+            var dialog = new EnvVarDialogWindow();
+            dialog.Owner = OwnerWindow();
+            if (dialog.ShowDialog() != true) return false;
+
+            // Имя чистим от случайных пробелов, значение — нет: там пробелы могут быть частью данных.
+            // Повторная проверка — защита на случай программного обхода диалога.
+            var rawName = (dialog.VariableName ?? string.Empty).Trim();
+            if (!UserEnvVar.IsValidName(rawName)) return false;
+
+            name = rawName;
+            value = dialog.VariableValue ?? string.Empty;
+            return true;
+        }
+
+        private List<AppPresence> OnlineSelected() =>
+            Instances.Where(i => i.IsOnline && i.IsSelected).ToList();
+
+        private void TrackPending(IReadOnlyList<Guid> ids, IReadOnlyList<AppPresence> targets)
+        {
+            lock (_pendingResults)
+            {
+                for (var i = 0; i < ids.Count && i < targets.Count; i++)
+                    _pendingResults[ids[i]] = $"{targets[i].MachineName}\\{targets[i].UserName}";
+            }
+        }
+
+        private async Task RefreshPendingCountAsync()
+        {
+            var count = await Database.GetPendingCommandCountAsync(Application).ConfigureAwait(false);
+            await App.Current.Dispatcher.InvokeAsync(() => PendingCommandCount = count);
+        }
+
+        /// <summary>
+        /// Owner для модальных диалогов вкладки. Вынесено в метод, потому что свойство
+        /// <see cref="Application"/> перекрывает имя типа <see cref="System.Windows.Application"/>.
+        /// </summary>
+        private static Window? OwnerWindow() => System.Windows.Application.Current.MainWindow;
+    }
+}

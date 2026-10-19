@@ -1,0 +1,56 @@
+﻿<Application x:Class="remeLog.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:remeLog"
+             xmlns:cnv="clr-namespace:remeLog.Infrastructure.Converters"
+             xmlns:contolrs="clr-namespace:remeLog.Views.Controls"
+             StartupUri="Views/MainWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Areopag первым: StyleDictionary ссылается на его кисти.
+                     URI — абсолютные pack, как в ThemeManager (LightPaletteUri),
+                     чтобы переключение темы находило и заменяло словарь. -->
+                <ResourceDictionary Source="pack://application:,,,/libeLog;component/Areopag/Areopag.Palette.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/libeLog;component/Areopag/Areopag.Common.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/libeLog;component/Icons.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/libeLog;component/StyleDictionary.xaml" />
+                <!-- Неявные тематические стили remeLog (после StyleDictionary: ссылаются на его ключи) -->
+                <ResourceDictionary Source="Infrastructure/ImplicitStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <contolrs:SpinnerArcs x:Key="SpinnerArcs" x:Shared="False" />
+            <contolrs:SpinnerDots x:Key="SpinnerDots" x:Shared="False" />
+            <contolrs:SpinnerPulseRing x:Key="SpinnerPulseRing" x:Shared="False" />
+            <contolrs:SpinnerBrackets x:Key="SpinnerBrackets" x:Shared="False" />
+
+            <cnv:BooleanToBrushConverter x:Key="BooleanToBrushConverter"/>
+            <cnv:BoolToOnlineConverter x:Key="BoolToOnlineConverter"/>
+            <cnv:BoolToOnlineBrushConverter x:Key="BoolToOnlineBrushConverter"/>
+            <cnv:CollectionConverteter x:Key="CollectionConverteter"/>
+            <cnv:EnumDescriptionConverter x:Key="EnumDescriptionConverter"/>
+            <cnv:ExpressionToDoubleConverter x:Key="ExpressionToDoubleConverter"/>
+            <cnv:ExpressionToIntConverter x:Key="ExpressionToIntConverter"/>
+            <cnv:HoursToTimeStringConverter x:Key="HoursToTimeStringConverter"/>
+            <cnv:IntNullableConverter x:Key="IntNullableConverter"/>
+            <cnv:InvertedBoolConverter x:Key="InvertedBoolConverter"/>
+            <cnv:InvertedVisibilityConverter x:Key="InvertedVisibilityConverter"/>
+            <cnv:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+            <cnv:OverlayOpacityConverter x:Key="OverlayOpacityConverter"/>
+            <cnv:OverlayVisibilityConverter x:Key="OverlayVisibilityConverter"/>
+            <cnv:ReportStateVisibility x:Key="ReportStateVisibility"/>
+            <cnv:RoleButtonConverter x:Key="RoleButtonConverter"/>
+            <cnv:RoleColorConverter x:Key="RoleColorConverter"/>
+            <cnv:ShortDateConverter x:Key="ShortDateConverter"/>
+            <cnv:StatusVisibilityConverter x:Key="StatusVisibilityConverter"/>
+            <cnv:TimeConverter x:Key="TimeConverter"/>
+            <cnv:ColumnVisibilityConverter x:Key="ColumnVisibilityConverter"/>
+            <cnv:AllVisibleMultiConverter x:Key="AllVisibleMultiConverter"/>
+            <cnv:VisibilityConverter x:Key="VisibilityConverter"/>
+            <cnv:MachineInspectionCalendarCellIconMultiConverter x:Key="MachineInspectionCalendarCellIconMultiConverter"/>
+            <cnv:MachineActivityStatusTextConverter x:Key="MachineActivityStatusTextConverter"/>
+            <cnv:MachineActivityStatusBrushConverter x:Key="MachineActivityStatusBrushConverter"/>
+            <cnv:BoolOrMultiConverter x:Key="BoolOrMultiConverter"/>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

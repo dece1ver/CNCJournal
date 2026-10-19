@@ -4,6 +4,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text.RegularExpressions;
@@ -218,30 +219,30 @@ namespace libeLog.Extensions
             return CheckDirectoryRightsResult.NotExists;
         }
 
-        public static (DbResult result, string message) CheckDbConnection(this string connectionString)
+        public static DbResult<string> CheckDbConnection(this string connectionString)
         {
-            if (string.IsNullOrEmpty(connectionString)) return (DbResult.Error, "Строка подключения не инициализирована");
+            if (string.IsNullOrEmpty(connectionString)) return DbResult<string>.Fail(DbResult.Error, "Строка подключения не инициализирована");
 
             try
             {
                 using (SqlConnection connection = new SqlConnection(connectionString))
                 {
                     connection.Open();
-                    return (DbResult.Ok, "Ok");
+                    return DbResult<string>.Ok("Ok");
                 }
             }
             catch (SqlException sqlEx)
             {
                 return sqlEx.Number switch
                 {
-                    -1 => (DbResult.Error, Constants.StatusTips.NoConnectionToDb),
-                    18456 => (DbResult.AuthError, Constants.StatusTips.AuthFailedToDb),
-                    _ => (DbResult.Error, $"Ошибка БД №{sqlEx.Number}"),
+                    -1 => DbResult<string>.Fail(DbResult.Error, Constants.StatusTips.NoConnectionToDb),
+                    18456 => DbResult<string>.Fail(DbResult.AuthError, Constants.StatusTips.AuthFailedToDb),
+                    _ => DbResult<string>.Fail(DbResult.Error, $"Ошибка БД №{sqlEx.Number}"),
                 };
             }
             catch (Exception ex)
             {
-                return (DbResult.Error, $"Ошибка: {ex.Message}");
+                return DbResult<string>.Fail(DbResult.Error, $"Ошибка: {ex.Message}");
             }
         }
 
@@ -429,6 +430,19 @@ namespace libeLog.Extensions
                 return fullName;
 
             return $"{lastName} {firstName[0]}.{patronymic[0]}.";
+        }
+
+        /// <summary>
+        /// Возвращает исходную строку, если она содержит корректный IP-адрес,
+        /// иначе возвращает указанное значение по умолчанию.
+        /// </summary>
+        /// <param name="value">Строка с IP-адресом.</param>
+        /// <param name="defaultValue">Значение, возвращаемое при некорректном IP-адресе.</param>
+        /// <returns>Корректный IP-адрес или значение по умолчанию.</returns>
+        public static string GetIpOrDefault(this string? value, string defaultValue = "localhost")
+        {
+            value = value?.Trim();
+            return IPAddress.TryParse(value, out _) ? value : defaultValue;
         }
     }
 }

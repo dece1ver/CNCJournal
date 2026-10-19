@@ -24,18 +24,22 @@
             <ColumnDefinition/>
             <ColumnDefinition/>
             <ColumnDefinition/>
+            <ColumnDefinition/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition/>
             <RowDefinition/>
             <RowDefinition/>
         </Grid.RowDefinitions>
-        <ctrl:CyrillicKeyboard Grid.Column="0" Grid.Row="0" Grid.RowSpan="3" Grid.ColumnSpan="11" 
+        <ctrl:CyrillicKeyboard Grid.Column="0" Grid.Row="0" Grid.RowSpan="3" Grid.ColumnSpan="12"
                                x:Name="CyrillicKeyboard"/>
-        <ctrl:LatinKeyboard Grid.Column="0" Grid.Row="0" Grid.RowSpan="3" Grid.ColumnSpan="11"
+        <ctrl:LatinKeyboard Grid.Column="0" Grid.Row="0" Grid.RowSpan="3" Grid.ColumnSpan="12"
                             x:Name="LatinKeyboard"/>
-        <Button Grid.Column="10" Grid.Row="2" 
-                x:Name="LangButton" Content="RU" 
+        <Button Grid.Column="10" Grid.Row="2"
+                x:Name="CapsButton" Content="&#x21EA;"
+                Style="{StaticResource KeyboardMonoButton}" Click="CapsButton_Click"/>
+        <Button Grid.Column="11" Grid.Row="2"
+                x:Name="LangButton" Content="RU"
                 Style="{StaticResource KeyboardButton}" Click="LangButton_Click"/>
     </Grid>
     
